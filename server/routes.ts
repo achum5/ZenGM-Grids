@@ -436,13 +436,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             careerWinShares = avgRating / 10; // Rough approximation
           }
 
+          // Enhance face data with team ID and team info for color mapping
+          let enhancedFace = player.face || null;
+          if (enhancedFace && player.tid !== undefined && player.tid >= 0) {
+            enhancedFace = {
+              ...enhancedFace,
+              tid: player.tid,
+              currentTeam: teamMap.get(player.tid)?.name || `Team ${player.tid}`,
+              teamAbbrev: teamMap.get(player.tid)?.abbrev || null
+            };
+          }
+
           return {
             name,
             teams: Array.from(allTeams),
             years,
             achievements,
             stats: player.ratings || player.stats || undefined,
-            face: player.face || null,
+            face: enhancedFace,
             imageUrl: player.imgURL || player.imageUrl || player.img || undefined,
             careerWinShares: Math.round(careerWinShares * 10), // Convert to integer (tenths)
             quality: 50 // Will be calculated later

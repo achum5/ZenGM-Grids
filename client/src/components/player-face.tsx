@@ -96,6 +96,18 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         let teamColors: string[] = [];
         let activeTeam = currentTeam;
         
+        // Check for tid (team ID) in the face data first
+        if (faceData && faceData.tid !== undefined) {
+          console.log('Found team ID (tid):', faceData.tid);
+          console.log('Current team from face data:', faceData.currentTeam);
+          
+          // Use the current team from face data if available
+          if (faceData.currentTeam && TEAM_COLORS[faceData.currentTeam]) {
+            activeTeam = faceData.currentTeam;
+            console.log(`Using current team from face data: ${activeTeam}`);
+          }
+        }
+        
         // If we have player data with years, find the current active team
         // First try from the passed data, then from face data
         const playerYears = (faceData && faceData.years) || [];
