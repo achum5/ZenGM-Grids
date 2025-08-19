@@ -5,6 +5,7 @@ import { GameStats } from "@/components/game-stats";
 import { RulesModal } from "@/components/rules-modal";
 import { Button } from "@/components/ui/button";
 import { HelpCircle, RotateCcw } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useQuery } from "@tanstack/react-query";
 import type { Game, SessionStats } from "@shared/schema";
 
@@ -39,9 +40,9 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
@@ -49,14 +50,15 @@ export default function Home() {
                 <span className="text-white text-lg">🏀</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-court">Immaculate Grid</h1>
-                <p className="text-sm text-gray-500">Basketball-GM Edition</p>
+                <h1 className="text-xl font-bold text-court dark:text-white">Immaculate Grid</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Basketball-GM Edition</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <ThemeToggle />
               <div className="text-right">
-                <p className="text-sm text-gray-500">Current Score</p>
-                <p className="text-lg font-semibold text-court" data-testid="text-current-score">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Current Score</p>
+                <p className="text-lg font-semibold text-court dark:text-white" data-testid="text-current-score">
                   {currentScore}
                 </p>
               </div>
