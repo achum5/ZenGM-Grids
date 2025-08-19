@@ -119,7 +119,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   const teamYears = player.years?.find(y => y.team === primaryTeam);
   const yearRange = teamYears ? `${teamYears.start}–${teamYears.end}` : '';
   
-  // Format all teams with years
+  // Format all teams with years - show each team stint separately
   const allTeamsFormatted = player.years?.map(y => 
     `${getTeamAbbr(y.team)} (${y.start}–${y.end})`
   ).join(', ') || player.teams.map(getTeamAbbr).join(', ');
@@ -176,14 +176,14 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         
         {/* All Teams */}
         <div className="text-center mb-2 text-blue-300 text-xs leading-relaxed">
-          <div className="flex flex-wrap justify-center gap-1">
+          <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
             {player.years?.map((teamYear, idx) => (
-              <span key={idx} className="whitespace-nowrap">
+              <span key={`${teamYear.team}-${teamYear.start}`} className="whitespace-nowrap">
                 {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
                 {idx < (player.years?.length || 0) - 1 && ','}
               </span>
             )) || player.teams.map((team, idx) => (
-              <span key={idx} className="whitespace-nowrap">
+              <span key={team} className="whitespace-nowrap">
                 {getTeamAbbr(team)}
                 {idx < player.teams.length - 1 && ','}
               </span>
