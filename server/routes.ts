@@ -378,27 +378,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (player.hof) achievements.push('Hall of Fame');
           if (player.retiredYear) achievements.push('Retired');
           
-          // Extract career years and teams from statistics - only include seasons where games were played
+          // Extract career years and teams from statistics - track separate stints for each team
           const years: { team: string; start: number; end: number }[] = [];
           if (player.stats && Array.isArray(player.stats)) {
-            const teamYears = new Map<string, { start: number; end: number }>();
-            player.stats.forEach((stat: any) => {
-              // Only include seasons where the player actually played games
-              if (stat.season && stat.tid !== undefined && (stat.gp || 0) > 0) {
-                const teamInfo = teamMap.get(stat.tid);
-                const teamName = teamInfo?.name || `Team ${stat.tid}`;
-                const existing = teamYears.get(teamName);
-                if (existing) {
-                  existing.start = Math.min(existing.start, stat.season);
-                  existing.end = Math.max(existing.end, stat.season);
-                } else {
-                  teamYears.set(teamName, { start: stat.season, end: stat.season });
+            // Sort stats by season to process chronologically
+            const sortedStats = player.stats
+              .filter((stat: any) => stat.season && stat.tid !== undefined && (stat.gp || 0) > 0)
+              .sort((a: any, b: any) => a.season - b.season);
+            
+            let currentTeam: string | null = null;
+            let currentStart: number | null = null;
+            let currentEnd: number | null = null;
+            
+            sortedStats.forEach((stat: any) => {
+              const teamInfo = teamMap.get(stat.tid);
+              const teamName = teamInfo?.name || `Team ${stat.tid}`;
+              
+              if (teamName !== currentTeam) {
+                // Save previous stint if it exists
+                if (currentTeam && currentStart && currentEnd) {
+                  years.push({ team: currentTeam, start: currentStart, end: currentEnd });
                 }
+                // Start new stint
+                currentTeam = teamName;
+                currentStart = stat.season;
+                currentEnd = stat.season;
+              } else {
+                // Continue current stint
+                currentEnd = stat.season;
               }
             });
-            teamYears.forEach((yearRange, teamName) => {
-              years.push({ team: teamName, ...yearRange });
-            });
+            
+            // Save final stint
+            if (currentTeam && currentStart && currentEnd) {
+              years.push({ team: currentTeam, start: currentStart, end: currentEnd });
+            }
           }
           
           // Calculate career win shares from stats (if available)
