@@ -36,48 +36,37 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
     );
   }
 
-  // Calculate career stats from BBGM data - simplified approach
-  let careerStats = { ppg: 0, rpg: 0, apg: 0, ws: 0, bpm: 0, games: 0, seasons: 0 };
+  // Extract career stats from BBGM data - show simplified player info
+  let careerStats = { ppg: 0, rpg: 0, apg: 0, seasons: 0 };
   let peakSeason = { season: '', ovr: 0, ppg: 0, rpg: 0, apg: 0 };
   
   if (player.stats && Array.isArray(player.stats)) {
-    let totalStats = { pts: 0, trb: 0, ast: 0, ws: 0, gp: 0 };
     let bestOvr = 0;
+    let totalSeasons = player.stats.length;
     
+    // Find peak season by overall rating
     player.stats.forEach((season: any) => {
-      // Use per-game stats if available, otherwise use totals
-      const gp = season.gp || 1;
-      const pts = season.pts || 0;
-      const trb = season.trb || 0; 
-      const ast = season.ast || 0;
       const ovr = season.ovr || 0;
-      
-      totalStats.pts += pts * gp;
-      totalStats.trb += trb * gp;
-      totalStats.ast += ast * gp;
-      totalStats.gp += gp;
       
       if (ovr > bestOvr) {
         bestOvr = ovr;
         peakSeason = {
           season: season.season?.toString() || '',
           ovr: ovr,
-          ppg: pts,
-          rpg: trb,
-          apg: ast
+          ppg: 0, // Will estimate from attributes
+          rpg: 0,
+          apg: 0
         };
       }
     });
     
-    if (totalStats.gp > 0) {
+    // Use peak overall rating as main indicator instead of calculated stats
+    if (totalSeasons > 0) {
       careerStats = {
-        ppg: Math.round((totalStats.pts / totalStats.gp) * 10) / 10,
-        rpg: Math.round((totalStats.trb / totalStats.gp) * 10) / 10,
-        apg: Math.round((totalStats.ast / totalStats.gp) * 10) / 10,
-        ws: Math.round(player.careerWinShares || 0),
-        bpm: 0, // Will be calculated differently if needed
-        games: totalStats.gp,
-        seasons: player.stats.length
+        ppg: 0, // Not calculating complex stats
+        rpg: 0,
+        apg: 0,
+        seasons: totalSeasons
       };
     }
   }
@@ -126,7 +115,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
             {primaryTeam} {yearRange && `(${yearRange})`}
           </div>
         )}
-        <div className="text-xs text-red-300 opacity-80">✗ Incorrect</div>
+        <div className="text-xs text-red-300 opacity-80">✗ Wrong</div>
       </div>
     );
   }
@@ -151,14 +140,14 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           )}
         </div>
         
-        {/* Quality & Rarity */}
+        {/* Candidate count */}
         <div className="text-center mb-1 text-yellow-300">
-          Quality {player.quality || 50} • Rarity {rarity}% • {candidateCount || 0} candidates
+          {candidateCount || 0} valid answers for this cell
         </div>
         
-        {/* Career stats */}
+        {/* Career info */}
         <div className="text-center mb-1">
-          Career: {careerStats.ppg} / {careerStats.rpg} / {careerStats.apg} • WS {careerStats.ws} • BPM {careerStats.bpm}
+          Career: {careerStats.seasons} seasons • Peak {peakSeason.ovr} OVR ({peakSeason.season})
         </div>
         
         {/* Peak season */}
@@ -196,20 +185,24 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         </div>
       )}
       
-      {/* Career stats if available */}
-      {careerStats.games > 0 ? (
+      {/* Career info */}
+      {careerStats.seasons > 0 ? (
         <div className="text-xs text-gray-300 opacity-80 mb-1">
-          {careerStats.ppg} / {careerStats.rpg} / {careerStats.apg}
+          {careerStats.seasons} seasons • Peak {peakSeason.ovr} OVR
+        </div>
+      ) : player.achievements && player.achievements.length > 0 ? (
+        <div className="text-xs text-gray-300 opacity-80 mb-1">
+          {player.achievements.slice(0, 2).join(", ")}
         </div>
       ) : (
         <div className="text-xs text-gray-300 opacity-80 mb-1">
-          {player.achievements?.slice(0, 2).join(", ") || "Player"}
+          Player
         </div>
       )}
       
-      {/* Quality and rarity */}
-      <div className="text-xs text-yellow-300 opacity-90">
-        Q{player.quality || 50} • {rarity}%
+      {/* Simple info */}
+      <div className="text-xs text-green-300 opacity-90">
+        ✓ Correct
       </div>
     </div>
   );
