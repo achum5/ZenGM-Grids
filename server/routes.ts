@@ -67,23 +67,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const data = JSON.parse(fileContent);
         let rawPlayers = [];
         
+        console.log("File structure keys:", Object.keys(data));
+        
         // Handle BBGM format
         if (data.players && Array.isArray(data.players)) {
           rawPlayers = data.players;
+          console.log(`Found ${rawPlayers.length} players in BBGM format`);
         } else if (Array.isArray(data)) {
           rawPlayers = data;
+          console.log(`Found ${rawPlayers.length} players in array format`);
         } else {
+          console.log("Invalid JSON structure. Expected players array but got:", typeof data);
           return res.status(400).json({ message: "Invalid JSON format. Expected players array." });
         }
         
         // Create team mapping from BBGM teams data
         const teamMap = new Map<number, string>();
         if (data.teams && Array.isArray(data.teams)) {
+          console.log(`Found ${data.teams.length} teams in BBGM file`);
           data.teams.forEach((team: any, index: number) => {
             if (team && team.region && team.name) {
               teamMap.set(index, `${team.region} ${team.name}`);
             }
           });
+          console.log("Team mapping created:", Array.from(teamMap.entries()).slice(0, 5));
+        } else {
+          console.log("No teams array found in BBGM file");
         }
         
         // Transform BBGM player data to our format
@@ -172,6 +181,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Unsupported file format. Please upload CSV, JSON, or gzipped files." });
       }
 
+      console.log(`Parsed ${players.length} players from file`);
+      console.log("Sample player:", players[0]);
+
       // Validate and create players with better error handling
       const validatedPlayers: any[] = [];
       const errors: string[] = [];
@@ -181,16 +193,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const validatedPlayer = insertPlayerSchema.parse(players[i]);
           validatedPlayers.push(validatedPlayer);
         } catch (error) {
-          errors.push(`Player ${i + 1}: ${error instanceof Error ? error.message : 'Validation failed'}`);
+          const errorMsg = error instanceof Error ? error.message : 'Validation failed';
+          errors.push(`Player ${i + 1} (${players[i]?.name || 'unnamed'}): ${errorMsg}`);
+          console.log(`Validation error for player ${i + 1}:`, errorMsg);
           // Skip invalid players but continue processing
           continue;
         }
       }
       
+      console.log(`Successfully validated ${validatedPlayers.length} out of ${players.length} players`);
+      
       if (validatedPlayers.length === 0) {
         return res.status(400).json({ 
           message: "No valid players found in file", 
-          errors: errors.slice(0, 5) // Show first 5 errors
+          errors: errors.slice(0, 10), // Show first 10 errors
+          totalPlayers: players.length
         });
       }
       
