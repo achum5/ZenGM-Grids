@@ -54,6 +54,76 @@ function gridIsValid(ca: Record<string, string[]>) {
   return Object.values(ca).every(list => list && list.length > 0);
 }
 
+// Career quality scoring system helpers
+function clamp(x: number, a: number, b: number): number {
+  return Math.max(a, Math.min(b, x));
+}
+
+function percentileOf(sortedAsc: number[], v: number): number {
+  if (!sortedAsc.length) return 50;
+  let lo = 0, hi = sortedAsc.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedAsc[mid] <= v) lo = mid + 1;
+    else hi = mid;
+  }
+  return Math.round(100 * (lo - 0.5) / sortedAsc.length);
+}
+
+interface SeasonStats {
+  mp?: number;
+  ws?: number;
+  ws48?: number;
+  bpm?: number;
+  [key: string]: any;
+}
+
+function deriveCareerAggregates(players: any[]) {
+  for (const p of players) {
+    const seasons = p.stats && Array.isArray(p.stats) ? p.stats : [];
+    
+    const mins = seasons.reduce((s: number, szn: SeasonStats) => s + (szn.mp ?? 0), 0);
+    const ws = seasons.reduce((s: number, szn: SeasonStats) => s + (szn.ws ?? 0), 0);
+
+    // Minutes-weighted BPM
+    const wBpmNum = seasons.reduce((s: number, szn: SeasonStats) => s + (szn.bpm ?? 0) * (szn.mp ?? 0), 0);
+    const wBpmDen = mins || 1;
+    const bpmW = wBpmNum / wBpmDen;
+
+    // Peak WS/48 with >= 1000 minutes to avoid tiny samples
+    let peak = -Infinity;
+    for (const s of seasons) {
+      const m = s.mp ?? 0;
+      const w48 = s.ws48 ?? 0;
+      if (m >= 1000 && Number.isFinite(w48)) peak = Math.max(peak, w48);
+    }
+    if (!Number.isFinite(peak)) peak = 0;
+
+    p.careerMinutes = mins;
+    p.careerWS = ws;
+    p.careerBPM_weighted = bpmW;
+    p.peakWS48 = peak;
+  }
+}
+
+function assignQuality(players: any[]) {
+  // Build arrays for percentiles
+  const arrWS = players.map(p => p.careerWS ?? 0).sort((a, b) => a - b);
+  const arrWS48 = players.map(p => p.peakWS48 ?? 0).sort((a, b) => a - b);
+  const arrBPM = players.map(p => p.careerBPM_weighted ?? 0).sort((a, b) => a - b);
+
+  for (const p of players) {
+    const pWS = percentileOf(arrWS, p.careerWS ?? 0);
+    const pWS48 = percentileOf(arrWS48, p.peakWS48 ?? 0);
+    const pBPM = percentileOf(arrBPM, p.careerBPM_weighted ?? 0);
+
+    const blended = 0.60 * pWS + 0.25 * pWS48 + 0.15 * pBPM;
+    const r = clamp((p.careerMinutes ?? 0) / 6000, 0, 1);
+    const quality = Math.round(r * blended + (1 - r) * 50);
+    p.quality = clamp(quality, 1, 99);
+  }
+}
+
 
 interface MulterRequest extends Request {
   file?: Express.Multer.File;
@@ -223,7 +293,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             years,
             achievements,
             stats: player.ratings || player.stats || undefined,
-            careerWinShares: Math.round(careerWinShares * 10) // Convert to integer (tenths)
+            careerWinShares: Math.round(careerWinShares * 10), // Convert to integer (tenths)
+            quality: 50 // Will be calculated later
           };
         }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
       } else {
@@ -278,6 +349,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalPlayers: players.length
         });
       }
+
+      // Calculate career quality scores for all players
+      deriveCareerAggregates(validatedPlayers);
+      assignQuality(validatedPlayers);
       
       // Clear existing players and add new ones
       await storage.clearPlayers();
@@ -320,7 +395,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           years: p.years,
           achievements: p.achievements,
           stats: p.stats || undefined,
-          careerWinShares: p.careerWinShares || 0
+          careerWinShares: p.careerWinShares || 0,
+          quality: p.quality || 50
         })),
         teams,
         achievements
@@ -563,10 +639,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
 
 
+      // Get player quality for rarity scoring
+      const players = await storage.getPlayers();
+      const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
+      const playerQuality = foundPlayer?.quality || 50;
+      
+      // Calculate rarity percentage (combines quality with cell scarcity)
+      const candidateCount = correctPlayers.length;
+      const rarityPercent = Math.round(0.5 * playerQuality + 0.5 * (100 / Math.min(20, candidateCount)));
+
       // Update session with the answer
       const updatedAnswers = {
         ...session.answers,
-        [cellKey]: { player, correct: isCorrect }
+        [cellKey]: { player, correct: isCorrect, quality: playerQuality, rarity: rarityPercent }
       };
 
       const newScore = session.score + (isCorrect ? 1 : 0);

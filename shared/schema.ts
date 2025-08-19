@@ -11,6 +11,7 @@ export const players = pgTable("players", {
   achievements: jsonb("achievements").$type<string[]>().notNull(),
   stats: jsonb("stats").$type<Record<string, any>>(),
   careerWinShares: integer("career_win_shares").default(0),
+  quality: integer("quality").default(50),
 });
 
 export const games = pgTable("games", {
@@ -24,7 +25,7 @@ export const games = pgTable("games", {
 export const gameSessions = pgTable("game_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   gameId: varchar("game_id").notNull().references(() => games.id),
-  answers: jsonb("answers").$type<{ [key: string]: { player: string; correct: boolean } }>().notNull().default({}),
+  answers: jsonb("answers").$type<{ [key: string]: { player: string; correct: boolean; quality?: number; rarity?: number } }>().notNull().default({}),
   score: integer("score").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
   createdAt: text("created_at").notNull().default(sql`NOW()`),
@@ -41,6 +42,7 @@ export const insertPlayerSchema = z.object({
   achievements: z.array(z.string()).default([]),
   stats: z.union([z.record(z.any()), z.array(z.any())]).optional(),
   careerWinShares: z.number().default(0),
+  quality: z.number().default(50),
 });
 
 export const insertGameSchema = createInsertSchema(games).omit({

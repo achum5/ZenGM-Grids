@@ -212,7 +212,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
 
         {/* Grid rows */}
         {game.rowCriteria.map((rowCriteria, rowIndex) => (
-          <React.Fragment key={`row-${rowIndex}`}>
+          <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
               className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center"
@@ -249,7 +249,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                           {answer.player}
                         </div>
                         <div className="text-xs text-white opacity-80">
-                          {isCorrect ? '47%' : 'X'}
+                          {isCorrect ? `${answer.rarity || 47}%` : 'X'}
                         </div>
                       </div>
                     )}
@@ -264,7 +264,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                 </div>
               );
             })}
-          </React.Fragment>
+          </div>
         ))}
       </div>
 

@@ -1,0 +1,105 @@
+Agent prompt (copy/paste):
+
+Add a career quality scoring system:
+
+After league upload/parse (where we produce players), compute for each player:
+
+careerMinutes, careerWS, careerBPM_weighted,
+
+peakWS48 = best season WS/48 with seasonMinutes ≥ 1000.
+
+Compute league-wide percentiles for careerWS, peakWS48, careerBPM_weighted.
+
+For each player, compute reliability r = clamp(careerMinutes / 6000, 0, 1).
+
+Then quality = round( r * (0.60*pWS + 0.25*pWS48 + 0.15*pBPM) + (1 - r) * 50 ).
+
+Store player.quality (0–100) on the player object for fast lookup during games.
+
+Expose quality in the /api/sessions/:id/answer response for the chosen player.
+
+Use this helper code:
+
+function clamp(x: number, a: number, b: number) { return Math.max(a, Math.min(b, x)); }
+
+function percentileOf(sortedAsc: number[], v: number): number {
+  if (!sortedAsc.length) return 50;
+  let lo = 0, hi = sortedAsc.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedAsc[mid] <= v) lo = mid + 1; else hi = mid; }
+  // average rank style percentile
+  return Math.round(100 * (lo - 0.5) / sortedAsc.length);
+}
+
+type Season = { mp?: number; ws?: number; ws48?: number; bpm?: number; /* …other stats… */ };
+type Player = {
+  id: string; name: string;
+  seasons: Season[];
+  // derived fields we’ll fill in:
+  careerMinutes?: number;
+  careerWS?: number;
+  careerBPM_weighted?: number;
+  peakWS48?: number;
+  quality?: number;
+};
+
+function deriveCareerAggregates(players: Player[]) {
+  for (const p of players) {
+    const mins = p.seasons.reduce((s, szn) => s + (szn.mp ?? 0), 0);
+    const ws   = p.seasons.reduce((s, szn) => s + (szn.ws ?? 0), 0);
+
+    // minutes-weighted BPM
+    const wBpmNum = p.seasons.reduce((s, szn) => s + (szn.bpm ?? 0) * (szn.mp ?? 0), 0);
+    const wBpmDen = mins || 1;
+    const bpmW    = wBpmNum / wBpmDen;
+
+    // peak WS/48 with ≥ 1000 minutes to avoid tiny samples
+    let peak = -Infinity;
+    for (const s of p.seasons) {
+      const m = s.mp ?? 0;
+      const w48 = s.ws48 ?? 0;
+      if (m >= 1000 && Number.isFinite(w48)) peak = Math.max(peak, w48);
+    }
+    if (!Number.isFinite(peak)) peak = 0; // if no season ≥1000 MP
+
+    p.careerMinutes = mins;
+    p.careerWS = ws;
+    p.careerBPM_weighted = bpmW;
+    p.peakWS48 = peak;
+  }
+}
+
+function assignQuality(players: Player[]) {
+  // build arrays for percentiles
+  const arrWS   = players.map(p => p.careerWS ?? 0).sort((a,b)=>a-b);
+  const arrWS48 = players.map(p => p.peakWS48 ?? 0).sort((a,b)=>a-b);
+  const arrBPM  = players.map(p => p.careerBPM_weighted ?? 0).sort((a,b)=>a-b);
+
+  for (const p of players) {
+    const pWS   = percentileOf(arrWS,   p.careerWS ?? 0);
+    const pWS48 = percentileOf(arrWS48, p.peakWS48 ?? 0);
+    const pBPM  = percentileOf(arrBPM,  p.careerBPM_weighted ?? 0);
+
+    const blended = 0.60 * pWS + 0.25 * pWS48 + 0.15 * pBPM;
+    const r = clamp((p.careerMinutes ?? 0) / 6000, 0, 1);
+    const quality = Math.round(r * blended + (1 - r) * 50);
+    p.quality = clamp(quality, 1, 99);
+  }
+}
+
+// Call these right after you finish parsing the league file into `players`:
+// deriveCareerAggregates(players);
+// assignQuality(players);
+
+
+In /api/sessions/:id/answer, when a guess is correct, include the chosen player’s quality in the response (e.g., qualityScore: player.quality). If quality is missing (older saves), compute on the fly using the same helpers.
+
+How to display it
+
+Replace your current “%” with qualityScore (or show both: “Quality 74 • Candidates 12”).
+
+If you still want a rarity feel, you can set:
+
+rarityPercent = Math.round(0.5 * quality + 0.5 * (100 / Math.min(20, candidateCount)));
+
+
+…which blends player quality with cell scarcity.
