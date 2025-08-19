@@ -54,7 +54,7 @@ export const insertPlayerSchema = z.object({
   achievements: z.array(z.string()).default([]),
   stats: z.union([z.record(z.any()), z.array(z.any())]).optional(),
   face: z.record(z.any()).nullable().optional(),
-  imageUrl: z.string().optional(),
+  imageUrl: z.string().nullable().optional(),
   careerWinShares: z.number().default(0),
   quality: z.number().default(50),
 });
