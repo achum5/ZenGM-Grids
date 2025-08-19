@@ -342,6 +342,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint to check player matches for specific criteria
+  app.get("/api/debug/matches", async (req, res) => {
+    try {
+      const { team, achievement } = req.query;
+      if (!team || !achievement) {
+        return res.status(400).json({ message: "Need both team and achievement parameters" });
+      }
+      
+      const players = await storage.getPlayers();
+      const matches = players.filter(player =>
+        player.teams.includes(team as string) &&
+        player.achievements.includes(achievement as string)
+      );
+      
+      res.json({
+        criteria: { team, achievement },
+        totalPlayers: players.length,
+        matchCount: matches.length,
+        matches: matches.map(p => ({ name: p.name, teams: p.teams, achievements: p.achievements }))
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Debug query failed" });
+    }
+  });
+
   // Get session statistics (must come before /:id route)
   app.get("/api/sessions/stats", async (req, res) => {
     try {
@@ -415,6 +440,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cellKey = `${row},${col}`;
       const correctPlayers = game.correctAnswers[cellKey] || [];
       const isCorrect = correctPlayers.some(p => p.toLowerCase() === player.toLowerCase());
+      
+      // Debug logging for validation issues
+      if (!isCorrect && player.toLowerCase().includes('justin herrera')) {
+        console.log(`DEBUG: Justin Herrera validation failed`);
+        console.log(`Cell (${row},${col}) criteria: Column=${game.columnCriteria[col]?.label}, Row=${game.rowCriteria[row]?.label}`);
+        console.log(`Expected players for this cell:`, correctPlayers);
+        console.log(`Player submitted: "${player}"`);
+        
+        // Check if player exists in database and meets criteria
+        const playerInDb = await storage.searchPlayers('Justin Herrera');
+        if (playerInDb.length > 0) {
+          const foundPlayer = playerInDb[0];
+          console.log(`Player data:`, {
+            name: foundPlayer.name,
+            teams: foundPlayer.teams,
+            achievements: foundPlayer.achievements.slice(0, 10) // First 10 achievements
+          });
+          
+          const hasTeam = foundPlayer.teams.includes(game.columnCriteria[col]?.value || '');
+          const hasAchievement = foundPlayer.achievements.includes(game.rowCriteria[row]?.value || '');
+          console.log(`Team match (${game.columnCriteria[col]?.value}):`, hasTeam);
+          console.log(`Achievement match (${game.rowCriteria[row]?.value}):`, hasAchievement);
+        }
+      }
 
       // Update session with the answer
       const updatedAnswers = {
