@@ -238,8 +238,18 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {playerName}
       </div>
       
-      {/* Primary team with abbreviation */}
-      {primaryTeam && (
+      {/* Show multiple teams in compact view */}
+      {player.years && player.years.length > 0 ? (
+        <div className="text-xs text-blue-300 opacity-90 mb-1 leading-tight">
+          {player.years.slice(0, 2).map((teamYear, idx) => (
+            <span key={`${teamYear.team}-${teamYear.start}`}>
+              {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+              {idx < Math.min(1, player.years.length - 1) && ', '}
+            </span>
+          ))}
+          {player.years.length > 2 && <span> +{player.years.length - 2}</span>}
+        </div>
+      ) : primaryTeam && (
         <div className="text-xs text-blue-300 opacity-90 mb-1">
           {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
         </div>

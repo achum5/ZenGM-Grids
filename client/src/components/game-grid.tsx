@@ -103,7 +103,9 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
       } else {
         toast({
           title: "Incorrect",
-          description: `Correct answers: ${data.correctPlayers?.join(", ")}`,
+          description: data.correctPlayers?.length > 0 ? 
+            `Valid answers include: ${data.correctPlayers.slice(0, 3).join(", ")}${data.correctPlayers.length > 3 ? ' and others...' : ''}` :
+            "No valid answers found for this combination",
           variant: "destructive",
         });
       }
