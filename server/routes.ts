@@ -494,33 +494,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Game not found" });
       }
 
-      const cellKey = `${row},${col}`;
+      const cellKey = `${row}_${col}`;
       const correctPlayers = game.correctAnswers[cellKey] || [];
       const isCorrect = correctPlayers.some(p => p.toLowerCase() === player.toLowerCase());
       
-      // Debug logging for validation issues
-      if (!isCorrect && player.toLowerCase().includes('justin herrera')) {
-        console.log(`DEBUG: Justin Herrera validation failed`);
-        console.log(`Cell (${row},${col}) criteria: Column=${game.columnCriteria[col]?.label}, Row=${game.rowCriteria[row]?.label}`);
-        console.log(`Expected players for this cell:`, correctPlayers);
-        console.log(`Player submitted: "${player}"`);
-        
-        // Check if player exists in database and meets criteria
-        const playerInDb = await storage.searchPlayers('Justin Herrera');
-        if (playerInDb.length > 0) {
-          const foundPlayer = playerInDb[0];
-          console.log(`Player data:`, {
-            name: foundPlayer.name,
-            teams: foundPlayer.teams,
-            achievements: foundPlayer.achievements.slice(0, 10) // First 10 achievements
-          });
-          
-          const hasTeam = foundPlayer.teams.includes(game.columnCriteria[col]?.value || '');
-          const hasAchievement = foundPlayer.achievements.includes(game.rowCriteria[row]?.value || '');
-          console.log(`Team match (${game.columnCriteria[col]?.value}):`, hasTeam);
-          console.log(`Achievement match (${game.rowCriteria[row]?.value}):`, hasAchievement);
-        }
-      }
+      // Debug logging for answer validation
+      console.log(`DEBUG: Answer validation for "${player}"`);
+      console.log(`Cell (${row}_${col}) criteria: Column=${game.columnCriteria[col]?.label}, Row=${game.rowCriteria[row]?.label}`);
+      console.log(`Expected players for this cell:`, correctPlayers.slice(0, 5)); // Show first 5
+      console.log(`Player match found: ${isCorrect}`);
+      
+
 
       // Update session with the answer
       const updatedAnswers = {
