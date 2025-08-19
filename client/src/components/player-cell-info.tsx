@@ -10,6 +10,44 @@ interface PlayerCellInfoProps {
   candidateCount?: number;
 }
 
+// Team abbreviations mapping
+const teamAbbreviations: { [key: string]: string } = {
+  "Atlanta Hawks": "ATL",
+  "Boston Celtics": "BOS", 
+  "Brooklyn Nets": "BKN",
+  "Charlotte Hornets": "CHA",
+  "Chicago Bulls": "CHI",
+  "Cleveland Cavaliers": "CLE",
+  "Dallas Mavericks": "DAL",
+  "Denver Nuggets": "DEN",
+  "Detroit Pistons": "DET",
+  "Golden State Warriors": "GSW",
+  "Houston Rockets": "HOU",
+  "Indiana Pacers": "IND",
+  "Los Angeles Clippers": "LAC",
+  "Los Angeles Lakers": "LAL",
+  "Memphis Grizzlies": "MEM",
+  "Miami Heat": "MIA",
+  "Milwaukee Bucks": "MIL",
+  "Minnesota Timberwolves": "MIN",
+  "New Orleans Pelicans": "NOP",
+  "New York Knicks": "NYK",
+  "Oklahoma City Thunder": "OKC",
+  "Orlando Magic": "ORL",
+  "Philadelphia 76ers": "PHI",
+  "Phoenix Suns": "PHX",
+  "Portland Trail Blazers": "POR",
+  "Sacramento Kings": "SAC",
+  "San Antonio Spurs": "SAS",
+  "Toronto Raptors": "TOR",
+  "Utah Jazz": "UTA",
+  "Washington Wizards": "WAS"
+};
+
+function getTeamAbbr(teamName: string): string {
+  return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
+}
+
 export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   
@@ -80,6 +118,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   // Get years with primary team
   const teamYears = player.years?.find(y => y.team === primaryTeam);
   const yearRange = teamYears ? `${teamYears.start}–${teamYears.end}` : '';
+  
+  // Format all teams with years
+  const allTeamsFormatted = player.years?.map(y => 
+    `${getTeamAbbr(y.team)} (${y.start}–${y.end})`
+  ).join(', ') || player.teams.map(getTeamAbbr).join(', ');
 
   // Count major accolades
   const accolades = {
@@ -112,7 +155,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {/* Show team info even for incorrect answers */}
         {primaryTeam && (
           <div className="text-xs text-blue-300 opacity-70 mb-1">
-            {primaryTeam} {yearRange && `(${yearRange})`}
+            {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
           </div>
         )}
         <div className="text-xs text-red-300 opacity-80">✗ Wrong</div>
@@ -127,8 +170,25 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         onClick={() => setShowExpanded(false)}
       >
         {/* Identity */}
-        <div className="font-semibold text-center mb-1">
-          {playerName} — {primaryTeam} {yearRange && `(${yearRange})`}
+        <div className="font-semibold text-center mb-2">
+          {playerName}
+        </div>
+        
+        {/* All Teams */}
+        <div className="text-center mb-2 text-blue-300 text-xs leading-relaxed">
+          <div className="flex flex-wrap justify-center gap-1">
+            {player.years?.map((teamYear, idx) => (
+              <span key={idx} className="whitespace-nowrap">
+                {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+                {idx < (player.years?.length || 0) - 1 && ','}
+              </span>
+            )) || player.teams.map((team, idx) => (
+              <span key={idx} className="whitespace-nowrap">
+                {getTeamAbbr(team)}
+                {idx < player.teams.length - 1 && ','}
+              </span>
+            ))}
+          </div>
         </div>
         
         {/* Criteria badges */}
@@ -178,10 +238,10 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {playerName}
       </div>
       
-      {/* Primary team with years */}
+      {/* Primary team with abbreviation */}
       {primaryTeam && (
         <div className="text-xs text-blue-300 opacity-90 mb-1">
-          {primaryTeam} {yearRange && `(${yearRange})`}
+          {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
         </div>
       )}
       
