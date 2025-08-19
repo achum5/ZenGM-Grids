@@ -79,7 +79,12 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg mx-auto bg-slate-800 border-slate-700" aria-describedby="player-search-description" onKeyDown={handleKeyDown}>
+      <DialogContent 
+        className="max-w-lg mx-auto bg-slate-800 border-slate-700" 
+        aria-describedby="player-search-description" 
+        onKeyDown={handleKeyDown}
+        style={{ pointerEvents: 'auto' }}
+      >
         <DialogHeader className="text-center pb-6">
           <DialogTitle className="text-xl font-bold text-white">Select Player</DialogTitle>
           <p id="player-search-description" className="text-gray-400 mt-2 text-sm">Find the player who matches both criteria</p>
@@ -98,7 +103,11 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
             />
           </div>
 
-          <div ref={listRef} className="max-h-64 overflow-y-auto space-y-2">
+          <div 
+            ref={listRef} 
+            className="max-h-64 overflow-y-auto space-y-2 overscroll-contain"
+            style={{ scrollBehavior: 'auto' }}
+          >
             {isLoading && searchQuery && (
               <div className="flex flex-col items-center py-8">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400 mb-3"></div>
