@@ -55,43 +55,28 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
           <div className="bg-slate-700 rounded-lg p-4">
             <h3 className="font-semibold text-blue-300 mb-3">Statistics</h3>
             
-            {player.stats && Array.isArray(player.stats) && player.stats.length > 0 && (
+            {player.stats && Array.isArray(player.stats) && player.stats.length > 0 ? (
               <div className="space-y-3 text-sm">
-                {/* Debug: log the stats structure */}
-                {console.log('Player stats structure:', player.stats[0]) || ''}
-                {/* Career Totals */}
+                <div className="text-center text-gray-400 py-4">
+                  <div className="text-sm">Game statistics not available in this export</div>
+                  <div className="text-xs mt-1">Only player ratings progression is included</div>
+                </div>
+                
                 <div>
-                  <div className="font-semibold text-white mb-1">Career</div>
+                  <div className="font-semibold text-white mb-1">Career Development</div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <div>Seasons: {player.stats.length}</div>
                     <div>Peak OVR: {Math.max(...player.stats.map((s: any) => s.ovr || 0))}</div>
-                    <div>Peak Season: {player.stats.reduce((best: any, current: any) => (current.ovr || 0) > (best.ovr || 0) ? current : best).season}</div>
                     <div>Position: {player.stats[player.stats.length - 1]?.pos || 'N/A'}</div>
                     <div>Win Shares: {player.careerWinShares || 0}</div>
                     <div>Quality: {player.quality || 50}</div>
+                    <div>Status: {player.achievements?.includes("Retired") ? "Retired" : "Active"}</div>
                   </div>
                 </div>
-
-                {/* Peak Season Ratings */}
-                {(() => {
-                  const peakSeason = player.stats.reduce((best: any, current: any) => 
-                    (current.ovr || 0) > (best.ovr || 0) ? current : best
-                  );
-                  
-                  return (
-                    <div>
-                      <div className="font-semibold text-white mb-1">Peak Season ({peakSeason.season})</div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div>OVR: {peakSeason.ovr}</div>
-                        <div>POT: {peakSeason.pot}</div>
-                        <div>POS: {peakSeason.pos}</div>
-                        <div>FG: {peakSeason.fg}</div>
-                        <div>FT: {peakSeason.ft}</div>
-                        <div>3P: {peakSeason.tp}</div>
-                      </div>
-                    </div>
-                  );
-                })()}
+              </div>
+            ) : (
+              <div className="text-center text-gray-400 py-4">
+                <div className="text-sm">No statistics available</div>
               </div>
             )}
           </div>
@@ -101,24 +86,24 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
             <div className="bg-slate-700 rounded-lg p-4">
               <h3 className="font-semibold text-yellow-300 mb-2">Awards</h3>
               <div className="space-y-1 max-h-32 overflow-y-auto text-sm">
-                {player.achievements.map((achievement, idx) => (
-                  <div key={idx}>{achievement}</div>
-                ))}
+                {(() => {
+                  // Filter out generic achievements and only show specific awards
+                  const awardsToShow = player.achievements.filter((achievement: string) => {
+                    const genericAchievements = [
+                      "20000+ Points", "5000+ Assists", "20+ Points Per Game", 
+                      "5+ Assists Per Game", "1+ Block Per Game", "1+ Steal Per Game",
+                      "First Round Draft Pick"
+                    ];
+                    return !genericAchievements.includes(achievement);
+                  });
+                  
+                  return awardsToShow.map((achievement: string, idx: number) => (
+                    <div key={idx}>{achievement}</div>
+                  ));
+                })()}
               </div>
             </div>
           )}
-
-          {/* Career Info */}
-          <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-green-300 mb-2">Career Info</h3>
-            <div className="text-sm space-y-1">
-              <div>Career Win Shares: {player.careerWinShares || 0}</div>
-              <div>Player Quality: {player.quality || 50}</div>
-              {player.stats && Array.isArray(player.stats) && player.stats.length > 0 && (
-                <div>Seasons Played: {player.stats.length}</div>
-              )}
-            </div>
-          </div>
         </div>
       </DialogContent>
     </Dialog>
