@@ -1,6 +1,6 @@
 # Overview
 
-This is a sports-themed grid puzzle game application built with React and Express. The application allows users to upload player data files (CSV or JSON) and then play a 3x3 grid game where they must find players who match specific row and column criteria. The game is similar to "Immaculate Grid" style sports trivia games, where players must identify athletes who satisfy intersecting conditions (like teams played for, achievements, years active, etc.).
+This is a basketball-themed grid puzzle game application built with React and Express. The application allows users to upload player data files (CSV, JSON, or gzipped files) and then play a 3x3 grid game where they must find players who match specific row and column criteria. The game is similar to "Immaculate Grid" style sports trivia games, where players must identify athletes who satisfy intersecting conditions (like teams played for, achievements, years active, etc.). The application has been optimized to support BBGM (Basketball GM) league files, including compressed formats for easier file handling.
 
 # User Preferences
 
@@ -49,6 +49,8 @@ Preferred communication style: Simple, everyday language.
 ## File Processing
 - **Multer**: Express middleware for handling multipart/form-data file uploads
 - **CSV Parser**: Library for parsing CSV files into JavaScript objects
+- **Zlib**: Built-in Node.js library for gzip compression/decompression support
+- **BBGM Support**: Optimized for Basketball GM league file formats including compressed files
 
 ## Development Tools
 - **Replit Integration**: Development environment optimizations and runtime error handling

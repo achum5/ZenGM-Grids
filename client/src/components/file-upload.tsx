@@ -82,6 +82,8 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
     accept: {
       "text/csv": [".csv"],
       "application/json": [".json"],
+      "application/gzip": [".gz", ".gzip"],
+      "application/x-gzip": [".gz", ".gzip"],
     },
     multiple: false,
   });
@@ -115,7 +117,7 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
           <p className="text-gray-600 mb-2">
             {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
           </p>
-          <p className="text-sm text-gray-500 mb-4">Supports CSV and JSON formats</p>
+          <p className="text-sm text-gray-500 mb-4">Supports CSV, JSON, and gzipped formats</p>
           <Button
             type="button"
             variant="outline"

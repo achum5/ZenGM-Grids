@@ -1,10 +1,18 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
 import csv from "csv-parser";
 import { z } from "zod";
+import { gunzip } from "zlib";
+import { promisify } from "util";
 import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria } from "@shared/schema";
+
+const gunzipAsync = promisify(gunzip);
+
+interface MulterRequest extends Request {
+  file?: multer.File;
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -22,19 +30,43 @@ const answerSchema = z.object({
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Upload league file and parse players
-  app.post("/api/upload", upload.single("file"), async (req, res) => {
+  app.post("/api/upload", upload.single("file"), async (req: MulterRequest, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      const fileContent = req.file.buffer.toString();
+      let fileBuffer = req.file.buffer;
+      let fileContent: string;
+      
+      // Check if file is gzipped
+      const isGzipped = req.file.mimetype === "application/gzip" || 
+                       req.file.originalname?.endsWith(".gz") ||
+                       req.file.originalname?.endsWith(".gzip");
+      
+      if (isGzipped) {
+        try {
+          fileBuffer = await gunzipAsync(fileBuffer);
+        } catch (error) {
+          return res.status(400).json({ message: "Failed to decompress gzip file" });
+        }
+      }
+      
+      fileContent = fileBuffer.toString();
       let players: any[] = [];
 
-      if (req.file.mimetype === "application/json" || req.file.originalname?.endsWith(".json")) {
+      const isJson = req.file.mimetype === "application/json" || 
+                    req.file.originalname?.includes(".json") ||
+                    (isGzipped && req.file.originalname?.includes(".json"));
+      
+      const isCsv = req.file.mimetype === "text/csv" || 
+                   req.file.originalname?.includes(".csv") ||
+                   (isGzipped && req.file.originalname?.includes(".csv"));
+
+      if (isJson) {
         const data = JSON.parse(fileContent);
         players = Array.isArray(data) ? data : data.players || [];
-      } else if (req.file.mimetype === "text/csv" || req.file.originalname?.endsWith(".csv")) {
+      } else if (isCsv) {
         // Parse CSV
         const results: any[] = [];
         const csvStream = require("stream").Readable.from([fileContent]);
@@ -56,7 +88,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           stats: {}
         }));
       } else {
-        return res.status(400).json({ message: "Unsupported file format. Please upload CSV or JSON." });
+        return res.status(400).json({ message: "Unsupported file format. Please upload CSV, JSON, or gzipped files." });
       }
 
       // Validate and create players
@@ -67,8 +99,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const createdPlayers = await storage.createPlayers(validatedPlayers);
 
       // Extract teams and achievements for frontend
-      const teams = [...new Set(createdPlayers.flatMap(p => p.teams))];
-      const achievements = [...new Set(createdPlayers.flatMap(p => p.achievements))];
+      const teams = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
+      const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
 
       const result: FileUploadData = {
         players: createdPlayers,
@@ -92,8 +124,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get unique teams and achievements
-      const teams = [...new Set(players.flatMap(p => p.teams))];
-      const achievements = [...new Set(players.flatMap(p => p.achievements))];
+      const teams = Array.from(new Set(players.flatMap(p => p.teams)));
+      const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
 
       if (teams.length < 3 || achievements.length < 3) {
         return res.status(400).json({ message: "Not enough data to generate a grid. Need at least 3 teams and 3 achievements." });
