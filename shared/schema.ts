@@ -29,9 +29,8 @@ export const gameSessions = pgTable("game_sessions", {
   createdAt: text("created_at").notNull().default(sql`NOW()`),
 });
 
-export const insertPlayerSchema = createInsertSchema(players).omit({
-  id: true,
-}).extend({
+export const insertPlayerSchema = z.object({
+  name: z.string().min(1),
   teams: z.array(z.string()).default([]),
   years: z.array(z.object({
     team: z.string(),

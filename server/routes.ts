@@ -182,20 +182,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`Parsed ${players.length} players from file`);
-      console.log("Sample player:", players[0]);
+      if (players.length > 0) {
+        console.log("Sample player:", JSON.stringify(players[0], null, 2));
+      }
 
       // Validate and create players with better error handling
       const validatedPlayers: any[] = [];
       const errors: string[] = [];
       
-      for (let i = 0; i < players.length; i++) {
+      for (let i = 0; i < Math.min(players.length, 100); i++) { // Limit to first 100 for performance
         try {
-          const validatedPlayer = insertPlayerSchema.parse(players[i]);
+          // Apply defaults before validation
+          const playerWithDefaults = {
+            name: players[i].name || "Unknown Player",
+            teams: players[i].teams || [],
+            years: players[i].years || [],
+            achievements: players[i].achievements || [],
+            stats: players[i].stats
+          };
+          
+          const validatedPlayer = insertPlayerSchema.parse(playerWithDefaults);
           validatedPlayers.push(validatedPlayer);
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Validation failed';
           errors.push(`Player ${i + 1} (${players[i]?.name || 'unnamed'}): ${errorMsg}`);
-          console.log(`Validation error for player ${i + 1}:`, errorMsg);
+          if (i < 5) { // Only log first 5 errors to avoid spam
+            console.log(`Validation error for player ${i + 1}:`, errorMsg, JSON.stringify(players[i], null, 2));
+          }
           // Skip invalid players but continue processing
           continue;
         }
