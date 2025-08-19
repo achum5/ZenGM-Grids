@@ -286,7 +286,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           teams: p.teams,
           years: p.years,
           achievements: p.achievements,
-          stats: p.stats || undefined
+          stats: p.stats || undefined,
+          careerWinShares: p.careerWinShares || 0
         })),
         teams,
         achievements
