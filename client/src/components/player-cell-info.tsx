@@ -182,7 +182,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         <div className="text-sm font-bold text-white mb-1 leading-tight">{playerName}</div>
         {/* Show ALL teams for incorrect answers too */}
         {player.years && player.years.length > 0 ? (
-          <div className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto flex flex-col justify-center">
+          <div 
+            className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto overscroll-contain flex flex-col justify-center"
+            style={{ pointerEvents: 'auto', scrollBehavior: 'auto' }}
+            onWheel={(e) => e.stopPropagation()}
+          >
             <div className="break-words space-y-0.5">
               {player.years.map((teamYear, idx) => (
                 <div key={`${teamYear.team}-${teamYear.start}`} className="block">
@@ -204,8 +208,10 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   if (showExpanded) {
     return (
       <div 
-        className="w-full h-full bg-slate-900 p-2 text-white text-xs leading-tight cursor-pointer overflow-y-auto"
+        className="w-full h-full bg-slate-900 p-2 text-white text-xs leading-tight cursor-pointer overflow-y-auto overscroll-contain"
         onClick={() => setShowExpanded(false)}
+        onWheel={(e) => e.stopPropagation()}
+        style={{ pointerEvents: 'auto', scrollBehavior: 'auto' }}
       >
         {/* Identity */}
         <div className="font-semibold text-center mb-2">
