@@ -30,16 +30,21 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
           svg.style.maxWidth = '100%';
           svg.style.maxHeight = '100%';
           svg.style.overflow = 'visible';
+          svg.style.background = 'transparent';
           
           // Ensure proper viewBox to prevent cutoff
           if (!svg.getAttribute('viewBox')) {
             svg.setAttribute('viewBox', '0 0 400 600');
           }
           svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+          
+          // Remove any background rectangles or fills
+          const backgrounds = svg.querySelectorAll('rect[fill="#ffffff"], rect[fill="white"], rect[fill="#fff"]');
+          backgrounds.forEach(bg => bg.remove());
         }
       } catch (error) {
         console.warn('Error displaying player face:', error);
-        // Fallback: show generic avatar
+        // Fallback: show generic avatar with transparent background
         faceRef.current.innerHTML = `
           <div style="
             width: ${size}px; 
@@ -69,7 +74,8 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
         height: size, 
         minWidth: size, 
         minHeight: size,
-        overflow: 'visible'
+        overflow: 'visible',
+        background: 'transparent'
       }}
     />
   );
