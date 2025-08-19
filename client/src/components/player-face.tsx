@@ -19,30 +19,49 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
         // Generate face - use provided face data or generate random
         const faceData = face ? face as any : generate();
         
-        // Display the face
-        display(faceRef.current, faceData);
+        // Create a temporary container to render face
+        const tempDiv = document.createElement('div');
+        display(tempDiv, faceData);
         
-        // Wait for DOM update then fix background
-        setTimeout(() => {
-          const svg = faceRef.current?.querySelector('svg');
-          if (svg) {
-            // Remove or modify any background elements
-            const rects = svg.querySelectorAll('rect');
-            rects.forEach(rect => {
-              const fill = rect.getAttribute('fill');
-              if (fill === '#ffffff' || fill === 'white' || fill === '#fff' || !fill) {
-                rect.setAttribute('fill', 'transparent');
-                rect.setAttribute('fill-opacity', '0');
-              }
-            });
+        // Extract SVG and clean it
+        const originalSvg = tempDiv.querySelector('svg');
+        if (originalSvg) {
+          // Clone the SVG
+          const cleanSvg = originalSvg.cloneNode(true) as SVGElement;
+          
+          // Remove all background rectangles
+          const allRects = cleanSvg.querySelectorAll('rect');
+          allRects.forEach(rect => {
+            const fill = rect.getAttribute('fill');
+            const style = rect.getAttribute('style') || '';
             
-            // Set SVG background to transparent
-            svg.style.background = 'transparent';
-            svg.setAttribute('style', (svg.getAttribute('style') || '') + '; background: transparent !important;');
-          }
-        }, 10);
+            // Remove any white or light backgrounds
+            if (fill === '#ffffff' || fill === 'white' || fill === '#fff' || 
+                fill === '#f8f8f8' || fill === '#fefefe' || !fill ||
+                style.includes('fill:#ffffff') || style.includes('fill:white') ||
+                style.includes('fill:#fff') || style.includes('fill:#f8f8f8')) {
+              rect.remove();
+            }
+          });
+          
+          // Remove any background paths or circles that might be white
+          const allPaths = cleanSvg.querySelectorAll('path, circle, ellipse');
+          allPaths.forEach(element => {
+            const fill = element.getAttribute('fill');
+            const style = element.getAttribute('style') || '';
+            
+            if (fill === '#ffffff' || fill === 'white' || fill === '#fff' || 
+                fill === '#f8f8f8' || fill === '#fefefe' ||
+                style.includes('fill:#ffffff') || style.includes('fill:white')) {
+              element.remove();
+            }
+          });
+          
+          // Add cleaned SVG to container
+          faceRef.current.appendChild(cleanSvg);
+        }
         
-        // Apply size styling and ensure proper viewBox
+        // Apply size styling to the cleaned SVG
         const svg = faceRef.current.querySelector('svg');
         if (svg) {
           svg.style.width = `${size}px`;
@@ -57,17 +76,6 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
             svg.setAttribute('viewBox', '0 0 400 600');
           }
           svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-          
-          // Remove any background rectangles or make them transparent
-          const allRects = svg.querySelectorAll('rect');
-          allRects.forEach(rect => {
-            const fill = rect.getAttribute('fill');
-            if (fill === '#ffffff' || fill === 'white' || fill === '#fff' || fill === '#f8f8f8') {
-              rect.setAttribute('fill', 'transparent');
-              rect.setAttribute('fill-opacity', '0');
-              rect.style.display = 'none';
-            }
-          });
         }
       } catch (error) {
         console.warn('Error displaying player face:', error);
