@@ -202,7 +202,9 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         
         {/* Player name */}
         <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight mb-1 text-center px-1 w-full break-words hyphens-auto flex-shrink-0 min-h-[2em] flex items-center justify-center">
-          <span className="block text-center">{playerName}</span>
+          <span className="block text-center whitespace-pre-line" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+            {playerName.length > 12 ? playerName.replace(' ', '\n') : playerName}
+          </span>
         </div>
         
         {/* Status */}
@@ -326,7 +328,9 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       
       {/* Player name */}
       <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight text-center break-words hyphens-auto mb-1 px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
-        <span className="block text-center">{playerName}</span>
+        <span className="block text-center whitespace-pre-line" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+          {playerName.length > 12 ? playerName.replace(' ', '\n') : playerName}
+        </span>
       </div>
       
       {/* Minimal status info */}
