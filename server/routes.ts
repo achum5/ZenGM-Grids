@@ -65,7 +65,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isJson) {
         const data = JSON.parse(fileContent);
-        players = Array.isArray(data) ? data : data.players || [];
+        let rawPlayers = Array.isArray(data) ? data : data.players || [];
+        
+        // Transform raw player data to our format with defaults
+        players = rawPlayers.map((player: any) => ({
+          name: player.name || (player.firstName && player.lastName ? `${player.firstName} ${player.lastName}` : "Unknown Player"),
+          teams: player.teams || (player.tid !== undefined ? [`Team ${player.tid}`] : []),
+          years: player.years || [],
+          achievements: player.achievements || [],
+          stats: player.stats || player.ratings || undefined
+        }));
       } else if (isCsv) {
         // Parse CSV
         const results: any[] = [];
@@ -81,7 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Transform CSV data to player format
         players = results.map(row => ({
-          name: row.name || row.Name || "",
+          name: row.name || row.Name || "Unknown Player",
           teams: (row.teams || row.Teams || "").split(",").map((t: string) => t.trim()).filter(Boolean),
           years: [],
           achievements: (row.achievements || row.Achievements || "").split(",").map((a: string) => a.trim()).filter(Boolean),
@@ -91,8 +100,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Unsupported file format. Please upload CSV, JSON, or gzipped files." });
       }
 
-      // Validate and create players
-      const validatedPlayers = players.map(player => insertPlayerSchema.parse(player));
+      // Validate and create players with better error handling
+      const validatedPlayers: any[] = [];
+      const errors: string[] = [];
+      
+      for (let i = 0; i < players.length; i++) {
+        try {
+          const validatedPlayer = insertPlayerSchema.parse(players[i]);
+          validatedPlayers.push(validatedPlayer);
+        } catch (error) {
+          errors.push(`Player ${i + 1}: ${error instanceof Error ? error.message : 'Validation failed'}`);
+          // Skip invalid players but continue processing
+          continue;
+        }
+      }
+      
+      if (validatedPlayers.length === 0) {
+        return res.status(400).json({ 
+          message: "No valid players found in file", 
+          errors: errors.slice(0, 5) // Show first 5 errors
+        });
+      }
       
       // Clear existing players and add new ones
       await storage.clearPlayers();

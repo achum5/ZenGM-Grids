@@ -31,6 +31,15 @@ export const gameSessions = pgTable("game_sessions", {
 
 export const insertPlayerSchema = createInsertSchema(players).omit({
   id: true,
+}).extend({
+  teams: z.array(z.string()).default([]),
+  years: z.array(z.object({
+    team: z.string(),
+    start: z.number(),
+    end: z.number()
+  })).default([]),
+  achievements: z.array(z.string()).default([]),
+  stats: z.record(z.any()).optional(),
 });
 
 export const insertGameSchema = createInsertSchema(games).omit({
