@@ -26,7 +26,8 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
           {/* Player Face and Name */}
           <div className="flex flex-col items-center">
             <PlayerFace 
-              face={player.face} 
+              face={player.face}
+              imageUrl={player.imageUrl}
               size={80} 
               className="rounded-full mb-3"
             />

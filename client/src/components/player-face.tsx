@@ -3,19 +3,51 @@ import { display, generate } from "facesjs";
 
 interface PlayerFaceProps {
   face?: Record<string, any> | null;
+  imageUrl?: string | null;
   size?: number;
   className?: string;
 }
 
-export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps) {
+export function PlayerFace({ face, imageUrl, size = 64, className = "" }: PlayerFaceProps) {
   const faceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (faceRef.current) {
-      try {
-        // Clear previous face
-        faceRef.current.innerHTML = "";
+      // Clear previous content
+      faceRef.current.innerHTML = "";
+      
+      // Priority 1: Real player image URL
+      if (imageUrl) {
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.style.width = `${size}px`;
+        img.style.height = `${size}px`;
+        img.style.objectFit = 'cover';
+        img.style.borderRadius = '50%';
+        img.style.background = 'transparent';
         
+        img.onload = () => {
+          if (faceRef.current) {
+            faceRef.current.appendChild(img);
+          }
+        };
+        
+        img.onerror = () => {
+          // Fallback to faces.js if image fails to load
+          generateFacesJSFace();
+        };
+        
+        return;
+      }
+      
+      // Priority 2: faces.js generated face
+      generateFacesJSFace();
+    }
+    
+    function generateFacesJSFace() {
+      if (!faceRef.current) return;
+      
+      try {
         // Generate face - use provided face data or generate random
         const faceData = face ? face as any : generate();
         
@@ -53,25 +85,27 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
       } catch (error) {
         console.warn('Error displaying player face:', error);
         // Fallback: show generic avatar with transparent background
-        faceRef.current.innerHTML = `
-          <div style="
-            width: ${size}px; 
-            height: ${size}px; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: ${Math.max(size / 4, 12)}px;
-          ">
-            ?
-          </div>
-        `;
+        if (faceRef.current) {
+          faceRef.current.innerHTML = `
+            <div style="
+              width: ${size}px; 
+              height: ${size}px; 
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-weight: bold;
+              font-size: ${Math.max(size / 4, 12)}px;
+            ">
+              ?
+            </div>
+          `;
+        }
       }
     }
-  }, [face, size]);
+  }, [face, imageUrl, size]);
 
   return (
     <div 

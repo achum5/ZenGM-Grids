@@ -443,6 +443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             achievements,
             stats: player.ratings || player.stats || undefined,
             face: player.face || null,
+            imageUrl: player.imgURL || player.imageUrl || player.img || null,
             careerWinShares: Math.round(careerWinShares * 10), // Convert to integer (tenths)
             quality: 50 // Will be calculated later
           };
@@ -470,6 +471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             achievements: players[i].achievements || [],
             stats: players[i].stats,
             face: players[i].face,
+            imageUrl: players[i].imageUrl,
             careerWinShares: players[i].careerWinShares || 0
           };
           

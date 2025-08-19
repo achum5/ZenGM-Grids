@@ -191,7 +191,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {/* Player Face */}
         <div className="flex-1 flex items-center justify-center">
           <PlayerFace 
-            face={player.face} 
+            face={player.face}
+            imageUrl={player.imageUrl}
             size={64} 
             className="rounded-full"
           />
@@ -224,7 +225,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {/* Player Face and Identity */}
         <div className="flex flex-col items-center mb-2">
           <PlayerFace 
-            face={player.face} 
+            face={player.face}
+            imageUrl={player.imageUrl}
             size={40} 
             className="rounded-full overflow-hidden mb-1"
           />
@@ -309,7 +311,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       {/* Player Face */}
       <div className="flex-1 flex items-center justify-center">
         <PlayerFace 
-          face={player.face} 
+          face={player.face}
+          imageUrl={player.imageUrl}
           size={64} 
           className="rounded-full"
         />
