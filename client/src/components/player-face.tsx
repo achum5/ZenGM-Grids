@@ -49,19 +49,19 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "" }: Player
       
       try {
         // Generate face - use provided face data or generate random
-        const faceData = face ? face as any : generate();
+        let faceData = face ? face as any : generate();
         
-        // Ensure team colors are properly set if they exist in face data
+        // Ensure team colors are properly applied to the face display
         if (faceData && faceData.teamColors && Array.isArray(faceData.teamColors)) {
           console.log('Using team colors from face data:', faceData.teamColors);
         } else {
           console.log('No team colors found in face data, using defaults');
         }
         
-        // Display the face normally
+        // Display the face with team colors
         display(faceRef.current, faceData);
         
-        // Apply size styling and hide white backgrounds with CSS
+        // Apply size styling and team colors to SVG
         const svg = faceRef.current.querySelector('svg');
         if (svg) {
           svg.style.width = `${size}px`;
@@ -69,6 +69,29 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "" }: Player
           svg.style.maxWidth = '100%';
           svg.style.maxHeight = '100%';
           svg.style.overflow = 'visible';
+          
+          // Apply team colors to jersey elements if available
+          if (faceData && faceData.teamColors && Array.isArray(faceData.teamColors) && faceData.teamColors.length > 0) {
+            const primaryColor = faceData.teamColors[0];
+            const secondaryColor = faceData.teamColors[1] || faceData.teamColors[0];
+            
+            // Find jersey elements and apply team colors
+            const jerseyElements = svg.querySelectorAll('[id*="jersey"], [class*="jersey"], g[id*="jersey"] path, g[id*="jersey"] rect');
+            jerseyElements.forEach((element, index) => {
+              const color = index % 2 === 0 ? primaryColor : secondaryColor;
+              element.setAttribute('fill', color);
+            });
+            
+            // Also try to find elements with default jersey colors and replace them
+            const defaultJerseyColors = ['#0066cc', '#ff0000', '#0000ff', '#cc0000'];
+            defaultJerseyColors.forEach(defaultColor => {
+              const coloredElements = svg.querySelectorAll(`[fill="${defaultColor}"]`);
+              coloredElements.forEach((element, index) => {
+                const color = index % 2 === 0 ? primaryColor : secondaryColor;
+                element.setAttribute('fill', color);
+              });
+            });
+          }
           
           // Use CSS to hide white backgrounds without removing elements
           const style = document.createElement('style');
