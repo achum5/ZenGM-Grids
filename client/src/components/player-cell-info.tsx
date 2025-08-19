@@ -180,7 +180,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
     return (
       <>
         <div 
-          className="w-full h-full flex flex-col items-center justify-center text-center p-2 cursor-pointer overflow-visible"
+          className="w-full h-full flex flex-col items-center justify-between text-center p-1 cursor-pointer overflow-visible"
           onClick={(e) => {
             console.log('Wrong tile clicked for player:', playerName);
             e.preventDefault();
@@ -201,7 +201,9 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         </div>
         
         {/* Player name */}
-        <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight mb-1 text-center px-1 max-w-full break-words">{playerName}</div>
+        <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight mb-1 text-center px-1 w-full break-words hyphens-auto flex-shrink-0 min-h-[2em] flex items-center justify-center">
+          <span className="block text-center">{playerName}</span>
+        </div>
         
         {/* Status */}
         <div className="text-[8px] sm:text-xs text-red-300 font-bold text-center">✗ Wrong</div>
@@ -302,7 +304,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   return (
     <>
       <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center p-2 cursor-pointer overflow-visible"
+        className="w-full h-full flex flex-col items-center justify-between text-center p-1 cursor-pointer overflow-visible"
         onClick={(e) => {
           console.log('Correct tile clicked for player:', playerName);
           e.preventDefault();
@@ -323,8 +325,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       </div>
       
       {/* Player name */}
-      <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight text-center break-words mb-1 px-1 max-w-full">
-        {playerName}
+      <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight text-center break-words hyphens-auto mb-1 px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
+        <span className="block text-center">{playerName}</span>
       </div>
       
       {/* Minimal status info */}
