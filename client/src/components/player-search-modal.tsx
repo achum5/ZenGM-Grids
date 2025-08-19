@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { Player } from "@shared/schema";
-import { PlayerFace } from "./player-face";
 
 interface PlayerSearchModalProps {
   open: boolean;
@@ -143,11 +142,9 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
                 data-testid={`button-select-player-${player.id}`}
               >
                 <div className="flex items-center space-x-3 w-full">
-                  <PlayerFace 
-                    face={player.face} 
-                    size={32} 
-                    className="rounded-full overflow-hidden flex-shrink-0"
-                  />
+                  <div className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                    {player.name.charAt(0)}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-white text-sm truncate">
                       {player.name}
