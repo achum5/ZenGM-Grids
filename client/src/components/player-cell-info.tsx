@@ -177,21 +177,23 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   if (!isCorrect) {
     return (
       <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center p-2 cursor-pointer"
+        className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
         onClick={() => setShowExpanded(true)}
       >
         {/* Player Face */}
-        <PlayerFace 
-          face={player.face} 
-          size={48} 
-          className="rounded-full overflow-hidden mb-2"
-        />
+        <div className="flex-1 flex items-center justify-center">
+          <PlayerFace 
+            face={player.face} 
+            size={64} 
+            className="rounded-full overflow-hidden"
+          />
+        </div>
         
         {/* Player name */}
-        <div className="text-sm font-bold text-white mb-1 leading-tight">{playerName}</div>
+        <div className="text-base font-bold text-white leading-tight mb-1">{playerName}</div>
         
         {/* Status */}
-        <div className="text-xs text-red-300 font-bold mt-auto">✗ Wrong</div>
+        <div className="text-xs text-red-300 font-bold">✗ Wrong</div>
       </div>
     );
   }
@@ -280,23 +282,25 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   // Compact view with face and name
   return (
     <div 
-      className="w-full h-full flex flex-col items-center justify-center text-center p-2 cursor-pointer overflow-hidden"
+      className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
       onClick={() => setShowExpanded(true)}
     >
       {/* Player Face */}
-      <PlayerFace 
-        face={player.face} 
-        size={48} 
-        className="rounded-full overflow-hidden mb-2"
-      />
+      <div className="flex-1 flex items-center justify-center">
+        <PlayerFace 
+          face={player.face} 
+          size={64} 
+          className="rounded-full overflow-hidden"
+        />
+      </div>
       
       {/* Player name */}
-      <div className="text-sm font-bold text-white mb-1 leading-tight px-1 break-words hyphens-auto">
+      <div className="text-base font-bold text-white leading-tight px-1 break-words hyphens-auto mb-1">
         {playerName}
       </div>
       
       {/* Minimal status info */}
-      <div className="text-xs text-green-300 font-bold mt-auto">
+      <div className="text-xs text-green-300 font-bold">
         ✓ Correct
       </div>
     </div>

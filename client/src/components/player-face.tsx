@@ -57,7 +57,7 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
     <div 
       ref={faceRef} 
       className={`inline-flex items-center justify-center ${className}`}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, minWidth: size, minHeight: size }}
     />
   );
 }
