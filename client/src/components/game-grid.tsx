@@ -58,7 +58,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
       return response.json();
     },
     onSuccess: async (data) => {
-      console.log("Submit answer response:", data);
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions/stats"] });
       onScoreUpdate(data.session.score);
@@ -101,7 +100,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
           title: "Correct!",
           description: "Great pick!",
         });
-      } else {
+      } else if (data.isCorrect === false) {
         toast({
           title: "Incorrect",
           description: data.correctPlayers?.length > 0 ? 
