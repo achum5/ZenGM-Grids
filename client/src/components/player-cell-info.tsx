@@ -31,6 +31,10 @@ const teamAbbreviations: { [key: string]: string } = {
   "Milwaukee Bucks": "MIL",
   "Minnesota Timberwolves": "MIN",
   "New Orleans Pelicans": "NOL",
+  // Custom team mapping for uploaded league files
+  "Columbus Crush": "COL",
+  "St. Louis Spirit": "STL",
+  "Sacramento Royalty": "SAC",
   "New York Knicks": "NYK",
   "Oklahoma City Thunder": "OKC",
   "Orlando Magic": "ORL",
@@ -53,14 +57,13 @@ const teamAbbreviations: { [key: string]: string } = {
   "San Diego Clippers": "SDC",
   "Buffalo Braves": "BUF",
   "St. Louis Spirits": "STL",
-  "Columbus Crush": "COL",
   "Washington Bullets": "WAS",
   "Capital Bullets": "CAP",
   "Baltimore Bullets": "BAL"
 };
 
 function getTeamAbbr(teamName: string): string {
-  // First check our comprehensive mapping, then fall back to server data or simple abbreviation
+  // Check comprehensive mapping first, then generate from first 3 letters
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
