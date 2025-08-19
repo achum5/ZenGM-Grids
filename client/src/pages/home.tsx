@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { HelpCircle, RotateCcw } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useQuery } from "@tanstack/react-query";
-import type { Game, SessionStats } from "@shared/schema";
+import type { Game, SessionStats, TeamInfo } from "@shared/schema";
 
 export default function Home() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentScore, setCurrentScore] = useState(0);
   const [showRules, setShowRules] = useState(false);
+  const [teamData, setTeamData] = useState<TeamInfo[] | null>(null);
 
   const { data: stats } = useQuery<SessionStats>({
     queryKey: ["/api/sessions/stats"],
@@ -91,7 +92,7 @@ export default function Home() {
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg">
-              <FileUpload onGameGenerated={handleGameGenerated} />
+              <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg">
               <GameStats stats={stats} />
@@ -105,6 +106,7 @@ export default function Home() {
               sessionId={currentSessionId}
               onSessionCreated={handleSessionCreated}
               onScoreUpdate={handleScoreUpdate}
+              teamData={teamData}
             />
           </div>
         </div>

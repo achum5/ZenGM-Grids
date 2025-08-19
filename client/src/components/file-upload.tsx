@@ -6,13 +6,14 @@ import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { FileUploadData, Game } from "@shared/schema";
+import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
+  onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
 }
 
-export function FileUpload({ onGameGenerated }: FileUploadProps) {
+export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const { toast } = useToast();
@@ -35,6 +36,7 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
     },
     onSuccess: (data) => {
       setUploadData(data);
+      onTeamDataUpdate?.(data.teams);
       toast({
         title: "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,

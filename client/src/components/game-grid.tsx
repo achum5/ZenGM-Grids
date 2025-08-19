@@ -8,16 +8,17 @@ import { PlayerCellInfo } from "./player-cell-info";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Game, GameSession, GridCell, Player } from "@shared/schema";
+import type { Game, GameSession, GridCell, Player, TeamInfo } from "@shared/schema";
 
 interface GameGridProps {
   gameId: string | null;
   sessionId: string | null;
   onSessionCreated: (sessionId: string) => void;
   onScoreUpdate: (score: number) => void;
+  teamData?: TeamInfo[];
 }
 
-export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }: GameGridProps) {
+export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, teamData }: GameGridProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [showPlayerModal, setShowPlayerModal] = useState(false);
   const [showCorrectAnswersModal, setShowCorrectAnswersModal] = useState(false);
@@ -342,6 +343,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                           column: game.columnCriteria[colIndex].label
                         }}
                         candidateCount={game.correctAnswers[cellKey]?.length || 0}
+                        teamData={teamData}
                       />
                     )}
                     {!isAnswered && (

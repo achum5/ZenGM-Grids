@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import type { Player } from "@shared/schema";
+import type { Player, TeamInfo } from "@shared/schema";
 
 interface PlayerCellInfoProps {
   playerName: string;
@@ -8,6 +8,7 @@ interface PlayerCellInfoProps {
   rarity: number;
   cellCriteria?: { row: string; column: string };
   candidateCount?: number;
+  teamData?: TeamInfo[];
 }
 
 // Team abbreviations mapping
@@ -31,8 +32,8 @@ const teamAbbreviations: { [key: string]: string } = {
   "Milwaukee Bucks": "MIL",
   "Minnesota Timberwolves": "MIN",
   "New Orleans Pelicans": "NOL",
-  // Custom team mapping for uploaded league files
-  "Columbus Crush": "COL",
+  // Custom team mapping for uploaded league files  
+  "Columbus Crush": "CLB",
   "St. Louis Spirit": "STL",
   "Sacramento Royalty": "SAC",
   "New York Knicks": "NYK",
@@ -62,12 +63,20 @@ const teamAbbreviations: { [key: string]: string } = {
   "Baltimore Bullets": "BAL"
 };
 
-function getTeamAbbr(teamName: string): string {
-  // Check comprehensive mapping first, then generate from first 3 letters
+function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
+  // First check if we have authentic team data from uploaded file
+  if (teamData) {
+    const teamInfo = teamData.find(t => t.name === teamName);
+    if (teamInfo?.abbrev) {
+      return teamInfo.abbrev;
+    }
+  }
+  
+  // Fallback to comprehensive mapping, then generate from first 3 letters
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount }: PlayerCellInfoProps) {
+export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   
   const { data: players = [] } = useQuery<Player[]>({
@@ -140,8 +149,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   
   // Format all teams with years - show each team stint separately
   const allTeamsFormatted = player.years?.map(y => 
-    `${getTeamAbbr(y.team)} (${y.start}–${y.end})`
-  ).join(', ') || player.teams.map(getTeamAbbr).join(', ');
+    `${getTeamAbbr(y.team, teamData)} (${y.start}–${y.end})`
+  ).join(', ') || player.teams.map(team => getTeamAbbr(team, teamData)).join(', ');
 
   // Count major accolades
   const accolades = {
@@ -177,14 +186,14 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
             <div className="break-words space-y-0.5">
               {player.years.map((teamYear, idx) => (
                 <div key={`${teamYear.team}-${teamYear.start}`} className="block">
-                  {getTeamAbbr(teamYear.team)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
+                  {getTeamAbbr(teamYear.team, teamData)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                 </div>
               ))}
             </div>
           </div>
         ) : primaryTeam && (
           <div className="text-xs text-white font-medium mb-1 px-1 text-center break-words">
-            {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
+            {getTeamAbbr(primaryTeam, teamData)} {yearRange && `(${yearRange})`}
           </div>
         )}
         <div className="text-xs text-red-300 font-bold mt-1">✗ Wrong</div>
@@ -208,12 +217,12 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
             {player.years?.map((teamYear, idx) => (
               <span key={`${teamYear.team}-${teamYear.start}`} className="whitespace-nowrap">
-                {getTeamAbbr(teamYear.team)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
+                {getTeamAbbr(teamYear.team, teamData)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                 {idx < (player.years?.length || 0) - 1 && ','}
               </span>
             )) || player.teams.map((team, idx) => (
               <span key={team} className="whitespace-nowrap">
-                {getTeamAbbr(team)}
+                {getTeamAbbr(team, teamData)}
                 {idx < player.teams.length - 1 && ','}
               </span>
             ))}
