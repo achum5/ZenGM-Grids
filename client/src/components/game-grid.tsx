@@ -207,7 +207,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                   <Button
                     key={cellKey}
                     variant="outline"
-                    className={`aspect-square p-2 transition-all ${
+                    className={`aspect-square p-2 transition-all flex items-center justify-center ${
                       isAnswered
                         ? isCorrect
                           ? "border-green-300 bg-green-50"
@@ -218,7 +218,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                     disabled={isAnswered || submitAnswerMutation.isPending}
                     data-testid={`cell-${rowIndex}-${colIndex}`}
                   >
-                    <div className="text-center">
+                    <div className="w-full h-full flex flex-col items-center justify-center text-center">
                       {isAnswered ? (
                         <>
                           <div className="text-sm font-medium text-court">{answer.player}</div>
@@ -227,10 +227,10 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                           </div>
                         </>
                       ) : (
-                        <div className="flex flex-col items-center justify-center h-full">
+                        <>
                           <div className="text-2xl mb-1">🏀</div>
                           <div className="text-xs font-medium text-gray-500">Select Player</div>
-                        </div>
+                        </>
                       )}
                     </div>
                   </Button>
