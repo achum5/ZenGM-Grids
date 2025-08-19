@@ -123,12 +123,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Create team mapping from BBGM teams data
-        const teamMap = new Map<number, string>();
+        const teamMap = new Map<number, {name: string, logo?: string}>();
         if (data.teams && Array.isArray(data.teams)) {
           console.log(`Found ${data.teams.length} teams in BBGM file`);
           data.teams.forEach((team: any, index: number) => {
             if (team && team.region && team.name) {
-              teamMap.set(index, `${team.region} ${team.name}`);
+              const teamInfo = {
+                name: `${team.region} ${team.name}`,
+                logo: team.imgURL || team.imgUrl || team.logo
+              };
+              teamMap.set(index, teamInfo);
             }
           });
           console.log("Team mapping created:", Array.from(teamMap.entries()).slice(0, 5));
@@ -145,7 +149,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Map team ID to team name using BBGM teams data
           const teams: string[] = [];
           if (player.tid !== undefined && player.tid >= 0) {
-            const teamName = teamMap.get(player.tid) || `Team ${player.tid}`;
+            const teamInfo = teamMap.get(player.tid);
+            const teamName = teamInfo?.name || `Team ${player.tid}`;
             teams.push(teamName);
           }
           
@@ -154,7 +159,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (player.stats && Array.isArray(player.stats)) {
             player.stats.forEach((stat: any) => {
               if (stat.tid !== undefined && stat.tid >= 0) {
-                const teamName = teamMap.get(stat.tid) || `Team ${stat.tid}`;
+                const teamInfo = teamMap.get(stat.tid);
+                const teamName = teamInfo?.name || `Team ${stat.tid}`;
                 allTeams.add(teamName);
               }
             });
@@ -174,7 +180,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const teamYears = new Map<string, { start: number; end: number }>();
             player.stats.forEach((stat: any) => {
               if (stat.season && stat.tid !== undefined) {
-                const teamName = teamMap.get(stat.tid) || `Team ${stat.tid}`;
+                const teamInfo = teamMap.get(stat.tid);
+                const teamName = teamInfo?.name || `Team ${stat.tid}`;
                 const existing = teamYears.get(teamName);
                 if (existing) {
                   existing.start = Math.min(existing.start, stat.season);
@@ -277,7 +284,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const createdPlayers = await storage.createPlayers(validatedPlayers);
 
       // Extract teams and achievements for frontend
-      const teams = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
+      const teamNames = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
+      
+      // Define teamMap in the correct scope if it doesn't exist
+      let finalTeamMap = new Map<number, {name: string, logo?: string}>();
+      if (isJson) {
+        const data = JSON.parse(fileContent);
+        if (data.teams && Array.isArray(data.teams)) {
+          data.teams.forEach((team: any, index: number) => {
+            if (team && team.region && team.name) {
+              const teamInfo = {
+                name: `${team.region} ${team.name}`,
+                logo: team.imgURL || team.imgUrl || team.logo
+              };
+              finalTeamMap.set(index, teamInfo);
+            }
+          });
+        }
+      }
+      
+      const teams = teamNames.map(name => {
+        // Find the team info from our mapping
+        const teamInfo = Array.from(finalTeamMap.values()).find((t: {name: string, logo?: string}) => t.name === name);
+        return {
+          name,
+          logo: teamInfo?.logo
+        };
+      });
       const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
 
       const result: FileUploadData = {

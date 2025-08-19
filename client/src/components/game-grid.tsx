@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, RotateCcw } from "lucide-react";
+import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -127,14 +127,14 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
 
   if (!game) {
     return (
-      <Card>
-        <CardContent className="p-12 text-center">
-          <div className="text-gray-500">
+      <div className="bg-slate-800 dark:bg-slate-900 p-8 rounded-xl">
+        <div className="p-12 text-center">
+          <div className="text-gray-500 dark:text-gray-400">
             <p className="text-lg mb-2">No game loaded</p>
             <p className="text-sm">Upload a league file and generate a grid to start playing</p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
@@ -142,135 +142,137 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
   const incorrectAnswers = session && session.answers ? Object.values(session.answers).filter(a => !a.correct).length : 0;
   const remainingCells = 9 - (session && session.answers ? Object.keys(session.answers).length : 0);
 
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>Immaculate Grid Challenge</CardTitle>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-gray-600">
-              <Clock className="h-4 w-4" />
-              <span data-testid="text-time-remaining">{formatTime(timeRemaining)}</span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={restartGame}
-              className="text-basketball hover:text-orange-600"
-              data-testid="button-restart-game"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </Button>
+  // Helper function to render team logo or name for headers
+  const renderTeamHeader = (criteria: any) => {
+    if (criteria.type === 'team') {
+      // For now, display team name - can be enhanced with logos later
+      return (
+        <div className="text-center w-16 h-16 flex items-center justify-center">
+          <div className="text-xs font-semibold text-white leading-tight text-center">
+            {criteria.label}
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        {/* Game Grid */}
-        <div className="grid grid-cols-4 gap-3 max-w-2xl mx-auto mb-6">
-          {/* Empty corner cell */}
-          <div className="aspect-square bg-gray-100 rounded-lg"></div>
-          
-          {/* Column headers */}
-          {game.columnCriteria.map((criteria, index) => (
-            <div
-              key={`col-${index}`}
-              className="aspect-square bg-basketball text-white rounded-lg flex items-center justify-center p-2"
-              data-testid={`header-column-${index}`}
-            >
-              <div className="text-center">
-                <div className="text-sm font-medium">{criteria.label}</div>
-              </div>
-            </div>
-          ))}
+      );
+    }
+    return (
+      <div className="text-center w-16 h-16 flex items-center justify-center">
+        <div className="text-xs font-semibold text-white leading-tight text-center">
+          {criteria.label}
+        </div>
+      </div>
+    );
+  };
 
-          {/* Grid rows */}
-          {game.rowCriteria.map((rowCriteria, rowIndex) => (
-            <div key={`row-${rowIndex}`} className="contents">
-              {/* Row header */}
-              <div
-                className="aspect-square bg-court text-white rounded-lg flex items-center justify-center p-2"
-                data-testid={`header-row-${rowIndex}`}
-              >
-                <div className="text-center">
-                  <div className="text-sm font-medium">{rowCriteria.label}</div>
-                </div>
-              </div>
+  return (
+    <div className="bg-slate-800 dark:bg-slate-900 p-8 rounded-xl">
+      {/* Header with stats */}
+      <div className="flex justify-between items-center mb-8">
+        <div className="text-white">
+          <h2 className="text-xl font-bold">Immaculate Grid</h2>
+        </div>
+        
+        {/* Stats display */}
+        <div className="flex items-center space-x-6 text-white">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-400" data-testid="text-correct-answers">
+              {correctAnswers}
+            </div>
+            <div className="text-xs text-gray-300">CORRECT</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
+              {incorrectAnswers}
+            </div>
+            <div className="text-xs text-gray-300">INCORRECT</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-white" data-testid="text-remaining-cells">
+              {remainingCells}
+            </div>
+            <div className="text-xs text-gray-300">GUESSES LEFT</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Game Grid */}
+      <div className="grid grid-cols-4 gap-1 max-w-2xl mx-auto">
+        {/* Top-left empty cell */}
+        <div className="aspect-square"></div>
+        
+        {/* Column headers */}
+        {game.columnCriteria.map((criteria, index) => (
+          <div
+            key={`col-${index}`}
+            className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center"
+            data-testid={`header-column-${index}`}
+          >
+            {renderTeamHeader(criteria)}
+          </div>
+        ))}
+
+        {/* Grid rows */}
+        {game.rowCriteria.map((rowCriteria, rowIndex) => (
+          <React.Fragment key={`row-${rowIndex}`}>
+            {/* Row header */}
+            <div
+              className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center"
+              data-testid={`header-row-${rowIndex}`}
+            >
+              {renderTeamHeader(rowCriteria)}
+            </div>
+            
+            {/* Grid cells */}
+            {game.columnCriteria.map((_, colIndex) => {
+              const cellKey = `${rowIndex}_${colIndex}`;
+              const answer = session?.answers?.[cellKey];
+              const isAnswered = !!answer;
+              const isCorrect = answer?.correct;
               
-              {/* Grid cells */}
-              {game.columnCriteria.map((_, colIndex) => {
-                const cellKey = `${rowIndex}_${colIndex}`;
-                const answer = session?.answers?.[cellKey];
-                const isAnswered = !!answer;
-                const isCorrect = answer?.correct;
-                
-                return (
-                  <div key={cellKey} className="relative aspect-square">
-                    <Button
-                      variant="outline"
-                      className={`w-full h-full transition-all ${
-                        isAnswered
-                          ? isCorrect
-                            ? "border-green-300 bg-green-50"
-                            : "border-red-300 bg-red-50"
-                          : "border-gray-200 bg-white hover:border-basketball hover:bg-orange-50 hover:shadow-md"
-                      }`}
-                      onClick={() => handleCellClick(rowIndex, colIndex)}
-                      disabled={isAnswered || submitAnswerMutation.isPending}
-                      data-testid={`cell-${rowIndex}-${colIndex}`}
-                    >
-                      {isAnswered && (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-center p-1">
-                          <div className="text-sm font-medium text-court leading-tight">{answer.player}</div>
-                          <div className={`text-xs ${isCorrect ? "text-green-600" : "text-red-600"}`}>
-                            {isCorrect ? "✓" : "✗"}
-                          </div>
+              return (
+                <div key={cellKey} className="relative aspect-square">
+                  <Button
+                    variant="ghost"
+                    className={`w-full h-full border-0 transition-all duration-200 relative overflow-hidden group ${
+                      isAnswered
+                        ? isCorrect
+                          ? "bg-green-500 hover:bg-green-600"
+                          : "bg-red-500 hover:bg-red-600"
+                        : "bg-slate-600 dark:bg-slate-700 hover:bg-slate-500 dark:hover:bg-slate-600"
+                    }`}
+                    onClick={() => handleCellClick(rowIndex, colIndex)}
+                    disabled={isAnswered || submitAnswerMutation.isPending}
+                    data-testid={`cell-${rowIndex}-${colIndex}`}
+                  >
+                    {isAnswered && (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-center p-2">
+                        <div className="text-xs font-semibold text-white mb-1 leading-tight">
+                          {answer.player}
                         </div>
-                      )}
-                    </Button>
-                    {!isAnswered && (
-                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Select Player</div>
+                        <div className="text-xs text-white opacity-80">
+                          {isCorrect ? '47%' : 'X'}
+                        </div>
                       </div>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+                    {!isAnswered && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="text-xs font-medium text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          Select Player
+                        </div>
+                      </div>
+                    )}
+                  </Button>
+                </div>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
 
-        {/* Score display */}
-        <div className="text-center">
-          <div className="inline-flex items-center space-x-6 bg-gray-50 rounded-lg px-6 py-3">
-            <div className="text-center">
-              <div className="text-sm text-gray-600">Correct</div>
-              <div className="text-xl font-bold text-green-600" data-testid="text-correct-answers">
-                {correctAnswers}
-              </div>
-            </div>
-            <div className="w-px h-8 bg-gray-300"></div>
-            <div className="text-center">
-              <div className="text-sm text-gray-600">Incorrect</div>
-              <div className="text-xl font-bold text-red-600" data-testid="text-incorrect-answers">
-                {incorrectAnswers}
-              </div>
-            </div>
-            <div className="w-px h-8 bg-gray-300"></div>
-            <div className="text-center">
-              <div className="text-sm text-gray-600">Remaining</div>
-              <div className="text-xl font-bold text-gray-600" data-testid="text-remaining-cells">
-                {remainingCells}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <PlayerSearchModal
-          open={showPlayerModal}
-          onOpenChange={setShowPlayerModal}
-          onSelectPlayer={handlePlayerSelect}
-        />
-      </CardContent>
-    </Card>
+      <PlayerSearchModal
+        open={showPlayerModal}
+        onOpenChange={setShowPlayerModal}
+        onSelectPlayer={handlePlayerSelect}
+      />
+    </div>
   );
 }

@@ -90,8 +90,12 @@ export default function Home() {
           
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
-            <FileUpload onGameGenerated={handleGameGenerated} />
-            <GameStats stats={stats} />
+            <div className="bg-white dark:bg-gray-800 rounded-lg">
+              <FileUpload onGameGenerated={handleGameGenerated} />
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg">
+              <GameStats stats={stats} />
+            </div>
           </div>
 
           {/* Game Area */}

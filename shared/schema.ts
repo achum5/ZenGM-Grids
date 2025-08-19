@@ -67,9 +67,14 @@ export interface GridCriteria {
   value: string;
 }
 
+export interface TeamInfo {
+  name: string;
+  logo?: string;
+}
+
 export interface FileUploadData {
   players: InsertPlayer[];
-  teams: string[];
+  teams: TeamInfo[];
   achievements: string[];
 }
 
