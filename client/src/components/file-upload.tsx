@@ -1,9 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CloudUpload, FileCheck, X, Play, Loader2 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game } from "@shared/schema";
@@ -16,6 +16,23 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const { toast } = useToast();
+
+  // Check for previously uploaded file on component mount
+  const { data: lastFileData } = useQuery({
+    queryKey: ["/api/upload/last"],
+    retry: false,
+  });
+
+  // Auto-load the last uploaded file if it exists
+  useEffect(() => {
+    if (lastFileData?.hasFile && lastFileData?.data && !uploadData) {
+      setUploadData(lastFileData.data);
+      toast({
+        title: "Previous league file loaded",
+        description: `Restored ${lastFileData.data.players.length} players from your last session`,
+      });
+    }
+  }, [lastFileData, uploadData, toast]);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {

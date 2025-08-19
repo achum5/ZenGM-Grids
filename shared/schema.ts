@@ -31,6 +31,16 @@ export const gameSessions = pgTable("game_sessions", {
   createdAt: text("created_at").notNull().default(sql`NOW()`),
 });
 
+export const uploadedFiles = pgTable("uploaded_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  filename: text("filename").notNull(),
+  fileContent: text("file_content").notNull(), // Store the raw file content
+  uploadedAt: text("uploaded_at").notNull().default(sql`NOW()`),
+  playerCount: integer("player_count").notNull().default(0),
+  teamCount: integer("team_count").notNull().default(0),
+  achievementCount: integer("achievement_count").notNull().default(0),
+});
+
 export const insertPlayerSchema = z.object({
   name: z.string().min(1),
   teams: z.array(z.string()).default([]),
@@ -55,12 +65,19 @@ export const insertGameSessionSchema = createInsertSchema(gameSessions).omit({
   createdAt: true,
 });
 
+export const insertUploadedFileSchema = createInsertSchema(uploadedFiles).omit({
+  id: true,
+  uploadedAt: true,
+});
+
 export type Player = typeof players.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
+export type UploadedFile = typeof uploadedFiles.$inferSelect;
 export type InsertPlayer = z.infer<typeof insertPlayerSchema>;
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type InsertGameSession = z.infer<typeof insertGameSessionSchema>;
+export type InsertUploadedFile = z.infer<typeof insertUploadedFileSchema>;
 
 // Types for frontend
 export interface GridCriteria {
