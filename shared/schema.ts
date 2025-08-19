@@ -10,6 +10,7 @@ export const players = pgTable("players", {
   years: jsonb("years").$type<{ team: string; start: number; end: number }[]>().notNull(),
   achievements: jsonb("achievements").$type<string[]>().notNull(),
   stats: jsonb("stats").$type<Record<string, any>>(),
+  face: jsonb("face").$type<Record<string, any>>(),
   careerWinShares: integer("career_win_shares").default(0),
   quality: integer("quality").default(50),
 });
@@ -51,6 +52,7 @@ export const insertPlayerSchema = z.object({
   })).default([]),
   achievements: z.array(z.string()).default([]),
   stats: z.union([z.record(z.any()), z.array(z.any())]).optional(),
+  face: z.record(z.any()).optional(),
   careerWinShares: z.number().default(0),
   quality: z.number().default(50),
 });

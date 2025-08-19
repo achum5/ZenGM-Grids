@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { Player, TeamInfo } from "@shared/schema";
+import { PlayerFace } from "./player-face";
 
 interface PlayerCellInfoProps {
   playerName: string;
@@ -213,9 +214,16 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         onWheel={(e) => e.stopPropagation()}
         style={{ pointerEvents: 'auto', scrollBehavior: 'auto', padding: '8px 8px 4px 8px' }}
       >
-        {/* Identity */}
-        <div className="font-semibold text-center mb-2">
-          {playerName}
+        {/* Player Face and Identity */}
+        <div className="flex flex-col items-center mb-2">
+          <PlayerFace 
+            face={player.face} 
+            size={40} 
+            className="rounded-full overflow-hidden mb-1"
+          />
+          <div className="font-semibold text-center text-sm">
+            {playerName}
+          </div>
         </div>
         
         {/* All Teams */}
