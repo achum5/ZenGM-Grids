@@ -100,7 +100,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
   };
 
   const handleCellClick = (row: number, col: number) => {
-    if (!session || session.answers[`${row},${col}`]) return;
+    if (!session || !session.answers || session.answers[`${row},${col}`]) return;
     setSelectedCell({ row, col });
     setShowPlayerModal(true);
   };
@@ -138,9 +138,9 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
     );
   }
 
-  const correctAnswers = session ? Object.values(session.answers).filter(a => a.correct).length : 0;
-  const incorrectAnswers = session ? Object.values(session.answers).filter(a => !a.correct).length : 0;
-  const remainingCells = 9 - (session ? Object.keys(session.answers).length : 0);
+  const correctAnswers = session && session.answers ? Object.values(session.answers).filter(a => a.correct).length : 0;
+  const incorrectAnswers = session && session.answers ? Object.values(session.answers).filter(a => !a.correct).length : 0;
+  const remainingCells = 9 - (session && session.answers ? Object.keys(session.answers).length : 0);
 
   return (
     <Card>

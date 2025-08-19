@@ -337,6 +337,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get session statistics (must come before /:id route)
+  app.get("/api/sessions/stats", async (req, res) => {
+    try {
+      const sessions = await storage.getGameSessions();
+      const completedSessions = sessions.filter(s => s.completed);
+      
+      const stats = {
+        gridsCompleted: completedSessions.length,
+        averageScore: completedSessions.length > 0 
+          ? Math.round((completedSessions.reduce((sum, s) => sum + s.score, 0) / completedSessions.length) * 10) / 10
+          : 0,
+        bestScore: completedSessions.length > 0 
+          ? Math.max(...completedSessions.map(s => s.score))
+          : 0,
+        successRate: completedSessions.length > 0
+          ? Math.round((completedSessions.reduce((sum, s) => sum + s.score, 0) / (completedSessions.length * 9)) * 100)
+          : 0
+      };
+
+      res.json(stats);
+    } catch (error) {
+      console.error("Get session stats error:", error);
+      res.status(500).json({ message: "Failed to retrieve session stats" });
+    }
+  });
+
   // Get a specific session by ID
   app.get("/api/sessions/:id", async (req, res) => {
     try {
@@ -411,30 +437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get session statistics
-  app.get("/api/sessions/stats", async (req, res) => {
-    try {
-      const sessions = await storage.getGameSessions();
-      const completedSessions = sessions.filter(s => s.completed);
-      
-      const stats = {
-        gridsCompleted: completedSessions.length,
-        averageScore: completedSessions.length > 0 
-          ? Math.round((completedSessions.reduce((sum, s) => sum + s.score, 0) / completedSessions.length) * 10) / 10
-          : 0,
-        bestScore: completedSessions.length > 0 
-          ? Math.max(...completedSessions.map(s => s.score))
-          : 0,
-        successRate: completedSessions.length > 0
-          ? Math.round((completedSessions.reduce((sum, s) => sum + s.score, 0) / (completedSessions.length * 9)) * 100)
-          : 0
-      };
 
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get statistics" });
-    }
-  });
 
   const httpServer = createServer(app);
   return httpServer;
