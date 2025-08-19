@@ -230,11 +230,13 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                     {!isAnswered && (
                       <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none">
                         <svg 
-                          className="w-8 h-8 mb-2 text-gray-400" 
+                          className="w-10 h-10 mb-2 text-gray-400" 
                           fill="currentColor" 
-                          viewBox="0 0 24 24"
+                          viewBox="0 0 100 100"
                         >
-                          <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2M21 9V7L15 7.5V9M21 17V15L15 16.5V18M14 8.5C14 8.5 14 9.5 14 9.5H16V11L20 10V18L16 17V18.5H8V17L4 18V10L8 11V9.5H10C10 9.5 10 8.5 10 8.5C6 8.5 4 10.5 4 13.5S6 18.5 10 18.5V20C10 21.1 10.9 22 12 22S14 21.1 14 22V20C18 20 20 18 20 15S18 8.5 14 8.5Z"/>
+                          <path d="M50 15C58 15 64 21 64 29C64 35 60 40 55 42C55 43 55 44 54 45C60 47 68 50 75 55C78 57 80 60 80 64V85C80 88 78 90 75 90H65C63 90 62 89 62 87V82C60 83 55 84 50 84C45 84 40 83 38 82V87C38 89 37 90 35 90H25C22 90 20 88 20 85V64C20 60 22 57 25 55C32 50 40 47 46 45C45 44 45 43 45 42C40 40 36 35 36 29C36 21 42 15 50 15Z"/>
+                          <path d="M35 30C33 30 32 31 32 33V40C32 42 33 43 35 43H38C38 38 42 34 46 32H35Z"/>
+                          <path d="M65 30H54C58 34 62 38 62 43H65C67 43 68 42 68 40V33C68 31 67 30 65 30Z"/>
                         </svg>
                         <div className="text-xs font-medium text-gray-500 leading-tight">Select Player</div>
                       </div>
