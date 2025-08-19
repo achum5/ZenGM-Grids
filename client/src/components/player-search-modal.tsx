@@ -16,7 +16,7 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: players = [], isLoading } = useQuery<Player[]>({
-    queryKey: ["/api/players/search", searchQuery],
+    queryKey: [`/api/players/search?q=${encodeURIComponent(searchQuery)}`],
     enabled: open && searchQuery.length > 0,
   });
 
