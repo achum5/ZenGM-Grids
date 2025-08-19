@@ -185,7 +185,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           <PlayerFace 
             face={player.face} 
             size={64} 
-            className="rounded-full overflow-hidden"
+            className="rounded-full"
           />
         </div>
         
@@ -290,7 +290,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         <PlayerFace 
           face={player.face} 
           size={64} 
-          className="rounded-full overflow-hidden"
+          className="rounded-full"
         />
       </div>
       

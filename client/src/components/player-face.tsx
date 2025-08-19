@@ -22,13 +22,20 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
         // Display the face
         display(faceRef.current, faceData);
         
-        // Apply size styling
+        // Apply size styling and ensure proper viewBox
         const svg = faceRef.current.querySelector('svg');
         if (svg) {
           svg.style.width = `${size}px`;
           svg.style.height = `${size}px`;
           svg.style.maxWidth = '100%';
           svg.style.maxHeight = '100%';
+          svg.style.overflow = 'visible';
+          
+          // Ensure proper viewBox to prevent cutoff
+          if (!svg.getAttribute('viewBox')) {
+            svg.setAttribute('viewBox', '0 0 400 600');
+          }
+          svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         }
       } catch (error) {
         console.warn('Error displaying player face:', error);
@@ -57,7 +64,13 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
     <div 
       ref={faceRef} 
       className={`inline-flex items-center justify-center ${className}`}
-      style={{ width: size, height: size, minWidth: size, minHeight: size }}
+      style={{ 
+        width: size, 
+        height: size, 
+        minWidth: size, 
+        minHeight: size,
+        overflow: 'visible'
+      }}
     />
   );
 }
