@@ -55,120 +55,25 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
           <div className="bg-slate-700 rounded-lg p-4">
             <h3 className="font-semibold text-blue-300 mb-3">Statistics</h3>
             
-            {(() => {
-              console.log('Full player object:', player);
+            <div className="space-y-3 text-sm">
+              <div className="text-center text-gray-400 py-4">
+                <div className="text-sm">Detailed game statistics not available in this export format</div>
+                <div className="text-xs mt-1">This BBGM export contains only player development ratings</div>
+                <div className="text-xs mt-1">For full statistics, use a BBGM export that includes compiled season stats</div>
+              </div>
               
-              // Check for actual game statistics in various possible locations
-              const hasGameStats = !!(
-                (player as any).careerStats || 
-                (player as any).statsArray || 
-                (player as any).regularStats ||
-                (player as any).careerMinutes ||
-                (player as any).careerWS ||
-                (player as any).careerBPM_weighted ||
-                (player as any).peakWS48
-              );
-              
-              const isRetired = player.achievements?.includes("Retired");
-              
-              if (hasGameStats || (player as any).careerMinutes !== undefined) {
-                // Show actual BBGM game statistics
-                const p = player as any;
-                return (
-                  <div className="space-y-3 text-sm">
-                    {isRetired ? (
-                      <>
-                        <div>
-                          <div className="font-semibold text-white mb-1">Peak Season</div>
-                          <div className="grid grid-cols-5 gap-1 text-xs">
-                            <div>MPG: {(p.peakMPG || 0).toFixed(1)}</div>
-                            <div>PPG: {(p.peakPPG || 0).toFixed(1)}</div>
-                            <div>RPG: {(p.peakRPG || 0).toFixed(1)}</div>
-                            <div>APG: {(p.peakAPG || 0).toFixed(1)}</div>
-                            <div>FG%: {((p.peakFGP || 0) * 100).toFixed(1)}%</div>
-                            <div>3P%: {((p.peak3PP || 0) * 100).toFixed(1)}%</div>
-                            <div>FT%: {((p.peakFTP || 0) * 100).toFixed(1)}%</div>
-                            <div>TS%: {((p.peakTSP || 0) * 100).toFixed(1)}%</div>
-                            <div>PER: {(p.peakPER || 0).toFixed(1)}</div>
-                            <div>WS: {(p.peakWS || 0).toFixed(1)}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-white mb-1">Career</div>
-                          <div className="grid grid-cols-5 gap-1 text-xs">
-                            <div>MPG: {(p.careerMPG || 0).toFixed(1)}</div>
-                            <div>PPG: {(p.careerPPG || 0).toFixed(1)}</div>
-                            <div>RPG: {(p.careerRPG || 0).toFixed(1)}</div>
-                            <div>APG: {(p.careerAPG || 0).toFixed(1)}</div>
-                            <div>FG%: {((p.careerFGP || 0) * 100).toFixed(1)}%</div>
-                            <div>3P%: {((p.career3PP || 0) * 100).toFixed(1)}%</div>
-                            <div>FT%: {((p.careerFTP || 0) * 100).toFixed(1)}%</div>
-                            <div>TS%: {((p.careerTSP || 0) * 100).toFixed(1)}%</div>
-                            <div>PER: {(p.careerPER || 0).toFixed(1)}</div>
-                            <div>WS: {(p.careerWinShares || p.careerWS || 0).toFixed(1)}</div>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div>
-                          <div className="font-semibold text-white mb-1">Current Season</div>
-                          <div className="grid grid-cols-5 gap-1 text-xs">
-                            <div>MPG: {(p.currentMPG || 0).toFixed(1)}</div>
-                            <div>PPG: {(p.currentPPG || 0).toFixed(1)}</div>
-                            <div>RPG: {(p.currentRPG || 0).toFixed(1)}</div>
-                            <div>APG: {(p.currentAPG || 0).toFixed(1)}</div>
-                            <div>FG%: {((p.currentFGP || 0) * 100).toFixed(1)}%</div>
-                            <div>3P%: {((p.current3PP || 0) * 100).toFixed(1)}%</div>
-                            <div>FT%: {((p.currentFTP || 0) * 100).toFixed(1)}%</div>
-                            <div>TS%: {((p.currentTSP || 0) * 100).toFixed(1)}%</div>
-                            <div>PER: {(p.currentPER || 0).toFixed(1)}</div>
-                            <div>WS: {(p.currentWS || 0).toFixed(1)}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="font-semibold text-white mb-1">Career</div>
-                          <div className="grid grid-cols-5 gap-1 text-xs">
-                            <div>MPG: {(p.careerMPG || 0).toFixed(1)}</div>
-                            <div>PPG: {(p.careerPPG || 0).toFixed(1)}</div>
-                            <div>RPG: {(p.careerRPG || 0).toFixed(1)}</div>
-                            <div>APG: {(p.careerAPG || 0).toFixed(1)}</div>
-                            <div>FG%: {((p.careerFGP || 0) * 100).toFixed(1)}%</div>
-                            <div>3P%: {((p.career3PP || 0) * 100).toFixed(1)}%</div>
-                            <div>FT%: {((p.careerFTP || 0) * 100).toFixed(1)}%</div>
-                            <div>TS%: {((p.careerTSP || 0) * 100).toFixed(1)}%</div>
-                            <div>PER: {(p.careerPER || 0).toFixed(1)}</div>
-                            <div>WS: {(p.careerWinShares || p.careerWS || 0).toFixed(1)}</div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              } else {
-                // Fallback to development info if no game stats
-                return (
-                  <div className="space-y-3 text-sm">
-                    <div className="text-center text-gray-400 py-4">
-                      <div className="text-sm">Game statistics not available in this export</div>
-                      <div className="text-xs mt-1">Only player ratings progression is included</div>
-                    </div>
-                    
-                    <div>
-                      <div className="font-semibold text-white mb-1">Career Development</div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div>Seasons: {player.stats?.length || 0}</div>
-                        <div>Peak OVR: {player.stats ? Math.max(...player.stats.map((s: any) => s.ovr || 0)) : 0}</div>
-                        <div>Position: {player.stats?.[player.stats.length - 1]?.pos || 'N/A'}</div>
-                        <div>Win Shares: {player.careerWinShares || 0}</div>
-                        <div>Quality: {player.quality || 50}</div>
-                        <div>Status: {isRetired ? "Retired" : "Active"}</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-            })()}
+              <div>
+                <div className="font-semibold text-white mb-1">Career Summary</div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div>Seasons: {player.stats?.length || 0}</div>
+                  <div>Peak OVR: {player.stats ? Math.max(...player.stats.map((s: any) => s.ovr || 0)) : 0}</div>
+                  <div>Position: {player.stats?.[player.stats.length - 1]?.pos || 'N/A'}</div>
+                  <div>Win Shares: {player.careerWinShares || 0}</div>
+                  <div>Quality: {player.quality || 50}</div>
+                  <div>Status: {player.achievements?.includes("Retired") ? "Retired" : "Active"}</div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Awards Section */}
@@ -177,15 +82,20 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
               <h3 className="font-semibold text-yellow-300 mb-2">Awards</h3>
               <div className="space-y-1 max-h-32 overflow-y-auto text-sm">
                 {(() => {
-                  // Filter out generic achievements and only show specific awards
+                  // Filter out generic statistical achievements and only show actual awards
                   const awardsToShow = player.achievements.filter((achievement: string) => {
-                    const genericAchievements = [
+                    const statisticalAchievements = [
                       "20000+ Points", "5000+ Assists", "20+ Points Per Game", 
                       "5+ Assists Per Game", "1+ Block Per Game", "1+ Steal Per Game",
-                      "First Round Draft Pick"
+                      "First Round Draft Pick", "Born Outside US 50 States and DC",
+                      "Retired"  // Status, not an award
                     ];
-                    return !genericAchievements.includes(achievement);
+                    return !statisticalAchievements.includes(achievement);
                   });
+                  
+                  if (awardsToShow.length === 0) {
+                    return <div className="text-gray-400 text-xs">No awards available in this export</div>;
+                  }
                   
                   return awardsToShow.map((achievement: string, idx: number) => (
                     <div key={idx}>{achievement}</div>
