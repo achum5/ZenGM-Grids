@@ -79,7 +79,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   if (!player) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center text-center p-2">
-        <div className="text-sm font-bold text-white mb-2 leading-tight">
+        <div className="text-sm font-bold text-white mb-1 leading-tight">
           {playerName}
         </div>
         <div className="text-xs text-white opacity-80">
@@ -166,14 +166,14 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer"
         onClick={() => setShowExpanded(true)}
       >
-        <div className="text-sm font-bold text-white mb-2 leading-tight">{playerName}</div>
+        <div className="text-sm font-bold text-white mb-1 leading-tight">{playerName}</div>
         {/* Show ALL teams for incorrect answers too */}
         {player.years && player.years.length > 0 ? (
           <div className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto flex flex-col justify-center">
             <div className="break-words space-y-0.5">
               {player.years.map((teamYear, idx) => (
                 <div key={`${teamYear.team}-${teamYear.start}`} className="block">
-                  {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+                  {getTeamAbbr(teamYear.team)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                 </div>
               ))}
             </div>
@@ -204,7 +204,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
             {player.years?.map((teamYear, idx) => (
               <span key={`${teamYear.team}-${teamYear.start}`} className="whitespace-nowrap">
-                {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+                {getTeamAbbr(teamYear.team)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                 {idx < (player.years?.length || 0) - 1 && ','}
               </span>
             )) || player.teams.map((team, idx) => (
@@ -259,7 +259,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       onClick={() => setShowExpanded(true)}
     >
       {/* Player name */}
-      <div className="text-sm font-bold text-white mb-2 leading-tight px-1 break-words hyphens-auto">
+      <div className="text-sm font-bold text-white mb-1 leading-tight px-1 break-words hyphens-auto">
         {playerName}
       </div>
       
@@ -269,7 +269,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           <div className="break-words space-y-0.5">
             {player.years.map((teamYear, idx) => (
               <div key={`${teamYear.team}-${teamYear.start}`} className="block">
-                {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+                {getTeamAbbr(teamYear.team)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
               </div>
             ))}
           </div>
