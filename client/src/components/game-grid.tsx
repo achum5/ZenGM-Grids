@@ -237,16 +237,16 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     if (criteria.type === 'team') {
       // For now, display team name - can be enhanced with logos later
       return (
-        <div className="text-center w-16 h-16 flex items-center justify-center">
-          <div className="text-xs font-semibold text-white leading-tight text-center">
+        <div className="text-center w-full h-full flex items-center justify-center px-1">
+          <div className="text-xs sm:text-sm font-semibold text-white leading-tight text-center">
             {criteria.label}
           </div>
         </div>
       );
     }
     return (
-      <div className="text-center w-16 h-16 flex items-center justify-center">
-        <div className="text-xs font-semibold text-white leading-tight text-center">
+      <div className="text-center w-full h-full flex items-center justify-center px-1">
+        <div className="text-xs sm:text-sm font-semibold text-white leading-tight text-center">
           {criteria.label}
         </div>
       </div>
@@ -254,29 +254,29 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
   };
 
   return (
-    <div className="bg-slate-800 dark:bg-slate-900 p-8 rounded-xl">
+    <div className="bg-slate-800 dark:bg-slate-900 p-4 sm:p-8 rounded-xl">
       {/* Header with stats */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
         <div className="text-white">
-          <h2 className="text-xl font-bold">Immaculate Grid</h2>
+          <h2 className="text-xl sm:text-2xl font-bold">Immaculate Grid</h2>
         </div>
         
         {/* Stats display */}
-        <div className="flex items-center space-x-6 text-white">
+        <div className="flex items-center space-x-4 sm:space-x-6 text-white">
           <div className="text-center">
-            <div className="text-2xl font-bold text-green-400" data-testid="text-correct-answers">
+            <div className="text-xl sm:text-2xl font-bold text-green-400" data-testid="text-correct-answers">
               {correctAnswers}
             </div>
             <div className="text-xs text-gray-300">CORRECT</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
+            <div className="text-xl sm:text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
               {incorrectAnswers}
             </div>
             <div className="text-xs text-gray-300">INCORRECT</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-white" data-testid="text-remaining-cells">
+            <div className="text-xl sm:text-2xl font-bold text-white" data-testid="text-remaining-cells">
               {remainingCells}
             </div>
             <div className="text-xs text-gray-300">GUESSES LEFT</div>
@@ -285,7 +285,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       </div>
 
       {/* Game Grid */}
-      <div className="grid grid-cols-4 gap-1 max-w-2xl mx-auto">
+      <div className="grid grid-cols-4 gap-1 sm:gap-2 max-w-xs sm:max-w-2xl mx-auto">
         {/* Top-left empty cell */}
         <div className="aspect-square"></div>
         
@@ -293,7 +293,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         {game.columnCriteria.map((criteria, index) => (
           <div
             key={`col-${index}`}
-            className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center"
+            className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center rounded-sm"
             data-testid={`header-column-${index}`}
           >
             {renderTeamHeader(criteria)}
@@ -305,7 +305,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
-              className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center"
+              className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center rounded-sm"
               data-testid={`header-row-${rowIndex}`}
             >
               {renderTeamHeader(rowCriteria)}
@@ -322,7 +322,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                 <div key={cellKey} className="relative aspect-square">
                   <Button
                     variant="ghost"
-                    className={`w-full h-full border-0 transition-all duration-200 relative overflow-hidden group ${
+                    className={`w-full h-full border-0 transition-all duration-200 relative overflow-hidden group rounded-sm ${
                       isAnswered
                         ? isCorrect
                           ? "bg-green-500 hover:bg-green-600"
