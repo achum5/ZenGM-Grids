@@ -50,7 +50,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-court">Immaculate Grid</h1>
-                <p className="text-sm text-gray-500">Basketball Edition</p>
+                <p className="text-sm text-gray-500">Basketball-GM Edition</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">

@@ -10,6 +10,34 @@ import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type Fil
 
 const gunzipAsync = promisify(gunzip);
 
+function sample<T>(arr: T[], n: number): T[] {
+  return [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+}
+
+function buildCorrectAnswers(
+  players: any[],
+  columnCriteria: { value: string }[],
+  rowCriteria: { value: string }[]
+) {
+  const correctAnswers: Record<string, string[]> = {};
+  for (let row = 0; row < rowCriteria.length; row++) {
+    for (let col = 0; col < columnCriteria.length; col++) {
+      const team = columnCriteria[col].value;
+      const ach = rowCriteria[row].value;
+      const valid = players
+        .filter(p => p.teams.includes(team) && p.achievements.includes(ach))
+        .map(p => p.name);
+      correctAnswers[`${row},${col}`] = valid;
+    }
+  }
+  return correctAnswers;
+}
+
+function gridIsValid(correctAnswers: Record<string, string[]>) {
+  return Object.values(correctAnswers).every(list => Array.isArray(list) && list.length > 0);
+}
+
+
 interface MulterRequest extends Request {
   file?: multer.File;
 }
@@ -251,64 +279,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate a new game grid
-  app.post("/api/games/generate", async (req, res) => {
-    try {
-      const players = await storage.getPlayers();
-      if (players.length === 0) {
-        return res.status(400).json({ message: "No players data available. Please upload a league file first." });
-      }
+      // Generate a new game grid
+      app.post("/api/games/generate", async (req, res) => {
+        try {
+          const players = await storage.getPlayers();
+          if (players.length === 0) {
+            return res.status(400).json({ 
+              message: "No players data available. Please upload a league file first." 
+            });
+          }
 
-      // Get unique teams and achievements
-      const teams = Array.from(new Set(players.flatMap(p => p.teams)));
-      const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
+          // Get unique teams and achievements
+          const teams = Array.from(new Set(players.flatMap(p => p.teams)));
+          const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
 
-      if (teams.length < 3 || achievements.length < 3) {
-        return res.status(400).json({ message: "Not enough data to generate a grid. Need at least 3 teams and 3 achievements." });
-      }
+          if (teams.length < 3 || achievements.length < 3) {
+            return res.status(400).json({ 
+              message: "Not enough data to generate a grid. Need at least 3 teams and 3 achievements." 
+            });
+          }
 
-      // Randomly select criteria
-      const selectedTeams = teams.sort(() => 0.5 - Math.random()).slice(0, 3);
-      const selectedAchievements = achievements.sort(() => 0.5 - Math.random()).slice(0, 3);
+          // Randomly select criteria
+          const selectedTeams = teams.sort(() => 0.5 - Math.random()).slice(0, 3);
+          const selectedAchievements = achievements.sort(() => 0.5 - Math.random()).slice(0, 3);
 
-      const columnCriteria: GridCriteria[] = selectedTeams.map(team => ({
-        label: team,
-        type: "team",
-        value: team
-      }));
+          const columnCriteria: GridCriteria[] = selectedTeams.map(team => ({
+            label: team,
+            type: "team",
+            value: team,
+          }));
 
-      const rowCriteria: GridCriteria[] = selectedAchievements.map(achievement => ({
-        label: achievement,
-        type: "achievement",
-        value: achievement
-      }));
+          const rowCriteria: GridCriteria[] = selectedAchievements.map(achievement => ({
+            label: achievement,
+            type: "achievement",
+            value: achievement,
+          }));
 
-      // Generate correct answers for each cell
-      const correctAnswers: { [key: string]: string[] } = {};
-      
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-          const cellKey = `${row},${col}`;
-          const teamCriteria = columnCriteria[col];
-          const achievementCriteria = rowCriteria[row];
-          
-          const validPlayers = players.filter(player =>
-            player.teams.includes(teamCriteria.value) &&
-            player.achievements.includes(achievementCriteria.value)
-          );
-          
-          correctAnswers[cellKey] = validPlayers.map(p => p.name);
+          // Generate correct answers for each cell
+          const correctAnswers: { [key: string]: string[] } = {};
+
+          for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+              const cellKey = `${row}_${col}`;
+              const teamCriteria = columnCriteria[col];
+              const achievementCriteria = rowCriteria[row];
+
+              const validPlayers = players.filter(player =>
+                player.teams.includes(teamCriteria.value) &&
+                player.achievements.includes(achievementCriteria.value)
+              );
+
+              correctAnswers[cellKey] = validPlayers.map(p => p.name);
+            }
+          }
+
+          const gameData = InsertGameSchema.parse({
+            columnCriteria,
+            rowCriteria,
+            correctAnswers,
+          });
+
+          const newGame = await storage.createGame(gameData);
+          res.json(newGame);
+
+        } catch (error: any) {
+          console.error("Generate game error:", error);
+          res.status(500).json({ 
+            message: error instanceof Error ? error.message : "Failed to generate game" 
+          });
         }
-      }
-
-      const gameData = insertGameSchema.parse({
-        columnCriteria,
-        rowCriteria,
-        correctAnswers
       });
 
-      const game = await storage.createGame(gameData);
-      res.json(game);
-    } catch (error) {
       console.error("Generate game error:", error);
       res.status(500).json({ message: error instanceof Error ? error.message : "Failed to generate game" });
     }
