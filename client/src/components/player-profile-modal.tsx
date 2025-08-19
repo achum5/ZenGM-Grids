@@ -57,34 +57,37 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
             
             {player.stats && Array.isArray(player.stats) && player.stats.length > 0 && (
               <div className="space-y-3 text-sm">
+                {/* Debug: log the stats structure */}
+                {console.log('Player stats structure:', player.stats[0]) || ''}
                 {/* Career Totals */}
                 <div>
                   <div className="font-semibold text-white mb-1">Career</div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>G: {player.stats.reduce((sum: number, s: any) => sum + (s.gp || 0), 0)}</div>
-                    <div>PTS: {player.stats.reduce((sum: number, s: any) => sum + (s.pts || 0), 0).toFixed(0)}</div>
-                    <div>REB: {player.stats.reduce((sum: number, s: any) => sum + (s.trb || 0), 0).toFixed(0)}</div>
-                    <div>AST: {player.stats.reduce((sum: number, s: any) => sum + (s.ast || 0), 0).toFixed(0)}</div>
-                    <div>FG%: {(player.stats.reduce((sum: number, s: any) => sum + (s.fgp || 0), 0) / player.stats.length).toFixed(1)}%</div>
-                    <div>FT%: {(player.stats.reduce((sum: number, s: any) => sum + (s.ftp || 0), 0) / player.stats.length).toFixed(1)}%</div>
+                    <div>Seasons: {player.stats.length}</div>
+                    <div>Peak OVR: {Math.max(...player.stats.map((s: any) => s.ovr || 0))}</div>
+                    <div>Peak Season: {player.stats.reduce((best: any, current: any) => (current.ovr || 0) > (best.ovr || 0) ? current : best).season}</div>
+                    <div>Position: {player.stats[player.stats.length - 1]?.pos || 'N/A'}</div>
+                    <div>Win Shares: {player.careerWinShares || 0}</div>
+                    <div>Quality: {player.quality || 50}</div>
                   </div>
                 </div>
 
-                {/* Peak Season */}
+                {/* Peak Season Ratings */}
                 {(() => {
                   const peakSeason = player.stats.reduce((best: any, current: any) => 
-                    (current.pts || 0) > (best.pts || 0) ? current : best
+                    (current.ovr || 0) > (best.ovr || 0) ? current : best
                   );
+                  
                   return (
                     <div>
                       <div className="font-semibold text-white mb-1">Peak Season ({peakSeason.season})</div>
                       <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div>G: {peakSeason.gp || 0}</div>
-                        <div>PPG: {(peakSeason.pts || 0).toFixed(1)}</div>
-                        <div>RPG: {(peakSeason.trb || 0).toFixed(1)}</div>
-                        <div>APG: {(peakSeason.ast || 0).toFixed(1)}</div>
-                        <div>FG%: {(peakSeason.fgp || 0).toFixed(1)}%</div>
-                        <div>FT%: {(peakSeason.ftp || 0).toFixed(1)}%</div>
+                        <div>OVR: {peakSeason.ovr}</div>
+                        <div>POT: {peakSeason.pot}</div>
+                        <div>POS: {peakSeason.pos}</div>
+                        <div>FG: {peakSeason.fg}</div>
+                        <div>FT: {peakSeason.ft}</div>
+                        <div>3P: {peakSeason.tp}</div>
                       </div>
                     </div>
                   );
