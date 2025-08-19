@@ -189,11 +189,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           }}
         >
         {/* Player Face */}
-        <div className="flex items-center justify-center mb-2">
+        <div className="flex items-center justify-center mb-1">
           <PlayerFace 
             face={player.face}
             imageUrl={player.imageUrl}
-            size={42} 
+            size={32} 
             className="rounded-full"
             teams={player.teams}
             currentTeam={player.years?.[player.years.length - 1]?.team}
@@ -201,10 +201,10 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         </div>
         
         {/* Player name */}
-        <div className="text-sm font-bold text-white leading-tight mb-1 text-center px-1 max-w-full break-words">{playerName}</div>
+        <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight mb-1 text-center px-1 max-w-full break-words">{playerName}</div>
         
         {/* Status */}
-        <div className="text-xs text-red-300 font-bold text-center">✗ Wrong</div>
+        <div className="text-[8px] sm:text-xs text-red-300 font-bold text-center">✗ Wrong</div>
       </div>
       
       <PlayerProfileModal 
@@ -311,11 +311,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         }}
       >
       {/* Player Face */}
-      <div className="flex items-center justify-center mb-2">
+      <div className="flex items-center justify-center mb-1">
         <PlayerFace 
           face={player.face}
           imageUrl={player.imageUrl}
-          size={42} 
+          size={32} 
           className="rounded-full"
           teams={player.teams}
           currentTeam={player.years?.[player.years.length - 1]?.team}
@@ -323,12 +323,12 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       </div>
       
       {/* Player name */}
-      <div className="text-sm font-bold text-white leading-tight text-center break-words mb-1 px-1 max-w-full">
+      <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight text-center break-words mb-1 px-1 max-w-full">
         {playerName}
       </div>
       
       {/* Minimal status info */}
-      <div className="text-xs text-green-300 font-bold text-center">
+      <div className="text-[8px] sm:text-xs text-green-300 font-bold text-center">
         ✓ Correct
       </div>
     </div>

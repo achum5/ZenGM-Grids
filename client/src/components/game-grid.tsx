@@ -238,7 +238,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       // For now, display team name - can be enhanced with logos later
       return (
         <div className="text-center w-full h-full flex items-center justify-center px-1">
-          <div className="text-xs font-semibold text-white leading-tight text-center break-words">
+          <div className="text-[9px] sm:text-xs font-semibold text-white leading-tight text-center break-words">
             {criteria.label}
           </div>
         </div>
