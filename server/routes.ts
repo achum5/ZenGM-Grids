@@ -190,7 +190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedPlayers: any[] = [];
       const errors: string[] = [];
       
-      for (let i = 0; i < Math.min(players.length, 100); i++) { // Limit to first 100 for performance
+      for (let i = 0; i < players.length; i++) { // Process all players
         try {
           // Apply defaults before validation
           const playerWithDefaults = {
@@ -205,9 +205,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           validatedPlayers.push(validatedPlayer);
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Validation failed';
-          errors.push(`Player ${i + 1} (${players[i]?.name || 'unnamed'}): ${errorMsg}`);
-          if (i < 5) { // Only log first 5 errors to avoid spam
-            console.log(`Validation error for player ${i + 1}:`, errorMsg, JSON.stringify(players[i], null, 2));
+          if (errors.length < 10) { // Only store first 10 errors to save memory
+            errors.push(`Player ${i + 1} (${players[i]?.name || 'unnamed'}): ${errorMsg}`);
+          }
+          if (i < 3) { // Only log first 3 errors to avoid spam
+            console.log(`Validation error for player ${i + 1}:`, errorMsg);
           }
           // Skip invalid players but continue processing
           continue;
@@ -215,6 +217,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       console.log(`Successfully validated ${validatedPlayers.length} out of ${players.length} players`);
+      if (errors.length > 0) {
+        console.log(`First few errors:`, errors.slice(0, 3));
+      }
       
       if (validatedPlayers.length === 0) {
         return res.status(400).json({ 
