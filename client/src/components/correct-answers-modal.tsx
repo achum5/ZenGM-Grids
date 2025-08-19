@@ -21,13 +21,13 @@ export function CorrectAnswersModal({
 }: CorrectAnswersModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl mx-auto bg-slate-800 border-slate-700">
+      <DialogContent className="max-w-2xl mx-auto bg-slate-800 border-slate-700" aria-describedby="correct-answers-description">
         <DialogHeader className="text-center pb-4">
           <div className="flex items-center justify-center space-x-2 mb-2">
             <CheckCircle className="h-6 w-6 text-green-400" />
             <DialogTitle className="text-xl font-bold text-white">Correct!</DialogTitle>
           </div>
-          <p className="text-gray-400 text-sm">
+          <p id="correct-answers-description" className="text-gray-400 text-sm">
             Players who played for both {cellCriteria.row} and {cellCriteria.column}
           </p>
         </DialogHeader>

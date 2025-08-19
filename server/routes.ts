@@ -236,11 +236,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
           
-          // Extract achievements from player data
+          // Process achievements and career stats for Immaculate Grid rules
           const achievements: string[] = [];
-          if (player.awards && Array.isArray(player.awards)) {
-            achievements.push(...player.awards.map((award: any) => award.type || 'Award'));
+          let careerStats = {
+            points: 0,
+            rebounds: 0,
+            assists: 0,
+            blocks: 0,
+            steals: 0,
+            games: 0
+          };
+          
+          // Calculate career totals from stats
+          if (player.stats && Array.isArray(player.stats)) {
+            player.stats.forEach((season: any) => {
+              const gp = season.gp || 0;
+              careerStats.points += (season.pts || 0) * gp;
+              careerStats.rebounds += (season.trb || 0) * gp;
+              careerStats.assists += (season.ast || 0) * gp;
+              careerStats.blocks += (season.blk || 0) * gp;
+              careerStats.steals += (season.stl || 0) * gp;
+              careerStats.games += gp;
+            });
           }
+
+          // Add career milestone achievements based on Immaculate Grid rules
+          if (careerStats.points >= 20000) achievements.push("20000+ Points");
+          if (careerStats.rebounds >= 10000) achievements.push("10000+ Rebounds");
+          if (careerStats.assists >= 5000) achievements.push("5000+ Assists");
+
+          // Check for season-based statistical achievements
+          if (player.stats && Array.isArray(player.stats)) {
+            let hasHighScoring = false;
+            let hasModerateScoring = false;
+            let hasGoodRebounder = false;
+            let hasGoodPasser = false;
+            let hasGoodBlocker = false;
+            let hasGoodStealer = false;
+            
+            player.stats.forEach((season: any) => {
+              const gamesPlayed = season.gp || 1;
+              if (gamesPlayed < 20) return; // Minimum games threshold
+              
+              const ppg = (season.pts || 0);
+              const rpg = (season.trb || 0);
+              const apg = (season.ast || 0);
+              const bpg = (season.blk || 0);
+              const spg = (season.stl || 0);
+              
+              if (ppg >= 20 && !hasHighScoring) {
+                achievements.push("20+ Points Per Game");
+                hasHighScoring = true;
+              } else if (ppg >= 10 && !hasModerateScoring && !hasHighScoring) {
+                achievements.push("10+ Points Per Game");
+                hasModerateScoring = true;
+              }
+              
+              if (rpg >= 10 && !hasGoodRebounder) {
+                achievements.push("10+ Rebounds Per Game");
+                hasGoodRebounder = true;
+              }
+              
+              if (apg >= 5 && !hasGoodPasser) {
+                achievements.push("5+ Assists Per Game");
+                hasGoodPasser = true;
+              }
+              
+              if (bpg >= 1 && !hasGoodBlocker) {
+                achievements.push("1+ Block Per Game");
+                hasGoodBlocker = true;
+              }
+              
+              if (spg >= 1 && !hasGoodStealer) {
+                achievements.push("1+ Steal Per Game");
+                hasGoodStealer = true;
+              }
+            });
+          }
+          
+          // Process awards from BBGM data with Immaculate Grid mappings
+          if (player.awards && Array.isArray(player.awards)) {
+            player.awards.forEach((award: any) => {
+              if (award.type) {
+                switch (award.type) {
+                  case "Champion":
+                    achievements.push("League Champ");
+                    break;
+                  case "Finals MVP":
+                    achievements.push("Finals MVP");
+                    break;
+                  case "MVP":
+                    achievements.push("MVP");
+                    break;
+                  case "DPOY":
+                    achievements.push("Defensive Player of the Year");
+                    break;
+                  case "SMOY":
+                    achievements.push("Sixth Man of the Year");
+                    break;
+                  case "ROY":
+                    achievements.push("Rookie of the Year");
+                    break;
+                  case "All Star":
+                    achievements.push("All Star");
+                    break;
+                  case "All-League":
+                    achievements.push("All-NBA");
+                    break;
+                  case "All-Rookie":
+                    achievements.push("All-Rookie Team");
+                    break;
+                }
+              }
+            });
+          }
+
+          // Check special categories based on Immaculate Grid rules
+          if (player.born && player.born.loc) {
+            const birthplace = player.born.loc.toLowerCase();
+            if (!birthplace.includes("usa") && !birthplace.includes("united states") && 
+                !birthplace.includes("us") && !birthplace.includes("america")) {
+              achievements.push("Born Outside US 50 States and DC");
+            }
+          }
+          
+          // Check draft status
+          if (player.draft && player.draft.round === 1) {
+            achievements.push("First Round Draft Pick");
+          } else if (!player.draft || player.draft.round === 0 || player.draft.round === undefined) {
+            achievements.push("Undrafted");
+          }
+          
+          // Check if player played for only one team
+          if (allTeams.size === 1) {
+            achievements.push("Only One Team");
+          }
+          
+          // Hall of Fame and retirement status
           if (player.hof) achievements.push('Hall of Fame');
           if (player.retiredYear) achievements.push('Retired');
           
@@ -419,9 +551,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get unique teams and achievements
+      // Get unique teams and achievements (prioritize Immaculate Grid criteria)
       const teams = Array.from(new Set(players.flatMap(p => p.teams)));
-      const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
+      const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
+      
+      // Priority achievements for Immaculate Grid (most common and interesting combinations)
+      const priorityAchievements = [
+        "All Star",
+        "MVP", 
+        "Finals MVP",
+        "Rookie of the Year",
+        "Defensive Player of the Year",
+        "All-NBA",
+        "All-Rookie Team",
+        "League Champ",
+        "Hall of Fame",
+        "20+ Points Per Game",
+        "10+ Rebounds Per Game", 
+        "5+ Assists Per Game",
+        "20000+ Points",
+        "10000+ Rebounds",
+        "5000+ Assists",
+        "First Round Draft Pick",
+        "Undrafted",
+        "Only One Team",
+        "Born Outside US 50 States and DC"
+      ];
+      
+      // Use priority achievements that exist in our dataset
+      const achievements = priorityAchievements.filter(ach => 
+        allAchievements.includes(ach) && 
+        players.filter(p => p.achievements.includes(ach)).length >= 3 // At least 3 players
+      );
 
       if (teams.length < 3) {
         return res.status(400).json({ 
