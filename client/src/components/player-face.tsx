@@ -19,49 +19,10 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
         // Generate face - use provided face data or generate random
         const faceData = face ? face as any : generate();
         
-        // Create a temporary container to render face
-        const tempDiv = document.createElement('div');
-        display(tempDiv, faceData);
+        // Display the face normally
+        display(faceRef.current, faceData);
         
-        // Extract SVG and clean it
-        const originalSvg = tempDiv.querySelector('svg');
-        if (originalSvg) {
-          // Clone the SVG
-          const cleanSvg = originalSvg.cloneNode(true) as SVGElement;
-          
-          // Remove all background rectangles
-          const allRects = cleanSvg.querySelectorAll('rect');
-          allRects.forEach(rect => {
-            const fill = rect.getAttribute('fill');
-            const style = rect.getAttribute('style') || '';
-            
-            // Remove any white or light backgrounds
-            if (fill === '#ffffff' || fill === 'white' || fill === '#fff' || 
-                fill === '#f8f8f8' || fill === '#fefefe' || !fill ||
-                style.includes('fill:#ffffff') || style.includes('fill:white') ||
-                style.includes('fill:#fff') || style.includes('fill:#f8f8f8')) {
-              rect.remove();
-            }
-          });
-          
-          // Remove any background paths or circles that might be white
-          const allPaths = cleanSvg.querySelectorAll('path, circle, ellipse');
-          allPaths.forEach(element => {
-            const fill = element.getAttribute('fill');
-            const style = element.getAttribute('style') || '';
-            
-            if (fill === '#ffffff' || fill === 'white' || fill === '#fff' || 
-                fill === '#f8f8f8' || fill === '#fefefe' ||
-                style.includes('fill:#ffffff') || style.includes('fill:white')) {
-              element.remove();
-            }
-          });
-          
-          // Add cleaned SVG to container
-          faceRef.current.appendChild(cleanSvg);
-        }
-        
-        // Apply size styling to the cleaned SVG
+        // Apply size styling and hide white backgrounds with CSS
         const svg = faceRef.current.querySelector('svg');
         if (svg) {
           svg.style.width = `${size}px`;
@@ -69,7 +30,19 @@ export function PlayerFace({ face, size = 64, className = "" }: PlayerFaceProps)
           svg.style.maxWidth = '100%';
           svg.style.maxHeight = '100%';
           svg.style.overflow = 'visible';
-          svg.style.background = 'transparent';
+          
+          // Use CSS to hide white backgrounds without removing elements
+          const style = document.createElement('style');
+          style.textContent = `
+            svg rect[fill="#ffffff"],
+            svg rect[fill="white"],
+            svg rect[fill="#fff"],
+            svg rect[fill="#f8f8f8"] {
+              opacity: 0 !important;
+              display: none !important;
+            }
+          `;
+          svg.appendChild(style);
           
           // Ensure proper viewBox to prevent cutoff
           if (!svg.getAttribute('viewBox')) {
