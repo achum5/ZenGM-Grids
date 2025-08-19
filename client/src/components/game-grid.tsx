@@ -212,7 +212,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                         ? isCorrect
                           ? "border-green-300 bg-green-50"
                           : "border-red-300 bg-red-50"
-                        : "border-gray-200 bg-gray-50 hover:border-basketball hover:bg-orange-50"
+                        : "border-gray-200 bg-white hover:border-basketball hover:bg-orange-50 hover:shadow-md"
                     }`}
                     onClick={() => handleCellClick(rowIndex, colIndex)}
                     disabled={isAnswered || submitAnswerMutation.isPending}
@@ -227,7 +227,10 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                           </div>
                         </>
                       ) : (
-                        <div className="text-sm font-medium text-gray-400">Select Player</div>
+                        <div className="flex flex-col items-center justify-center h-full">
+                          <div className="text-2xl mb-1">🏀</div>
+                          <div className="text-xs font-medium text-gray-500">Select Player</div>
+                        </div>
                       )}
                     </div>
                   </Button>
