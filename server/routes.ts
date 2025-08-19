@@ -65,16 +65,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isJson) {
         const data = JSON.parse(fileContent);
-        let rawPlayers = Array.isArray(data) ? data : data.players || [];
+        let rawPlayers = [];
         
-        // Transform raw player data to our format with defaults
-        players = rawPlayers.map((player: any) => ({
-          name: player.name || (player.firstName && player.lastName ? `${player.firstName} ${player.lastName}` : "Unknown Player"),
-          teams: player.teams || (player.tid !== undefined ? [`Team ${player.tid}`] : []),
-          years: player.years || [],
-          achievements: player.achievements || [],
-          stats: player.stats || player.ratings || undefined
-        }));
+        // Handle BBGM format
+        if (data.players && Array.isArray(data.players)) {
+          rawPlayers = data.players;
+        } else if (Array.isArray(data)) {
+          rawPlayers = data;
+        } else {
+          return res.status(400).json({ message: "Invalid JSON format. Expected players array." });
+        }
+        
+        // Create team mapping from BBGM teams data
+        const teamMap = new Map<number, string>();
+        if (data.teams && Array.isArray(data.teams)) {
+          data.teams.forEach((team: any, index: number) => {
+            if (team && team.region && team.name) {
+              teamMap.set(index, `${team.region} ${team.name}`);
+            }
+          });
+        }
+        
+        // Transform BBGM player data to our format
+        players = rawPlayers.map((player: any) => {
+          const name = player.firstName && player.lastName 
+            ? `${player.firstName} ${player.lastName}` 
+            : player.name || "Unknown Player";
+          
+          // Map team ID to team name using BBGM teams data
+          const teams: string[] = [];
+          if (player.tid !== undefined && player.tid >= 0) {
+            const teamName = teamMap.get(player.tid) || `Team ${player.tid}`;
+            teams.push(teamName);
+          }
+          
+          // Also collect teams from stats history
+          const allTeams = new Set(teams);
+          if (player.stats && Array.isArray(player.stats)) {
+            player.stats.forEach((stat: any) => {
+              if (stat.tid !== undefined && stat.tid >= 0) {
+                const teamName = teamMap.get(stat.tid) || `Team ${stat.tid}`;
+                allTeams.add(teamName);
+              }
+            });
+          }
+          
+          // Extract achievements from player data
+          const achievements: string[] = [];
+          if (player.awards && Array.isArray(player.awards)) {
+            achievements.push(...player.awards.map((award: any) => award.type || 'Award'));
+          }
+          if (player.hof) achievements.push('Hall of Fame');
+          if (player.retiredYear) achievements.push('Retired');
+          
+          // Extract career years and teams from statistics
+          const years: { team: string; start: number; end: number }[] = [];
+          if (player.stats && Array.isArray(player.stats)) {
+            const teamYears = new Map<string, { start: number; end: number }>();
+            player.stats.forEach((stat: any) => {
+              if (stat.season && stat.tid !== undefined) {
+                const teamName = teamMap.get(stat.tid) || `Team ${stat.tid}`;
+                const existing = teamYears.get(teamName);
+                if (existing) {
+                  existing.start = Math.min(existing.start, stat.season);
+                  existing.end = Math.max(existing.end, stat.season);
+                } else {
+                  teamYears.set(teamName, { start: stat.season, end: stat.season });
+                }
+              }
+            });
+            teamYears.forEach((yearRange, teamName) => {
+              years.push({ team: teamName, ...yearRange });
+            });
+          }
+          
+          return {
+            name,
+            teams: Array.from(allTeams),
+            years,
+            achievements,
+            stats: player.ratings || player.stats || undefined
+          };
+        }).filter(p => p.name !== "Unknown Player"); // Only include players with valid names
       } else if (isCsv) {
         // Parse CSV
         const results: any[] = [];
