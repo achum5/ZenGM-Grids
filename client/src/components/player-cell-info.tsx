@@ -196,7 +196,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
             size={64} 
             className="rounded-full"
             teams={player.teams}
-            currentTeam={player.teams?.[player.teams.length - 1]}
+            currentTeam={player.years?.[player.years.length - 1]?.team}
           />
         </div>
         
@@ -318,7 +318,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           size={64} 
           className="rounded-full"
           teams={player.teams}
-          currentTeam={player.teams?.[player.teams.length - 1]}
+          currentTeam={player.years?.[player.years.length - 1]?.team}
         />
       </div>
       

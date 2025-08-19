@@ -92,10 +92,28 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         // Generate face - use provided face data or generate random
         let faceData = face ? face as any : generate();
         
-        // Determine team colors - prioritize current team, fallback to face data or default
+        // Determine team colors - prioritize current active team
         let teamColors: string[] = [];
+        let activeTeam = currentTeam;
         
-        if (currentTeam && TEAM_COLORS[currentTeam]) {
+        // If we have player data with years, find the current active team
+        // First try from the passed data, then from face data
+        const playerYears = (faceData && faceData.years) || [];
+        if (playerYears.length > 0) {
+          // For retired players or simulation years far in future, use their last team
+          // Sort by end year to get the most recent team
+          const sortedYears = [...playerYears].sort((a: any, b: any) => b.end - a.end);
+          const lastTeam = sortedYears[0];
+          if (lastTeam) {
+            activeTeam = lastTeam.team;
+          }
+        }
+        
+        // Try to use the active team's colors
+        if (activeTeam && TEAM_COLORS[activeTeam]) {
+          teamColors = TEAM_COLORS[activeTeam];
+          console.log(`Using mapped colors for active team ${activeTeam}:`, teamColors);
+        } else if (currentTeam && TEAM_COLORS[currentTeam]) {
           teamColors = TEAM_COLORS[currentTeam];
           console.log(`Using mapped colors for ${currentTeam}:`, teamColors);
         } else if (teams.length > 0) {

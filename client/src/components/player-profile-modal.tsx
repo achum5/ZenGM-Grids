@@ -31,7 +31,7 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
               size={80} 
               className="rounded-full mb-3"
               teams={player.teams}
-              currentTeam={player.teams?.[player.teams.length - 1]}
+              currentTeam={player.years?.[player.years.length - 1]?.team}
             />
             <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
