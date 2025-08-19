@@ -41,7 +41,22 @@ const teamAbbreviations: { [key: string]: string } = {
   "San Antonio Spurs": "SAS",
   "Toronto Raptors": "TOR",
   "Utah Jazz": "UTA",
-  "Washington Wizards": "WAS"
+  "Washington Wizards": "WAS",
+  
+  // Historical/Relocated Teams
+  "Seattle SuperSonics": "SEA",
+  "New Jersey Nets": "NJN",
+  "Charlotte Bobcats": "CHA",
+  "New Orleans Hornets": "NOH",
+  "Vancouver Grizzlies": "VAN",
+  "Kansas City Kings": "KCK",
+  "San Diego Clippers": "SDC",
+  "Buffalo Braves": "BUF",
+  "St. Louis Spirits": "STL",
+  "Columbus Crush": "COL",
+  "Washington Bullets": "WAS",
+  "Capital Bullets": "CAP",
+  "Baltimore Bullets": "BAL"
 };
 
 function getTeamAbbr(teamName: string): string {
@@ -64,7 +79,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   if (!player) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center text-center p-2">
-        <div className="text-xs font-semibold text-white mb-1 leading-tight">
+        <div className="text-sm font-bold text-white mb-2 leading-tight">
           {playerName}
         </div>
         <div className="text-xs text-white opacity-80">
@@ -151,7 +166,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer"
         onClick={() => setShowExpanded(true)}
       >
-        <div className="text-xs font-semibold text-white mb-1 leading-tight">{playerName}</div>
+        <div className="text-sm font-bold text-white mb-2 leading-tight">{playerName}</div>
         {/* Show ALL teams for incorrect answers too */}
         {player.years && player.years.length > 0 ? (
           <div className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto flex flex-col justify-center">
@@ -244,7 +259,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       onClick={() => setShowExpanded(true)}
     >
       {/* Player name */}
-      <div className="text-xs font-bold text-white mb-1 leading-tight px-1 break-words hyphens-auto">
+      <div className="text-sm font-bold text-white mb-2 leading-tight px-1 break-words hyphens-auto">
         {playerName}
       </div>
       
