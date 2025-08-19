@@ -152,13 +152,23 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         onClick={() => setShowExpanded(true)}
       >
         <div className="text-xs font-semibold text-white mb-1 leading-tight">{playerName}</div>
-        {/* Show team info even for incorrect answers */}
-        {primaryTeam && (
+        {/* Show ALL teams for incorrect answers too */}
+        {player.years && player.years.length > 0 ? (
+          <div className="text-xs text-blue-200 font-medium leading-tight px-1 text-center flex-1 overflow-y-auto">
+            <div className="break-words space-y-0.5">
+              {player.years.map((teamYear, idx) => (
+                <div key={`${teamYear.team}-${teamYear.start}`} className="block">
+                  {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : primaryTeam && (
           <div className="text-xs text-blue-200 font-medium mb-1 px-1 text-center break-words">
             {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
           </div>
         )}
-        <div className="text-xs text-red-200 font-bold">✗ Wrong</div>
+        <div className="text-xs text-red-200 font-bold mt-1">✗ Wrong</div>
       </div>
     );
   }
@@ -238,18 +248,15 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {playerName}
       </div>
       
-      {/* Show multiple teams in compact view */}
+      {/* Show ALL teams - prioritize this over other info */}
       {player.years && player.years.length > 0 ? (
-        <div className="text-xs text-blue-200 font-medium mb-1 leading-tight px-1 text-center">
-          <div className="break-words">
-            {player.years.slice(0, 2).map((teamYear, idx) => (
-              <span key={`${teamYear.team}-${teamYear.start}`} className="block">
+        <div className="text-xs text-blue-200 font-medium leading-tight px-1 text-center flex-1 overflow-y-auto">
+          <div className="break-words space-y-0.5">
+            {player.years.map((teamYear, idx) => (
+              <div key={`${teamYear.team}-${teamYear.start}`} className="block">
                 {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
-              </span>
+              </div>
             ))}
-            {player.years.length > 2 && (
-              <span className="text-blue-300">+{player.years.length - 2} more</span>
-            )}
           </div>
         </div>
       ) : primaryTeam && (
@@ -258,23 +265,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         </div>
       )}
       
-      {/* Career info */}
-      {careerStats.seasons > 0 ? (
-        <div className="text-xs text-gray-200 font-medium mb-1 px-1 text-center break-words">
-          {careerStats.seasons} seasons • Peak {peakSeason.ovr} OVR
-        </div>
-      ) : player.achievements && player.achievements.length > 0 ? (
-        <div className="text-xs text-gray-200 font-medium mb-1 px-1 text-center break-words">
-          {player.achievements.slice(0, 1).join(", ")}
-        </div>
-      ) : (
-        <div className="text-xs text-gray-200 font-medium mb-1 px-1 text-center">
-          Player
-        </div>
-      )}
-      
-      {/* Simple info */}
-      <div className="text-xs text-green-200 font-bold">
+      {/* Minimal status info */}
+      <div className="text-xs text-green-200 font-bold mt-1">
         ✓ Correct
       </div>
     </div>
