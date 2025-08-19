@@ -51,6 +51,13 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "" }: Player
         // Generate face - use provided face data or generate random
         const faceData = face ? face as any : generate();
         
+        // Ensure team colors are properly set if they exist in face data
+        if (faceData && faceData.teamColors && Array.isArray(faceData.teamColors)) {
+          console.log('Using team colors from face data:', faceData.teamColors);
+        } else {
+          console.log('No team colors found in face data, using defaults');
+        }
+        
         // Display the face normally
         display(faceRef.current, faceData);
         
