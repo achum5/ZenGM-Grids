@@ -199,7 +199,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
               {/* Grid cells */}
               {game.columnCriteria.map((_, colIndex) => {
                 const cellKey = `${rowIndex},${colIndex}`;
-                const answer = session?.answers[cellKey];
+                const answer = session?.answers?.[cellKey];
                 const isAnswered = !!answer;
                 const isCorrect = answer?.correct;
                 

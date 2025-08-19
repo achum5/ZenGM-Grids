@@ -79,6 +79,9 @@ export class MemStorage implements IStorage {
   async createGameSession(insertSession: InsertGameSession): Promise<GameSession> {
     const id = randomUUID();
     const session: GameSession = { 
+      answers: {},
+      score: 0,
+      completed: false,
       ...insertSession, 
       id,
       createdAt: new Date().toISOString()
