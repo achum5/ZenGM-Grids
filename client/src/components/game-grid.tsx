@@ -329,8 +329,16 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                           : "bg-red-500 hover:bg-red-600"
                         : "bg-slate-600 dark:bg-slate-700 hover:bg-slate-500 dark:hover:bg-slate-600"
                     }`}
-                    onClick={() => handleCellClick(rowIndex, colIndex)}
-                    disabled={isAnswered || submitAnswerMutation.isPending}
+                    onClick={(e) => {
+                      // Don't handle click if cell is answered (let PlayerCellInfo handle it)
+                      if (isAnswered) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      handleCellClick(rowIndex, colIndex);
+                    }}
+                    disabled={submitAnswerMutation.isPending}
                     data-testid={`cell-${rowIndex}-${colIndex}`}
                   >
                     {isAnswered && (

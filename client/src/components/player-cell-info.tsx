@@ -183,6 +183,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
           onClick={(e) => {
             console.log('Wrong tile clicked for player:', playerName);
+            e.preventDefault();
             e.stopPropagation();
             setShowProfileModal(true);
           }}
@@ -300,6 +301,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
         onClick={(e) => {
           console.log('Correct tile clicked for player:', playerName);
+          e.preventDefault();
           e.stopPropagation();
           setShowProfileModal(true);
         }}
