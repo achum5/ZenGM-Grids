@@ -37,6 +37,8 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
         title: "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
+      // Automatically generate a new grid after successful upload
+      generateGameMutation.mutate();
     },
     onError: (error) => {
       toast({
