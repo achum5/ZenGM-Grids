@@ -225,11 +225,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             teams.push(teamName);
           }
           
-          // Also collect teams from stats history
+          // Also collect teams from stats history - only include teams where player actually played games
           const allTeams = new Set(teams);
           if (player.stats && Array.isArray(player.stats)) {
             player.stats.forEach((stat: any) => {
-              if (stat.tid !== undefined && stat.tid >= 0) {
+              // Only include teams where the player actually played games
+              if (stat.tid !== undefined && stat.tid >= 0 && (stat.gp || 0) > 0) {
                 const teamInfo = teamMap.get(stat.tid);
                 const teamName = teamInfo?.name || `Team ${stat.tid}`;
                 allTeams.add(teamName);
@@ -377,12 +378,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (player.hof) achievements.push('Hall of Fame');
           if (player.retiredYear) achievements.push('Retired');
           
-          // Extract career years and teams from statistics
+          // Extract career years and teams from statistics - only include seasons where games were played
           const years: { team: string; start: number; end: number }[] = [];
           if (player.stats && Array.isArray(player.stats)) {
             const teamYears = new Map<string, { start: number; end: number }>();
             player.stats.forEach((stat: any) => {
-              if (stat.season && stat.tid !== undefined) {
+              // Only include seasons where the player actually played games
+              if (stat.season && stat.tid !== undefined && (stat.gp || 0) > 0) {
                 const teamInfo = teamMap.get(stat.tid);
                 const teamName = teamInfo?.name || `Team ${stat.tid}`;
                 const existing = teamYears.get(teamName);
