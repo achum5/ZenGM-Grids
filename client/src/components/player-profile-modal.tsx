@@ -38,11 +38,14 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
             <h3 className="font-semibold text-blue-300 mb-2">Teams</h3>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {player.years && player.years.length > 0 ? (
-                player.years.map((teamYear, idx) => (
-                  <div key={`${teamYear.team}-${teamYear.start}`} className="text-sm">
-                    {teamYear.team} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
-                  </div>
-                ))
+                // Sort teams chronologically by start year
+                [...player.years]
+                  .sort((a, b) => a.start - b.start)
+                  .map((teamYear, idx) => (
+                    <div key={`${teamYear.team}-${teamYear.start}-${idx}`} className="text-sm">
+                      {teamYear.team} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
+                    </div>
+                  ))
               ) : (
                 player.teams.map((team, idx) => (
                   <div key={team} className="text-sm">{team}</div>
