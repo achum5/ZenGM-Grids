@@ -227,8 +227,8 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                           </div>
                         </>
                       ) : (
-                        <div className="flex flex-col items-center justify-center mt-1.5 -ml-1">
-                          <div className="text-2xl leading-none mb-1">🏀</div>
+                        <div className="flex flex-col items-center justify-center" style={{ marginTop: '6px', marginLeft: '-4px' }}>
+                          <div className="text-2xl leading-none" style={{ marginBottom: '4px' }}>🏀</div>
                           <div className="text-xs font-medium text-gray-500 leading-tight">Select Player</div>
                         </div>
                       )}
