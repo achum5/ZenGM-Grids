@@ -51,24 +51,69 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
             </div>
           </div>
 
-          {/* Achievements Section */}
+          {/* Player Statistics */}
+          <div className="bg-slate-700 rounded-lg p-4">
+            <h3 className="font-semibold text-blue-300 mb-3">Statistics</h3>
+            
+            {player.stats && Array.isArray(player.stats) && player.stats.length > 0 && (
+              <div className="space-y-3 text-sm">
+                {/* Career Totals */}
+                <div>
+                  <div className="font-semibold text-white mb-1">Career</div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>G: {player.stats.reduce((sum: number, s: any) => sum + (s.gp || 0), 0)}</div>
+                    <div>PTS: {player.stats.reduce((sum: number, s: any) => sum + (s.pts || 0), 0).toFixed(0)}</div>
+                    <div>REB: {player.stats.reduce((sum: number, s: any) => sum + (s.trb || 0), 0).toFixed(0)}</div>
+                    <div>AST: {player.stats.reduce((sum: number, s: any) => sum + (s.ast || 0), 0).toFixed(0)}</div>
+                    <div>FG%: {(player.stats.reduce((sum: number, s: any) => sum + (s.fgp || 0), 0) / player.stats.length).toFixed(1)}%</div>
+                    <div>FT%: {(player.stats.reduce((sum: number, s: any) => sum + (s.ftp || 0), 0) / player.stats.length).toFixed(1)}%</div>
+                  </div>
+                </div>
+
+                {/* Peak Season */}
+                {(() => {
+                  const peakSeason = player.stats.reduce((best: any, current: any) => 
+                    (current.pts || 0) > (best.pts || 0) ? current : best
+                  );
+                  return (
+                    <div>
+                      <div className="font-semibold text-white mb-1">Peak Season ({peakSeason.season})</div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div>G: {peakSeason.gp || 0}</div>
+                        <div>PPG: {(peakSeason.pts || 0).toFixed(1)}</div>
+                        <div>RPG: {(peakSeason.trb || 0).toFixed(1)}</div>
+                        <div>APG: {(peakSeason.ast || 0).toFixed(1)}</div>
+                        <div>FG%: {(peakSeason.fgp || 0).toFixed(1)}%</div>
+                        <div>FT%: {(peakSeason.ftp || 0).toFixed(1)}%</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Awards Section */}
           {player.achievements && player.achievements.length > 0 && (
             <div className="bg-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-green-300 mb-2">Achievements</h3>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
+              <h3 className="font-semibold text-yellow-300 mb-2">Awards</h3>
+              <div className="space-y-1 max-h-32 overflow-y-auto text-sm">
                 {player.achievements.map((achievement, idx) => (
-                  <div key={idx} className="text-sm">{achievement}</div>
+                  <div key={idx}>{achievement}</div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Career Stats */}
+          {/* Career Info */}
           <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-yellow-300 mb-2">Career Info</h3>
+            <h3 className="font-semibold text-green-300 mb-2">Career Info</h3>
             <div className="text-sm space-y-1">
               <div>Career Win Shares: {player.careerWinShares || 0}</div>
               <div>Player Quality: {player.quality || 50}</div>
+              {player.stats && Array.isArray(player.stats) && player.stats.length > 0 && (
+                <div>Seasons Played: {player.stats.length}</div>
+              )}
             </div>
           </div>
         </div>
