@@ -75,20 +75,45 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "" }: Player
             const primaryColor = faceData.teamColors[0];
             const secondaryColor = faceData.teamColors[1] || faceData.teamColors[0];
             
-            // Find jersey elements and apply team colors
-            const jerseyElements = svg.querySelectorAll('[id*="jersey"], [class*="jersey"], g[id*="jersey"] path, g[id*="jersey"] rect');
-            jerseyElements.forEach((element, index) => {
-              const color = index % 2 === 0 ? primaryColor : secondaryColor;
-              element.setAttribute('fill', color);
-            });
+            // Find and update jersey elements with team colors
+            console.log('Applying team colors:', primaryColor, secondaryColor);
             
-            // Also try to find elements with default jersey colors and replace them
-            const defaultJerseyColors = ['#0066cc', '#ff0000', '#0000ff', '#cc0000'];
-            defaultJerseyColors.forEach(defaultColor => {
-              const coloredElements = svg.querySelectorAll(`[fill="${defaultColor}"]`);
-              coloredElements.forEach((element, index) => {
+            // More comprehensive search for jersey elements
+            const jerseySelectors = [
+              '[id*="jersey"]',
+              '[class*="jersey"]', 
+              'g[id*="jersey"] path',
+              'g[id*="jersey"] rect',
+              'g[id*="jersey"] polygon',
+              '[fill="#0066cc"]', // Default blue
+              '[fill="#ff0000"]', // Default red
+              '[fill="#0000ff"]', // Default blue variant
+              '[fill="#cc0000"]', // Default red variant
+              '[fill="#4682b4"]', // Default steel blue
+              '[fill="#dc143c"]', // Default crimson
+              '[fill="#1e90ff"]', // Default dodger blue
+              '[fill="#b22222"]'  // Default fire brick
+            ];
+            
+            jerseySelectors.forEach(selector => {
+              const elements = svg.querySelectorAll(selector);
+              elements.forEach((element, index) => {
                 const color = index % 2 === 0 ? primaryColor : secondaryColor;
                 element.setAttribute('fill', color);
+                (element as HTMLElement).style.fill = color; // Also set style property
+                console.log(`Updated element ${selector} to color:`, color);
+              });
+            });
+            
+            // Find all path/rect elements within jersey groups and update them
+            const jerseyGroups = svg.querySelectorAll('g[id*="jersey"], g[class*="jersey"]');
+            jerseyGroups.forEach(group => {
+              const paths = group.querySelectorAll('path, rect, polygon, circle');
+              paths.forEach((element, index) => {
+                const color = index % 2 === 0 ? primaryColor : secondaryColor;
+                element.setAttribute('fill', color);
+                (element as HTMLElement).style.fill = color;
+                console.log('Updated jersey group element to color:', color);
               });
             });
           }
