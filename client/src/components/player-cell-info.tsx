@@ -30,7 +30,7 @@ const teamAbbreviations: { [key: string]: string } = {
   "Miami Heat": "MIA",
   "Milwaukee Bucks": "MIL",
   "Minnesota Timberwolves": "MIN",
-  "New Orleans Pelicans": "NOP",
+  "New Orleans Pelicans": "NOL",
   "New York Knicks": "NYK",
   "Oklahoma City Thunder": "OKC",
   "Orlando Magic": "ORL",
@@ -60,6 +60,7 @@ const teamAbbreviations: { [key: string]: string } = {
 };
 
 function getTeamAbbr(teamName: string): string {
+  // First check our comprehensive mapping, then fall back to server data or simple abbreviation
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 

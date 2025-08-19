@@ -71,6 +71,7 @@ export interface GridCriteria {
 
 export interface TeamInfo {
   name: string;
+  abbrev?: string;
   logo?: string;
 }
 

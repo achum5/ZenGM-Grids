@@ -193,19 +193,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Create team mapping from BBGM teams data
-        const teamMap = new Map<number, {name: string, logo?: string}>();
+        const teamMap = new Map<number, {name: string, abbrev: string, logo?: string}>();
         if (data.teams && Array.isArray(data.teams)) {
           console.log(`Found ${data.teams.length} teams in BBGM file`);
           data.teams.forEach((team: any, index: number) => {
             if (team && team.region && team.name) {
               const teamInfo = {
                 name: `${team.region} ${team.name}`,
+                abbrev: team.abbrev || team.tid || team.region?.substring(0, 3).toUpperCase() || 'UNK',
                 logo: team.imgURL || team.imgUrl || team.logo
               };
               teamMap.set(index, teamInfo);
             }
           });
-          console.log("Team mapping created:", Array.from(teamMap.entries()).slice(0, 5));
+          console.log("Team mapping with abbreviations created:", Array.from(teamMap.entries()).slice(0, 5));
         } else {
           console.log("No teams array found in BBGM file");
         }
@@ -494,7 +495,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teamNames = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
       
       // Define teamMap in the correct scope if it doesn't exist
-      let finalTeamMap = new Map<number, {name: string, logo?: string}>();
+      let finalTeamMap = new Map<number, {name: string, abbrev: string, logo?: string}>();
       if (isJson) {
         const data = JSON.parse(fileContent);
         if (data.teams && Array.isArray(data.teams)) {
@@ -502,6 +503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (team && team.region && team.name) {
               const teamInfo = {
                 name: `${team.region} ${team.name}`,
+                abbrev: team.abbrev || team.tid || team.region?.substring(0, 3).toUpperCase() || 'UNK',
                 logo: team.imgURL || team.imgUrl || team.logo
               };
               finalTeamMap.set(index, teamInfo);
@@ -512,9 +514,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const teams = teamNames.map(name => {
         // Find the team info from our mapping
-        const teamInfo = Array.from(finalTeamMap.values()).find((t: {name: string, logo?: string}) => t.name === name);
+        const teamInfo = Array.from(finalTeamMap.values()).find(t => t.name === name);
         return {
           name,
+          abbrev: teamInfo?.abbrev || name.substring(0, 3).toUpperCase(),
           logo: teamInfo?.logo
         };
       });
