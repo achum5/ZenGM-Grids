@@ -309,6 +309,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get a specific game by ID
+  app.get("/api/games/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const game = await storage.getGame(id);
+      
+      if (!game) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+      
+      res.json(game);
+    } catch (error) {
+      console.error("Get game error:", error);
+      res.status(500).json({ message: "Failed to retrieve game" });
+    }
+  });
+
   // Search players
   app.get("/api/players/search", async (req, res) => {
     try {
@@ -317,6 +334,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(players);
     } catch (error) {
       res.status(400).json({ message: "Invalid search query" });
+    }
+  });
+
+  // Get a specific session by ID
+  app.get("/api/sessions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const session = await storage.getGameSession(id);
+      
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      
+      res.json(session);
+    } catch (error) {
+      console.error("Get session error:", error);
+      res.status(500).json({ message: "Failed to retrieve session" });
     }
   });
 
