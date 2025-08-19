@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CloudUpload, FileCheck, X, Play } from "lucide-react";
+import { CloudUpload, FileCheck, X, Play, Loader2 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -124,7 +124,14 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
             disabled={uploadMutation.isPending}
             data-testid="button-browse-files"
           >
-            {uploadMutation.isPending ? "Uploading..." : "Browse Files"}
+            {uploadMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              "Browse Files"
+            )}
           </Button>
         </div>
 

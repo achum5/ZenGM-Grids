@@ -58,6 +58,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
       return response.json();
     },
     onSuccess: async (data) => {
+      console.log("Submit answer response:", data);
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions/stats"] });
       onScoreUpdate(data.session.score);

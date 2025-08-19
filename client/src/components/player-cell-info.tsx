@@ -154,7 +154,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         <div className="text-xs font-semibold text-white mb-1 leading-tight">{playerName}</div>
         {/* Show ALL teams for incorrect answers too */}
         {player.years && player.years.length > 0 ? (
-          <div className="text-xs text-blue-200 font-medium leading-tight px-1 text-center flex-1 overflow-y-auto">
+          <div className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto flex flex-col justify-center">
             <div className="break-words space-y-0.5">
               {player.years.map((teamYear, idx) => (
                 <div key={`${teamYear.team}-${teamYear.start}`} className="block">
@@ -164,11 +164,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
             </div>
           </div>
         ) : primaryTeam && (
-          <div className="text-xs text-blue-200 font-medium mb-1 px-1 text-center break-words">
+          <div className="text-xs text-white font-medium mb-1 px-1 text-center break-words">
             {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
           </div>
         )}
-        <div className="text-xs text-red-200 font-bold mt-1">✗ Wrong</div>
+        <div className="text-xs text-red-300 font-bold mt-1">✗ Wrong</div>
       </div>
     );
   }
@@ -250,7 +250,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       
       {/* Show ALL teams - prioritize this over other info */}
       {player.years && player.years.length > 0 ? (
-        <div className="text-xs text-blue-200 font-medium leading-tight px-1 text-center flex-1 overflow-y-auto">
+        <div className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto flex flex-col justify-center">
           <div className="break-words space-y-0.5">
             {player.years.map((teamYear, idx) => (
               <div key={`${teamYear.team}-${teamYear.start}`} className="block">
@@ -260,13 +260,13 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           </div>
         </div>
       ) : primaryTeam && (
-        <div className="text-xs text-blue-200 font-medium mb-1 px-1 text-center break-words">
+        <div className="text-xs text-white font-medium mb-1 px-1 text-center break-words">
           {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
         </div>
       )}
       
       {/* Minimal status info */}
-      <div className="text-xs text-green-200 font-bold mt-1">
+      <div className="text-xs text-green-300 font-bold mt-1">
         ✓ Correct
       </div>
     </div>
