@@ -189,12 +189,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
           
+          // Calculate career win shares from stats (if available)
+          let careerWinShares = 0;
+          if (player.stats && Array.isArray(player.stats)) {
+            player.stats.forEach((stat: any) => {
+              // BBGM uses 'ws' for win shares, but let's also check common variants
+              if (stat.ws !== undefined) {
+                careerWinShares += stat.ws || 0;
+              } else if (stat.winShares !== undefined) {
+                careerWinShares += stat.winShares || 0;
+              } else if (stat.WS !== undefined) {
+                careerWinShares += stat.WS || 0;
+              }
+            });
+          }
+          
+          // If no win shares found, use overall rating as a proxy
+          if (careerWinShares === 0 && player.ratings && Array.isArray(player.ratings)) {
+            const avgRating = player.ratings.reduce((sum: number, rating: any) => sum + (rating.ovr || 0), 0) / player.ratings.length;
+            careerWinShares = avgRating / 10; // Rough approximation
+          }
+
           return {
             name,
             teams: Array.from(allTeams),
             years,
             achievements,
-            stats: player.ratings || player.stats || undefined
+            stats: player.ratings || player.stats || undefined,
+            careerWinShares: Math.round(careerWinShares * 10) // Convert to integer (tenths)
           };
         }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
       } else {
@@ -218,7 +240,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             teams: players[i].teams || [],
             years: players[i].years || [],
             achievements: players[i].achievements || [],
-            stats: players[i].stats
+            stats: players[i].stats,
+            careerWinShares: players[i].careerWinShares || 0
           };
           
           const validatedPlayer = insertPlayerSchema.parse(playerWithDefaults);
@@ -522,10 +545,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         completed: isCompleted
       });
 
+      // Sort correct players by win shares (descending) when showing them
+      let sortedCorrectPlayers = correctPlayers;
+      if (!isCorrect && correctPlayers.length > 0) {
+        // Get full player data for sorting
+        const playerData = await Promise.all(
+          correctPlayers.map(async (playerName: string) => {
+            const players = await storage.searchPlayers(playerName);
+            return players.find(p => p.name === playerName);
+          })
+        );
+        
+        // Sort by career win shares (descending) and extract names
+        sortedCorrectPlayers = playerData
+          .filter(Boolean) // Remove any null/undefined results
+          .sort((a, b) => (b?.careerWinShares || 0) - (a?.careerWinShares || 0))
+          .map(p => p!.name);
+      }
+
       res.json({
         session: updatedSession,
         isCorrect,
-        correctPlayers: isCorrect ? [] : correctPlayers // Show all correct players when wrong
+        correctPlayers: isCorrect ? [] : sortedCorrectPlayers // Show sorted correct players when wrong
       });
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid answer data" });
