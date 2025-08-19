@@ -19,22 +19,22 @@ function buildCorrectAnswers(
   columnCriteria: { value: string }[],
   rowCriteria: { value: string }[]
 ) {
-  const correctAnswers: Record<string, string[]> = {};
-  for (let row = 0; row < rowCriteria.length; row++) {
-    for (let col = 0; col < columnCriteria.length; col++) {
-      const team = columnCriteria[col].value;
-      const ach = rowCriteria[row].value;
-      const valid = players
+  const out: Record<string, string[]> = {};
+  for (let r = 0; r < rowCriteria.length; r++) {
+    for (let c = 0; c < columnCriteria.length; c++) {
+      const team = columnCriteria[c].value;
+      const ach  = rowCriteria[r].value;
+      const names = players
         .filter(p => p.teams.includes(team) && p.achievements.includes(ach))
         .map(p => p.name);
-      correctAnswers[`${row},${col}`] = valid;
+      out[`${r}_${c}`] = names; // keep underscore key format
     }
   }
-  return correctAnswers;
+  return out;
 }
 
-function gridIsValid(correctAnswers: Record<string, string[]>) {
-  return Object.values(correctAnswers).every(list => Array.isArray(list) && list.length > 0);
+function gridIsValid(ca: Record<string, string[]>) {
+  return Object.values(ca).every(list => list && list.length > 0);
 }
 
 
@@ -286,58 +286,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Generate a new game grid
   app.post("/api/games/generate", async (req, res) => {
-        try {
-          const players = await storage.getPlayers();
-          if (players.length === 0) {
-            return res.status(400).json({ 
-              message: "No players data available. Please upload a league file first." 
-            });
-          }
+    try {
+      const players = await storage.getPlayers();
+      if (players.length === 0) {
+        return res.status(400).json({ 
+          message: "No players data available. Please upload a league file first." 
+        });
+      }
 
-          // Get unique teams and achievements
-          const teams = Array.from(new Set(players.flatMap(p => p.teams)));
-          const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
+      // Get unique teams and achievements
+      const teams = Array.from(new Set(players.flatMap(p => p.teams)));
+      const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
 
-          if (teams.length < 3 || achievements.length < 3) {
-            return res.status(400).json({ 
-              message: "Not enough data to generate a grid. Need at least 3 teams and 3 achievements." 
-            });
-          }
+      if (teams.length < 3 || achievements.length < 3) {
+        return res.status(400).json({ 
+          message: "Not enough data to generate a grid. Need at least 3 teams and 3 achievements." 
+        });
+      }
 
-          // Randomly select criteria
-          const selectedTeams = teams.sort(() => 0.5 - Math.random()).slice(0, 3);
-          const selectedAchievements = achievements.sort(() => 0.5 - Math.random()).slice(0, 3);
+      // Loop up to 200 attempts to find a valid grid
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const selectedTeams = sample(teams, 3);
+        const selectedAchievements = sample(achievements, 3);
 
-          const columnCriteria: GridCriteria[] = selectedTeams.map(team => ({
-            label: team,
-            type: "team",
-            value: team,
-          }));
+        const columnCriteria: GridCriteria[] = selectedTeams.map(team => ({
+          label: team,
+          type: "team",
+          value: team,
+        }));
 
-          const rowCriteria: GridCriteria[] = selectedAchievements.map(achievement => ({
-            label: achievement,
-            type: "achievement",
-            value: achievement,
-          }));
+        const rowCriteria: GridCriteria[] = selectedAchievements.map(achievement => ({
+          label: achievement,
+          type: "achievement",
+          value: achievement,
+        }));
 
-          // Generate correct answers for each cell
-          const correctAnswers: { [key: string]: string[] } = {};
+        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
 
-          for (let row = 0; row < 3; row++) {
-            for (let col = 0; col < 3; col++) {
-              const cellKey = `${row}_${col}`;
-              const teamCriteria = columnCriteria[col];
-              const achievementCriteria = rowCriteria[row];
-
-              const validPlayers = players.filter(player =>
-                player.teams.includes(teamCriteria.value) &&
-                player.achievements.includes(achievementCriteria.value)
-              );
-
-              correctAnswers[cellKey] = validPlayers.map(p => p.name);
-            }
-          }
-
+        if (gridIsValid(correctAnswers)) {
           const gameData = insertGameSchema.parse({
             columnCriteria,
             rowCriteria,
@@ -345,15 +331,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           const newGame = await storage.createGame(gameData);
-          res.json(newGame);
-
-        } catch (error: any) {
-          console.error("Generate game error:", error);
-          res.status(500).json({ 
-            message: error instanceof Error ? error.message : "Failed to generate game" 
-          });
+          return res.json(newGame);
         }
+      }
+
+      // If no valid grid after 200 tries
+      res.status(400).json({ 
+        message: "Couldn't generate a valid grid from this dataset. Try another league or add more seasons." 
       });
+
+    } catch (error: any) {
+      console.error("Generate game error:", error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to generate game" 
+      });
+    }
+  });
 
   // Get a specific game by ID
   app.get("/api/games/:id", async (req, res) => {
