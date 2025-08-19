@@ -177,31 +177,21 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   if (!isCorrect) {
     return (
       <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer"
+        className="w-full h-full flex flex-col items-center justify-center text-center p-2 cursor-pointer"
         onClick={() => setShowExpanded(true)}
       >
+        {/* Player Face */}
+        <PlayerFace 
+          face={player.face} 
+          size={48} 
+          className="rounded-full overflow-hidden mb-2"
+        />
+        
+        {/* Player name */}
         <div className="text-sm font-bold text-white mb-1 leading-tight">{playerName}</div>
-        {/* Show ALL teams for incorrect answers too */}
-        {player.years && player.years.length > 0 ? (
-          <div 
-            className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto overscroll-contain flex flex-col justify-start"
-            style={{ pointerEvents: 'auto', scrollBehavior: 'auto', paddingTop: '2px', paddingBottom: '2px' }}
-            onWheel={(e) => e.stopPropagation()}
-          >
-            <div className="break-words space-y-0.5 py-1">
-              {player.years.map((teamYear, idx) => (
-                <div key={`${teamYear.team}-${teamYear.start}`} className="block">
-                  {getTeamAbbr(teamYear.team, teamData)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : primaryTeam && (
-          <div className="text-xs text-white font-medium mb-1 px-1 text-center break-words">
-            {getTeamAbbr(primaryTeam, teamData)} {yearRange && `(${yearRange})`}
-          </div>
-        )}
-        <div className="text-xs text-red-300 font-bold mt-1">✗ Wrong</div>
+        
+        {/* Status */}
+        <div className="text-xs text-red-300 font-bold mt-auto">✗ Wrong</div>
       </div>
     );
   }
@@ -228,17 +218,16 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         
         {/* All Teams */}
         <div className="text-center mb-2 text-blue-300 text-xs leading-relaxed">
-          <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
+          <div className="font-semibold mb-1">Teams:</div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
             {player.years?.map((teamYear, idx) => (
-              <span key={`${teamYear.team}-${teamYear.start}`} className="whitespace-nowrap">
+              <div key={`${teamYear.team}-${teamYear.start}`} className="block">
                 {getTeamAbbr(teamYear.team, teamData)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
-                {idx < (player.years?.length || 0) - 1 && ','}
-              </span>
+              </div>
             )) || player.teams.map((team, idx) => (
-              <span key={team} className="whitespace-nowrap">
+              <div key={team} className="block">
                 {getTeamAbbr(team, teamData)}
-                {idx < player.teams.length - 1 && ','}
-              </span>
+              </div>
             ))}
           </div>
         </div>
@@ -262,10 +251,19 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           Career: {careerStats.seasons} seasons • Peak {peakSeason.ovr} OVR ({peakSeason.season})
         </div>
         
-        {/* Peak season */}
-        {peakSeason.season && (
-          <div className="text-center mb-1">
-            Peak: {peakSeason.season} — {peakSeason.ovr} OVR ({peakSeason.ppg}/{peakSeason.rpg}/{peakSeason.apg})
+        {/* Career Stats */}
+        {careerStats.seasons > 0 && (
+          <div className="text-center mb-2 text-white">
+            <div className="font-semibold mb-1">Career Stats:</div>
+            <div className="text-xs space-y-0.5">
+              <div>{careerStats.seasons} seasons played</div>
+              {peakSeason.season && (
+                <div>Peak: {peakSeason.season} — {peakSeason.ovr} OVR</div>
+              )}
+              {peakSeason.ppg > 0 && (
+                <div>Best: {peakSeason.ppg.toFixed(1)} PPG, {peakSeason.rpg.toFixed(1)} RPG, {peakSeason.apg.toFixed(1)} APG</div>
+              )}
+            </div>
           </div>
         )}
         
@@ -279,36 +277,26 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
     );
   }
 
-  // Compact view
+  // Compact view with face and name
   return (
     <div 
-      className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer overflow-hidden"
+      className="w-full h-full flex flex-col items-center justify-center text-center p-2 cursor-pointer overflow-hidden"
       onClick={() => setShowExpanded(true)}
     >
+      {/* Player Face */}
+      <PlayerFace 
+        face={player.face} 
+        size={48} 
+        className="rounded-full overflow-hidden mb-2"
+      />
+      
       {/* Player name */}
       <div className="text-sm font-bold text-white mb-1 leading-tight px-1 break-words hyphens-auto">
         {playerName}
       </div>
       
-      {/* Show ALL teams - prioritize this over other info */}
-      {player.years && player.years.length > 0 ? (
-        <div className="text-xs text-white font-medium leading-tight px-1 text-center flex-1 overflow-y-auto flex flex-col justify-center">
-          <div className="break-words space-y-0.5">
-            {player.years.map((teamYear, idx) => (
-              <div key={`${teamYear.team}-${teamYear.start}`} className="block">
-                {getTeamAbbr(teamYear.team)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : primaryTeam && (
-        <div className="text-xs text-white font-medium mb-1 px-1 text-center break-words">
-          {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
-        </div>
-      )}
-      
       {/* Minimal status info */}
-      <div className="text-xs text-green-300 font-bold mt-1">
+      <div className="text-xs text-green-300 font-bold mt-auto">
         ✓ Correct
       </div>
     </div>
