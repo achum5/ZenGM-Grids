@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { Player, TeamInfo } from "@shared/schema";
 import { PlayerFace } from "./player-face";
+import { PlayerProfileModal } from "./player-profile-modal";
 
 interface PlayerCellInfoProps {
   playerName: string;
@@ -79,6 +80,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
 
 export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   
   const { data: players = [] } = useQuery<Player[]>({
     queryKey: ["/api/players/search", playerName],
@@ -176,10 +178,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
 
   if (!isCorrect) {
     return (
-      <div 
-        className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
-        onClick={() => setShowExpanded(true)}
-      >
+      <>
+        <div 
+          className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
+          onClick={() => setShowProfileModal(true)}
+        >
         {/* Player Face */}
         <div className="flex-1 flex items-center justify-center">
           <PlayerFace 
@@ -195,6 +198,13 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         {/* Status */}
         <div className="text-xs text-red-300 font-bold">✗ Wrong</div>
       </div>
+      
+      <PlayerProfileModal 
+        player={player}
+        open={showProfileModal}
+        onOpenChange={setShowProfileModal}
+      />
+      </>
     );
   }
 
@@ -281,10 +291,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
 
   // Compact view with face and name
   return (
-    <div 
-      className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
-      onClick={() => setShowExpanded(true)}
-    >
+    <>
+      <div 
+        className="w-full h-full flex flex-col items-center justify-between text-center p-3 cursor-pointer overflow-visible"
+        onClick={() => setShowProfileModal(true)}
+      >
       {/* Player Face */}
       <div className="flex-1 flex items-center justify-center">
         <PlayerFace 
@@ -304,5 +315,12 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         ✓ Correct
       </div>
     </div>
+    
+    <PlayerProfileModal 
+      player={player}
+      open={showProfileModal}
+      onOpenChange={setShowProfileModal}
+    />
+    </>
   );
 }
