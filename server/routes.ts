@@ -16,16 +16,18 @@ function sample<T>(arr: T[], n: number): T[] {
 
 function buildCorrectAnswers(
   players: any[],
-  columnCriteria: { value: string }[],
-  rowCriteria: { value: string }[]
+  columnCriteria: { value: string; type: string }[],
+  rowCriteria: { value: string; type: string }[]
 ) {
   const out: Record<string, string[]> = {};
   for (let r = 0; r < rowCriteria.length; r++) {
     for (let c = 0; c < columnCriteria.length; c++) {
-      const team = columnCriteria[c].value;
-      const ach  = rowCriteria[r].value;
+      const colTeam = columnCriteria[c].value;
+      const rowTeam = rowCriteria[r].value;
+      
+      // Find players who played for both teams
       const names = players
-        .filter(p => p.teams.includes(team) && p.achievements.includes(ach))
+        .filter(p => p.teams.includes(colTeam) && p.teams.includes(rowTeam))
         .map(p => p.name);
       out[`${r}_${c}`] = names; // keep underscore key format
     }
@@ -298,27 +300,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teams = Array.from(new Set(players.flatMap(p => p.teams)));
       const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
 
-      if (teams.length < 3 || achievements.length < 3) {
+      if (teams.length < 5) {
         return res.status(400).json({ 
-          message: "Not enough data to generate a grid. Need at least 3 teams and 3 achievements." 
+          message: "Not enough data to generate a grid. Need at least 5 teams." 
         });
       }
 
       // Loop up to 200 attempts to find a valid grid
       for (let attempt = 0; attempt < 200; attempt++) {
-        const selectedTeams = sample(teams, 3);
-        const selectedAchievements = sample(achievements, 3);
-
+        const selectedTeams = sample(teams, 5);
+        
+        // For columns: use 5 teams
         const columnCriteria: GridCriteria[] = selectedTeams.map(team => ({
           label: team,
           type: "team",
           value: team,
         }));
 
-        const rowCriteria: GridCriteria[] = selectedAchievements.map(achievement => ({
-          label: achievement,
-          type: "achievement",
-          value: achievement,
+        // For rows: use 3 teams
+        const rowTeams = sample(selectedTeams, 3);
+        const rowCriteria: GridCriteria[] = rowTeams.map(team => ({
+          label: team,
+          type: "team", 
+          value: team,
         }));
 
         const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
@@ -507,7 +511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const newScore = session.score + (isCorrect ? 1 : 0);
       const totalAnswers = Object.keys(updatedAnswers).length;
-      const isCompleted = totalAnswers === 9;
+      const isCompleted = totalAnswers === 15;
 
       const updatedSession = await storage.updateGameSession(id, {
         answers: updatedAnswers,
