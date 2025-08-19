@@ -525,7 +525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         session: updatedSession,
         isCorrect,
-        correctPlayers: isCorrect ? [] : correctPlayers // Only show correct answers if wrong
+        correctPlayers: isCorrect ? [] : correctPlayers // Show all correct players when wrong
       });
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid answer data" });

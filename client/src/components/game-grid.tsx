@@ -62,7 +62,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
       } else {
         toast({
           title: "Incorrect",
-          description: `Correct answers: ${data.correctPlayers?.slice(0, 3).join(", ")}${data.correctPlayers?.length > 3 ? "..." : ""}`,
+          description: `Correct answers: ${data.correctPlayers?.join(", ")}`,
           variant: "destructive",
         });
       }
@@ -100,7 +100,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
   };
 
   const handleCellClick = (row: number, col: number) => {
-    if (!session || !session.answers || session.answers[`${row},${col}`]) return;
+    if (!session || !session.answers || session.answers[`${row}_${col}`]) return;
     setSelectedCell({ row, col });
     setShowPlayerModal(true);
   };
