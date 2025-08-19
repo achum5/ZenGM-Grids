@@ -140,12 +140,6 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
                     <div className="font-medium text-white text-sm truncate">
                       {player.name}
                     </div>
-                    {player.achievements && player.achievements.length > 0 && (
-                      <div className="text-xs text-gray-400 mt-0.5 truncate">
-                        {player.achievements.slice(0, 2).join(", ")}
-                        {player.achievements.length > 2 && " +more"}
-                      </div>
-                    )}
                   </div>
                 </div>
               </Button>
