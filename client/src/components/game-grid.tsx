@@ -228,8 +228,14 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                       )}
                     </Button>
                     {!isAnswered && (
-                      <div className="absolute left-1/2 -translate-x-1/2 top-[62%] flex flex-col items-center pointer-events-none">
-                        <div className="text-2xl leading-none mb-1">🏀</div>
+                      <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none">
+                        <svg 
+                          className="w-8 h-8 mb-2 text-gray-400" 
+                          fill="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2M21 9V7L15 7.5V9M21 17V15L15 16.5V18M14 8.5C14 8.5 14 9.5 14 9.5H16V11L20 10V18L16 17V18.5H8V17L4 18V10L8 11V9.5H10C10 9.5 10 8.5 10 8.5C6 8.5 4 10.5 4 13.5S6 18.5 10 18.5V20C10 21.1 10.9 22 12 22S14 21.1 14 22V20C18 20 20 18 20 15S18 8.5 14 8.5Z"/>
+                        </svg>
                         <div className="text-xs font-medium text-gray-500 leading-tight">Select Player</div>
                       </div>
                     )}
