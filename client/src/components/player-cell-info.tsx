@@ -154,11 +154,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         <div className="text-xs font-semibold text-white mb-1 leading-tight">{playerName}</div>
         {/* Show team info even for incorrect answers */}
         {primaryTeam && (
-          <div className="text-xs text-blue-300 opacity-70 mb-1">
+          <div className="text-xs text-blue-200 font-medium mb-1 px-1 text-center break-words">
             {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
           </div>
         )}
-        <div className="text-xs text-red-300 opacity-80">✗ Wrong</div>
+        <div className="text-xs text-red-200 font-bold">✗ Wrong</div>
       </div>
     );
   }
@@ -230,48 +230,51 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   // Compact view
   return (
     <div 
-      className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer"
+      className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer overflow-hidden"
       onClick={() => setShowExpanded(true)}
     >
       {/* Player name */}
-      <div className="text-xs font-semibold text-white mb-1 leading-tight">
+      <div className="text-xs font-bold text-white mb-1 leading-tight px-1 break-words hyphens-auto">
         {playerName}
       </div>
       
       {/* Show multiple teams in compact view */}
       {player.years && player.years.length > 0 ? (
-        <div className="text-xs text-blue-300 opacity-90 mb-1 leading-tight">
-          {player.years.slice(0, 2).map((teamYear, idx) => (
-            <span key={`${teamYear.team}-${teamYear.start}`}>
-              {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
-              {idx < Math.min(1, player.years.length - 1) && ', '}
-            </span>
-          ))}
-          {player.years.length > 2 && <span> +{player.years.length - 2}</span>}
+        <div className="text-xs text-blue-200 font-medium mb-1 leading-tight px-1 text-center">
+          <div className="break-words">
+            {player.years.slice(0, 2).map((teamYear, idx) => (
+              <span key={`${teamYear.team}-${teamYear.start}`} className="block">
+                {getTeamAbbr(teamYear.team)} ({teamYear.start}–{teamYear.end})
+              </span>
+            ))}
+            {player.years.length > 2 && (
+              <span className="text-blue-300">+{player.years.length - 2} more</span>
+            )}
+          </div>
         </div>
       ) : primaryTeam && (
-        <div className="text-xs text-blue-300 opacity-90 mb-1">
+        <div className="text-xs text-blue-200 font-medium mb-1 px-1 text-center break-words">
           {getTeamAbbr(primaryTeam)} {yearRange && `(${yearRange})`}
         </div>
       )}
       
       {/* Career info */}
       {careerStats.seasons > 0 ? (
-        <div className="text-xs text-gray-300 opacity-80 mb-1">
+        <div className="text-xs text-gray-200 font-medium mb-1 px-1 text-center break-words">
           {careerStats.seasons} seasons • Peak {peakSeason.ovr} OVR
         </div>
       ) : player.achievements && player.achievements.length > 0 ? (
-        <div className="text-xs text-gray-300 opacity-80 mb-1">
-          {player.achievements.slice(0, 2).join(", ")}
+        <div className="text-xs text-gray-200 font-medium mb-1 px-1 text-center break-words">
+          {player.achievements.slice(0, 1).join(", ")}
         </div>
       ) : (
-        <div className="text-xs text-gray-300 opacity-80 mb-1">
+        <div className="text-xs text-gray-200 font-medium mb-1 px-1 text-center">
           Player
         </div>
       )}
       
       {/* Simple info */}
-      <div className="text-xs text-green-300 opacity-90">
+      <div className="text-xs text-green-200 font-bold">
         ✓ Correct
       </div>
     </div>
