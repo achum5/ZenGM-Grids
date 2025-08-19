@@ -195,6 +195,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
             imageUrl={player.imageUrl}
             size={64} 
             className="rounded-full"
+            teams={player.teams}
+            currentTeam={player.teams?.[player.teams.length - 1]}
           />
         </div>
         
@@ -315,6 +317,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           imageUrl={player.imageUrl}
           size={64} 
           className="rounded-full"
+          teams={player.teams}
+          currentTeam={player.teams?.[player.teams.length - 1]}
         />
       </div>
       

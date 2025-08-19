@@ -30,6 +30,8 @@ export function PlayerProfileModal({ player, open, onOpenChange }: PlayerProfile
               imageUrl={player.imageUrl}
               size={80} 
               className="rounded-full mb-3"
+              teams={player.teams}
+              currentTeam={player.teams?.[player.teams.length - 1]}
             />
             <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
