@@ -189,12 +189,12 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           }}
         >
         {/* Player Face */}
-        <div className="flex items-center justify-center mb-1">
+        <div className="flex items-center justify-center mb-1 flex-shrink-0">
           <PlayerFace 
             face={player.face}
             imageUrl={player.imageUrl}
-            size={32} 
-            className="rounded-full"
+            size={38} 
+            className="rounded-full overflow-hidden"
             teams={player.teams}
             currentTeam={player.years?.[player.years.length - 1]?.team}
           />
@@ -313,12 +313,12 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         }}
       >
       {/* Player Face */}
-      <div className="flex items-center justify-center mb-1">
+      <div className="flex items-center justify-center mb-1 flex-shrink-0">
         <PlayerFace 
           face={player.face}
           imageUrl={player.imageUrl}
-          size={32} 
-          className="rounded-full"
+          size={38} 
+          className="rounded-full overflow-hidden"
           teams={player.teams}
           currentTeam={player.years?.[player.years.length - 1]?.team}
         />

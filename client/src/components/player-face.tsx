@@ -63,9 +63,9 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         img.src = imageUrl;
         img.style.width = `${size}px`;
         img.style.height = `${size}px`;
-        img.style.objectFit = 'cover';
+        img.style.objectFit = 'contain';
         img.style.borderRadius = '50%';
-        img.style.background = 'transparent';
+        img.style.background = '#374151';
         
         img.onload = () => {
           if (faceRef.current) {
@@ -230,6 +230,9 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
             svg.setAttribute('viewBox', '0 0 400 600');
           }
           svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+          
+          // Ensure SVG fits within container without cutoff
+          svg.style.objectFit = 'contain';
         }
       } catch (error) {
         console.error("Error generating face:", error);
