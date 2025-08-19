@@ -27,10 +27,10 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg mx-auto bg-slate-800 border-slate-700">
+      <DialogContent className="max-w-lg mx-auto bg-slate-800 border-slate-700" aria-describedby="player-search-description">
         <DialogHeader className="text-center pb-6">
           <DialogTitle className="text-xl font-bold text-white">Select Player</DialogTitle>
-          <p className="text-gray-400 mt-2 text-sm">Find the player who matches both criteria</p>
+          <p id="player-search-description" className="text-gray-400 mt-2 text-sm">Find the player who matches both criteria</p>
         </DialogHeader>
         
         <div className="space-y-4">

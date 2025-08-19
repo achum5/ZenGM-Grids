@@ -287,8 +287,13 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                     {isAnswered && (
                       <PlayerCellInfo 
                         playerName={answer.player}
-                        isCorrect={isCorrect}
+                        isCorrect={!!isCorrect}
                         rarity={answer.rarity || 47}
+                        cellCriteria={{
+                          row: game.rowCriteria[rowIndex].label,
+                          column: game.columnCriteria[colIndex].label
+                        }}
+                        candidateCount={game.correctAnswers[cellKey]?.length || 0}
                       />
                     )}
                     {!isAnswered && (
