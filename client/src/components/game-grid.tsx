@@ -166,7 +166,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
       </CardHeader>
       <CardContent>
         {/* Game Grid */}
-        <div className="grid grid-cols-6 gap-3 max-w-4xl mx-auto mb-6">
+        <div className="grid grid-cols-4 gap-3 max-w-2xl mx-auto mb-6">
           {/* Empty corner cell */}
           <div className="aspect-square bg-gray-100 rounded-lg"></div>
           

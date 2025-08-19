@@ -22,13 +22,28 @@ function buildCorrectAnswers(
   const out: Record<string, string[]> = {};
   for (let r = 0; r < rowCriteria.length; r++) {
     for (let c = 0; c < columnCriteria.length; c++) {
-      const colTeam = columnCriteria[c].value;
-      const rowTeam = rowCriteria[r].value;
+      const colCriteria = columnCriteria[c];
+      const rowCriteria_item = rowCriteria[r];
       
-      // Find players who played for both teams
-      const names = players
-        .filter(p => p.teams.includes(colTeam) && p.teams.includes(rowTeam))
-        .map(p => p.name);
+      let names: string[] = [];
+      
+      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
+        // Both are teams - find players who played for both teams
+        names = players
+          .filter(p => p.teams.includes(colCriteria.value) && p.teams.includes(rowCriteria_item.value))
+          .map(p => p.name);
+      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
+        // Team x Achievement - find players who played for team AND have achievement
+        names = players
+          .filter(p => p.teams.includes(colCriteria.value) && p.achievements.includes(rowCriteria_item.value))
+          .map(p => p.name);
+      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
+        // Achievement x Team - find players who have achievement AND played for team
+        names = players
+          .filter(p => p.achievements.includes(colCriteria.value) && p.teams.includes(rowCriteria_item.value))
+          .map(p => p.name);
+      }
+      
       out[`${r}_${c}`] = names; // keep underscore key format
     }
   }
@@ -300,30 +315,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teams = Array.from(new Set(players.flatMap(p => p.teams)));
       const achievements = Array.from(new Set(players.flatMap(p => p.achievements)));
 
-      if (teams.length < 5) {
+      if (teams.length < 3) {
         return res.status(400).json({ 
-          message: "Not enough data to generate a grid. Need at least 5 teams." 
+          message: "Not enough data to generate a grid. Need at least 3 teams." 
         });
       }
 
       // Loop up to 200 attempts to find a valid grid
       for (let attempt = 0; attempt < 200; attempt++) {
-        const selectedTeams = sample(teams, 5);
+        let columnCriteria: GridCriteria[] = [];
+        let rowCriteria: GridCriteria[] = [];
         
-        // For columns: use 5 teams
-        const columnCriteria: GridCriteria[] = selectedTeams.map(team => ({
-          label: team,
-          type: "team",
-          value: team,
-        }));
-
-        // For rows: use 3 teams
-        const rowTeams = sample(selectedTeams, 3);
-        const rowCriteria: GridCriteria[] = rowTeams.map(team => ({
-          label: team,
-          type: "team", 
-          value: team,
-        }));
+        // Decide between team-only grid (3x3 teams) or mixed grid (3 teams x 2 teams + 1 achievement)
+        const useTeamOnlyGrid = Math.random() < 0.5 && teams.length >= 6; // 50% chance if we have enough teams
+        
+        if (useTeamOnlyGrid) {
+          // 3 teams x 3 teams grid
+          const selectedTeams = sample(teams, 6);
+          columnCriteria = selectedTeams.slice(0, 3).map(team => ({
+            label: team,
+            type: "team",
+            value: team,
+          }));
+          rowCriteria = selectedTeams.slice(3, 6).map(team => ({
+            label: team,
+            type: "team", 
+            value: team,
+          }));
+        } else {
+          // 3 teams x (2 teams + 1 achievement) grid
+          const selectedTeams = sample(teams, 5);
+          columnCriteria = selectedTeams.slice(0, 3).map(team => ({
+            label: team,
+            type: "team",
+            value: team,
+          }));
+          
+          // For rows: 2 teams + 1 achievement
+          const rowTeams = selectedTeams.slice(3, 5);
+          const selectedAchievements = achievements.length > 0 ? sample(achievements, 1) : ['Hall of Fame'];
+          
+          rowCriteria = [
+            ...rowTeams.map(team => ({
+              label: team,
+              type: "team",
+              value: team,
+            })),
+            {
+              label: selectedAchievements[0],
+              type: "achievement",
+              value: selectedAchievements[0],
+            }
+          ];
+        }
 
         const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
 
@@ -511,7 +555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const newScore = session.score + (isCorrect ? 1 : 0);
       const totalAnswers = Object.keys(updatedAnswers).length;
-      const isCompleted = totalAnswers === 15;
+      const isCompleted = totalAnswers === 9;
 
       const updatedSession = await storage.updateGameSession(id, {
         answers: updatedAnswers,
