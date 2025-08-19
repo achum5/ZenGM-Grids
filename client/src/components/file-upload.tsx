@@ -80,7 +80,6 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "text/csv": [".csv"],
       "application/json": [".json"],
       "application/gzip": [".gz", ".gzip"],
       "application/x-gzip": [".gz", ".gzip"],
@@ -117,7 +116,7 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
           <p className="text-gray-600 mb-2">
             {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
           </p>
-          <p className="text-sm text-gray-500 mb-4">Supports CSV, JSON, and gzipped formats</p>
+          <p className="text-sm text-gray-500 mb-4">Supports JSON and gzipped league files</p>
           <Button
             type="button"
             variant="outline"

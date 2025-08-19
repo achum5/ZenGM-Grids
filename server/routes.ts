@@ -2,7 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import csv from "csv-parser";
+
 import { z } from "zod";
 import { gunzip } from "zlib";
 import { promisify } from "util";
@@ -103,10 +103,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isJson = req.file.mimetype === "application/json" || 
                     req.file.originalname?.includes(".json") ||
                     (isGzipped && req.file.originalname?.includes(".json"));
-      
-      const isCsv = req.file.mimetype === "text/csv" || 
-                   req.file.originalname?.includes(".csv") ||
-                   (isGzipped && req.file.originalname?.includes(".csv"));
 
       if (isJson) {
         const data = JSON.parse(fileContent);
@@ -201,29 +197,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             stats: player.ratings || player.stats || undefined
           };
         }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
-      } else if (isCsv) {
-        // Parse CSV
-        const results: any[] = [];
-        const csvStream = require("stream").Readable.from([fileContent]);
-        
-        await new Promise((resolve, reject) => {
-          csvStream
-            .pipe(csv())
-            .on("data", (data: any) => results.push(data))
-            .on("end", resolve)
-            .on("error", reject);
-        });
-
-        // Transform CSV data to player format
-        players = results.map(row => ({
-          name: row.name || row.Name || "Unknown Player",
-          teams: (row.teams || row.Teams || "").split(",").map((t: string) => t.trim()).filter(Boolean),
-          years: [],
-          achievements: (row.achievements || row.Achievements || "").split(",").map((a: string) => a.trim()).filter(Boolean),
-          stats: {}
-        }));
       } else {
-        return res.status(400).json({ message: "Unsupported file format. Please upload CSV, JSON, or gzipped files." });
+        return res.status(400).json({ message: "Unsupported file format. Please upload JSON or gzipped league files only." });
       }
 
       console.log(`Parsed ${players.length} players from file`);
