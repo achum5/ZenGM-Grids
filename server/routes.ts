@@ -487,6 +487,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       deriveCareerAggregates(validatedPlayers);
       assignQuality(validatedPlayers);
       
+      // Clear existing players and add new ones
+      await storage.clearPlayers();
+      const createdPlayers = await storage.createPlayers(validatedPlayers);
+
+      // Extract teams and achievements for frontend
+      const teamNames = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
+      const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
+      
       // Save the uploaded file to database for persistence
       await storage.saveUploadedFile({
         filename: req.file.originalname,
@@ -495,13 +503,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teamCount: teamNames.length,
         achievementCount: achievements.length
       });
-
-      // Clear existing players and add new ones
-      await storage.clearPlayers();
-      const createdPlayers = await storage.createPlayers(validatedPlayers);
-
-      // Extract teams and achievements for frontend
-      const teamNames = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
       
       // Define teamMap in the correct scope if it doesn't exist
       let finalTeamMap = new Map<number, {name: string, abbrev: string, logo?: string}>();
@@ -530,7 +531,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           logo: teamInfo?.logo
         };
       });
-      const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
 
       const result: FileUploadData = {
         players: createdPlayers.map(p => ({
