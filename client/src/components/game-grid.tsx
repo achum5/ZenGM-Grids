@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Clock, RotateCcw } from "lucide-react";
 import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
+import { CorrectAnswersModal } from "./correct-answers-modal";
+import { PlayerCellInfo } from "./player-cell-info";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Game, GameSession, GridCell } from "@shared/schema";
+import type { Game, GameSession, GridCell, Player } from "@shared/schema";
 
 interface GameGridProps {
   gameId: string | null;
@@ -18,6 +20,12 @@ interface GameGridProps {
 export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }: GameGridProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [showPlayerModal, setShowPlayerModal] = useState(false);
+  const [showCorrectAnswersModal, setShowCorrectAnswersModal] = useState(false);
+  const [correctAnswersData, setCorrectAnswersData] = useState<{
+    players: string[];
+    playerDetails: Player[];
+    cellCriteria: { row: string; column: string };
+  } | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes
   const [gameStarted, setGameStarted] = useState(false);
   const { toast } = useToast();
@@ -49,12 +57,45 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
       const response = await apiRequest("POST", `/api/sessions/${sessionId}/answer`, { row, col, player });
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions/stats"] });
       onScoreUpdate(data.session.score);
       
-      if (data.isCorrect) {
+      if (data.isCorrect && selectedCell && game) {
+        // Show correct answers modal for correct guesses
+        const cellCriteria = {
+          row: game.rowCriteria[selectedCell.row].label,
+          column: game.columnCriteria[selectedCell.col].label
+        };
+        
+        // Fetch all correct players for this cell
+        const columnType = game.columnCriteria[selectedCell.col].type;
+        const rowType = game.rowCriteria[selectedCell.row].type;
+        
+        let queryParams = "";
+        if (columnType === "team" && rowType === "team") {
+          queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&team2=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
+        } else if (columnType === "team") {
+          queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&achievement=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
+        } else {
+          queryParams = `team=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}&achievement=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}`;
+        }
+        
+        try {
+          const response = await apiRequest("GET", `/api/debug/matches?${queryParams}`);
+          const correctPlayersData = await response.json();
+          
+          setCorrectAnswersData({
+            players: correctPlayersData.players?.map((p: Player) => p.name) || [],
+            playerDetails: correctPlayersData.players || [],
+            cellCriteria
+          });
+          setShowCorrectAnswersModal(true);
+        } catch (error) {
+          console.error("Failed to fetch correct players:", error);
+        }
+        
         toast({
           title: "Correct!",
           description: "Great pick!",
@@ -244,14 +285,11 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                     data-testid={`cell-${rowIndex}-${colIndex}`}
                   >
                     {isAnswered && (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-center p-2">
-                        <div className="text-xs font-semibold text-white mb-1 leading-tight">
-                          {answer.player}
-                        </div>
-                        <div className="text-xs text-white opacity-80">
-                          {isCorrect ? `${answer.rarity || 47}%` : 'X'}
-                        </div>
-                      </div>
+                      <PlayerCellInfo 
+                        playerName={answer.player}
+                        isCorrect={isCorrect}
+                        rarity={answer.rarity || 47}
+                      />
                     )}
                     {!isAnswered && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -273,6 +311,16 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
         onOpenChange={setShowPlayerModal}
         onSelectPlayer={handlePlayerSelect}
       />
+
+      {correctAnswersData && (
+        <CorrectAnswersModal
+          open={showCorrectAnswersModal}
+          onOpenChange={setShowCorrectAnswersModal}
+          correctPlayers={correctAnswersData.players}
+          playerDetails={correctAnswersData.playerDetails}
+          cellCriteria={correctAnswersData.cellCriteria}
+        />
+      )}
     </div>
   );
 }

@@ -535,23 +535,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Debug endpoint to check player matches for specific criteria
   app.get("/api/debug/matches", async (req, res) => {
     try {
-      const { team, achievement } = req.query;
-      if (!team || !achievement) {
-        return res.status(400).json({ message: "Need both team and achievement parameters" });
-      }
+      const { team, team2, achievement } = req.query;
       
       const players = await storage.getPlayers();
-      const matches = players.filter(player =>
-        player.teams.includes(team as string) &&
-        player.achievements.includes(achievement as string)
-      );
+      let matches;
       
-      res.json({
-        criteria: { team, achievement },
-        totalPlayers: players.length,
-        matchCount: matches.length,
-        matches: matches.map(p => ({ name: p.name, teams: p.teams, achievements: p.achievements }))
-      });
+      if (team && team2) {
+        // Team-to-team criteria
+        matches = players.filter(player =>
+          player.teams.includes(team as string) &&
+          player.teams.includes(team2 as string)
+        );
+      } else if (team && achievement) {
+        // Team-to-achievement criteria
+        matches = players.filter(player =>
+          player.teams.includes(team as string) &&
+          player.achievements.includes(achievement as string)
+        );
+      } else {
+        return res.status(400).json({ message: "Need either team+achievement or team+team2 parameters" });
+      }
+      
+      // Sort by career win shares descending
+      matches.sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0));
+      
+      res.json({ players: matches });
     } catch (error) {
       res.status(500).json({ message: "Debug query failed" });
     }
