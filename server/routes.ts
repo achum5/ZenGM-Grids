@@ -39,7 +39,7 @@ function gridIsValid(correctAnswers: Record<string, string[]>) {
 
 
 interface MulterRequest extends Request {
-  file?: multer.File;
+  file?: Express.Multer.File;
 }
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -183,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             achievements,
             stats: player.ratings || player.stats || undefined
           };
-        }).filter(p => p.name !== "Unknown Player"); // Only include players with valid names
+        }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
       } else if (isCsv) {
         // Parse CSV
         const results: any[] = [];
@@ -266,7 +266,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
 
       const result: FileUploadData = {
-        players: createdPlayers,
+        players: createdPlayers.map(p => ({
+          name: p.name,
+          teams: p.teams,
+          years: p.years,
+          achievements: p.achievements,
+          stats: p.stats || undefined
+        })),
         teams,
         achievements
       };
@@ -279,8 +285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate a new game grid
-      // Generate a new game grid
-      app.post("/api/games/generate", async (req, res) => {
+  app.post("/api/games/generate", async (req, res) => {
         try {
           const players = await storage.getPlayers();
           if (players.length === 0) {
@@ -333,7 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          const gameData = InsertGameSchema.parse({
+          const gameData = insertGameSchema.parse({
             columnCriteria,
             rowCriteria,
             correctAnswers,
@@ -349,11 +354,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       });
-
-      console.error("Generate game error:", error);
-      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to generate game" });
-    }
-  });
 
   // Get a specific game by ID
   app.get("/api/games/:id", async (req, res) => {
