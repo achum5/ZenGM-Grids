@@ -204,36 +204,36 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate }:
                 const isCorrect = answer?.correct;
                 
                 return (
-                  <Button
-                    key={cellKey}
-                    variant="outline"
-                    className={`aspect-square p-0 transition-all ${
-                      isAnswered
-                        ? isCorrect
-                          ? "border-green-300 bg-green-50"
-                          : "border-red-300 bg-red-50"
-                        : "border-gray-200 bg-white hover:border-basketball hover:bg-orange-50 hover:shadow-md"
-                    }`}
-                    onClick={() => handleCellClick(rowIndex, colIndex)}
-                    disabled={isAnswered || submitAnswerMutation.isPending}
-                    data-testid={`cell-${rowIndex}-${colIndex}`}
-                  >
-                    <div className="w-full h-full flex flex-col items-center justify-center text-center p-1">
-                      {isAnswered ? (
-                        <>
+                  <div key={cellKey} className="relative aspect-square">
+                    <Button
+                      variant="outline"
+                      className={`w-full h-full transition-all ${
+                        isAnswered
+                          ? isCorrect
+                            ? "border-green-300 bg-green-50"
+                            : "border-red-300 bg-red-50"
+                          : "border-gray-200 bg-white hover:border-basketball hover:bg-orange-50 hover:shadow-md"
+                      }`}
+                      onClick={() => handleCellClick(rowIndex, colIndex)}
+                      disabled={isAnswered || submitAnswerMutation.isPending}
+                      data-testid={`cell-${rowIndex}-${colIndex}`}
+                    >
+                      {isAnswered && (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-center p-1">
                           <div className="text-sm font-medium text-court leading-tight">{answer.player}</div>
                           <div className={`text-xs ${isCorrect ? "text-green-600" : "text-red-600"}`}>
                             {isCorrect ? "✓" : "✗"}
                           </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center" style={{ marginTop: '6px', marginLeft: '-4px' }}>
-                          <div className="text-2xl leading-none" style={{ marginBottom: '4px' }}>🏀</div>
-                          <div className="text-xs font-medium text-gray-500 leading-tight">Select Player</div>
                         </div>
                       )}
-                    </div>
-                  </Button>
+                    </Button>
+                    {!isAnswered && (
+                      <div className="absolute left-1/2 -translate-x-1/2 top-[62%] flex flex-col items-center pointer-events-none">
+                        <div className="text-2xl leading-none mb-1">🏀</div>
+                        <div className="text-xs font-medium text-gray-500 leading-tight">Select Player</div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
