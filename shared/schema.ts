@@ -38,7 +38,7 @@ export const insertPlayerSchema = z.object({
     end: z.number()
   })).default([]),
   achievements: z.array(z.string()).default([]),
-  stats: z.record(z.any()).optional(),
+  stats: z.union([z.record(z.any()), z.array(z.any())]).optional(),
 });
 
 export const insertGameSchema = createInsertSchema(games).omit({
