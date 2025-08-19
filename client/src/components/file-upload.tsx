@@ -17,22 +17,7 @@ export function FileUpload({ onGameGenerated }: FileUploadProps) {
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const { toast } = useToast();
 
-  // Check for previously uploaded file on component mount
-  const { data: lastFileData } = useQuery({
-    queryKey: ["/api/upload/last"],
-    retry: false,
-  });
 
-  // Auto-load the last uploaded file if it exists
-  useEffect(() => {
-    if (lastFileData?.hasFile && lastFileData?.data && !uploadData) {
-      setUploadData(lastFileData.data);
-      toast({
-        title: "Previous league file loaded",
-        description: `Restored ${lastFileData.data.players.length} players from your last session`,
-      });
-    }
-  }, [lastFileData, uploadData, toast]);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {

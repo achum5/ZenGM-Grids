@@ -1,8 +1,5 @@
-import { type Player, type Game, type GameSession, type UploadedFile, type InsertPlayer, type InsertGame, type InsertGameSession, type InsertUploadedFile } from "@shared/schema";
+import { type Player, type Game, type GameSession, type InsertPlayer, type InsertGame, type InsertGameSession } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { db } from "./db";
-import { players, games, gameSessions, uploadedFiles } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Player operations
@@ -23,108 +20,104 @@ export interface IStorage {
   
   // Clear operations
   clearPlayers(): Promise<void>;
-
-  // File operations
-  saveUploadedFile(file: InsertUploadedFile): Promise<UploadedFile>;
-  getLastUploadedFile(): Promise<UploadedFile | undefined>;
 }
 
-export class DatabaseStorage implements IStorage {
-  async saveUploadedFile(file: InsertUploadedFile): Promise<UploadedFile> {
-    const [uploadedFile] = await db
-      .insert(uploadedFiles)
-      .values(file)
-      .returning();
-    return uploadedFile;
-  }
+export class MemStorage implements IStorage {
+  private players: Map<string, Player>;
+  private games: Map<string, Game>;
+  private gameSessions: Map<string, GameSession>;
 
-  async getLastUploadedFile(): Promise<UploadedFile | undefined> {
-    const [lastFile] = await db
-      .select()
-      .from(uploadedFiles)
-      .orderBy(desc(uploadedFiles.uploadedAt))
-      .limit(1);
-    return lastFile || undefined;
+  constructor() {
+    this.players = new Map();
+    this.games = new Map();
+    this.gameSessions = new Map();
   }
 
   async createPlayer(insertPlayer: InsertPlayer): Promise<Player> {
-    const [player] = await db
-      .insert(players)
-      .values(insertPlayer)
-      .returning();
+    const id = randomUUID();
+    const player: Player = { 
+      ...insertPlayer, 
+      id,
+      stats: insertPlayer.stats || null
+    };
+    this.players.set(id, player);
     return player;
   }
 
   async createPlayers(insertPlayers: InsertPlayer[]): Promise<Player[]> {
-    const createdPlayers = await db
-      .insert(players)
-      .values(insertPlayers)
-      .returning();
-    return createdPlayers;
+    const players: Player[] = [];
+    for (const insertPlayer of insertPlayers) {
+      const player = await this.createPlayer(insertPlayer);
+      players.push(player);
+    }
+    return players;
   }
 
   async getPlayers(): Promise<Player[]> {
-    return await db.select().from(players);
+    return Array.from(this.players.values());
   }
 
   async searchPlayers(query: string): Promise<Player[]> {
-    if (!query) return await this.getPlayers();
-    
-    // Fallback to contains search using raw SQL
-    const allPlayers = await this.getPlayers();
-    return allPlayers.filter(player => 
-      player.name.toLowerCase().includes(query.toLowerCase())
+    const searchTerm = query.toLowerCase();
+    return Array.from(this.players.values()).filter(player =>
+      player.name.toLowerCase().includes(searchTerm) ||
+      player.teams.some(team => team.toLowerCase().includes(searchTerm))
     );
   }
 
   async createGame(insertGame: InsertGame): Promise<Game> {
-    const [game] = await db
-      .insert(games)
-      .values(insertGame)
-      .returning();
+    const id = randomUUID();
+    const game: Game = { 
+      id,
+      columnCriteria: [...insertGame.columnCriteria],
+      rowCriteria: [...insertGame.rowCriteria],
+      correctAnswers: Object.fromEntries(
+        Object.entries(insertGame.correctAnswers).map(([key, value]) => [key, [...value]])
+      ),
+      createdAt: new Date().toISOString()
+    };
+    this.games.set(id, game);
     return game;
   }
 
   async getGame(id: string): Promise<Game | undefined> {
-    const [game] = await db
-      .select()
-      .from(games)
-      .where(eq(games.id, id));
-    return game || undefined;
+    return this.games.get(id);
   }
 
   async createGameSession(insertSession: InsertGameSession): Promise<GameSession> {
-    const [session] = await db
-      .insert(gameSessions)
-      .values(insertSession)
-      .returning();
+    const id = randomUUID();
+    const session: GameSession = { 
+      answers: {},
+      score: 0,
+      completed: false,
+      ...insertSession, 
+      id,
+      createdAt: new Date().toISOString()
+    };
+    this.gameSessions.set(id, session);
     return session;
   }
 
   async updateGameSession(id: string, updates: Partial<GameSession>): Promise<GameSession | undefined> {
-    const [session] = await db
-      .update(gameSessions)
-      .set(updates)
-      .where(eq(gameSessions.id, id))
-      .returning();
-    return session || undefined;
+    const session = this.gameSessions.get(id);
+    if (!session) return undefined;
+    
+    const updatedSession = { ...session, ...updates };
+    this.gameSessions.set(id, updatedSession);
+    return updatedSession;
   }
 
   async getGameSession(id: string): Promise<GameSession | undefined> {
-    const [session] = await db
-      .select()
-      .from(gameSessions)
-      .where(eq(gameSessions.id, id));
-    return session || undefined;
+    return this.gameSessions.get(id);
   }
 
   async getGameSessions(): Promise<GameSession[]> {
-    return await db.select().from(gameSessions);
+    return Array.from(this.gameSessions.values());
   }
 
   async clearPlayers(): Promise<void> {
-    await db.delete(players);
+    this.players.clear();
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemStorage();
