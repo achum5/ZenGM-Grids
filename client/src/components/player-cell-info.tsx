@@ -115,9 +115,18 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
 
   if (!isCorrect) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-center p-1">
+      <div 
+        className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer"
+        onClick={() => setShowExpanded(true)}
+      >
         <div className="text-xs font-semibold text-white mb-1 leading-tight">{playerName}</div>
-        <div className="text-xs text-red-300 opacity-80">X</div>
+        {/* Show team info even for incorrect answers */}
+        {primaryTeam && (
+          <div className="text-xs text-blue-300 opacity-70 mb-1">
+            {primaryTeam} {yearRange && `(${yearRange})`}
+          </div>
+        )}
+        <div className="text-xs text-red-300 opacity-80">✗ Incorrect</div>
       </div>
     );
   }
