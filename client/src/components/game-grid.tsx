@@ -238,7 +238,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       // For now, display team name - can be enhanced with logos later
       return (
         <div className="text-center w-full h-full flex items-center justify-center px-1">
-          <div className="text-xs sm:text-sm font-semibold text-white leading-tight text-center">
+          <div className="text-xs font-semibold text-white leading-tight text-center break-words">
             {criteria.label}
           </div>
         </div>
@@ -285,7 +285,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       </div>
 
       {/* Game Grid */}
-      <div className="grid grid-cols-4 gap-1 sm:gap-2 max-w-xs sm:max-w-2xl mx-auto">
+      <div className="grid grid-cols-4 gap-1 sm:gap-2 max-w-sm sm:max-w-2xl mx-auto">
         {/* Top-left empty cell */}
         <div className="aspect-square"></div>
         

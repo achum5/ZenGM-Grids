@@ -189,11 +189,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
           }}
         >
         {/* Player Face */}
-        <div className="flex-1 flex items-center justify-center mb-1">
+        <div className="flex items-center justify-center mb-1">
           <PlayerFace 
             face={player.face}
             imageUrl={player.imageUrl}
-            size={48} 
+            size={40} 
             className="rounded-full"
             teams={player.teams}
             currentTeam={player.years?.[player.years.length - 1]?.team}
@@ -201,7 +201,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         </div>
         
         {/* Player name */}
-        <div className="text-xs sm:text-sm font-bold text-white leading-tight mb-1 text-center">{playerName}</div>
+        <div className="text-xs font-bold text-white leading-tight mb-1 text-center px-1 max-w-full overflow-hidden break-words">{playerName}</div>
         
         {/* Status */}
         <div className="text-xs text-red-300 font-bold text-center">✗ Wrong</div>
@@ -302,7 +302,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   return (
     <>
       <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center p-1 sm:p-2 cursor-pointer overflow-visible"
+        className="w-full h-full flex flex-col items-center justify-center text-center p-1 cursor-pointer overflow-visible"
         onClick={(e) => {
           console.log('Correct tile clicked for player:', playerName);
           e.preventDefault();
@@ -311,11 +311,11 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         }}
       >
       {/* Player Face */}
-      <div className="flex-1 flex items-center justify-center mb-1">
+      <div className="flex items-center justify-center mb-1">
         <PlayerFace 
           face={player.face}
           imageUrl={player.imageUrl}
-          size={48} 
+          size={36} 
           className="rounded-full"
           teams={player.teams}
           currentTeam={player.years?.[player.years.length - 1]?.team}
@@ -323,7 +323,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       </div>
       
       {/* Player name */}
-      <div className="text-xs sm:text-sm font-bold text-white leading-tight text-center break-words mb-1">
+      <div className="text-xs font-bold text-white leading-tight text-center break-words mb-1 px-1 max-w-full overflow-hidden">
         {playerName}
       </div>
       
