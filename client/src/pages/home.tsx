@@ -57,13 +57,6 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <ThemeToggle />
-              <div className="text-right hidden sm:block">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Current Score</p>
-                <p className="text-lg font-semibold text-court dark:text-white" data-testid="text-current-score">
-                  {currentScore}
-                </p>
-              </div>
-              
               <Button
                 onClick={() => setShowRules(true)}
                 className="bg-basketball text-white hover:bg-orange-600 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm"
