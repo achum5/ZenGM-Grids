@@ -51,7 +51,17 @@ function buildCorrectAnswers(
 }
 
 function gridIsValid(ca: Record<string, string[]>) {
-  return Object.values(ca).every(list => list && list.length > 0);
+  // Ensure every cell has at least one valid answer
+  const allCellsHaveAnswers = Object.values(ca).every(list => list && list.length > 0);
+  
+  // Additional validation: ensure we have a reasonable spread of difficulty
+  const totalAnswers = Object.values(ca).reduce((sum, list) => sum + list.length, 0);
+  const averageAnswersPerCell = totalAnswers / Object.keys(ca).length;
+  
+  // Prefer grids where cells have 1-15 answers each (not too easy, not impossible)
+  const hasReasonableDifficulty = averageAnswersPerCell >= 1 && averageAnswersPerCell <= 15;
+  
+  return allCellsHaveAnswers && hasReasonableDifficulty;
 }
 
 // Career quality scoring system helpers
@@ -589,34 +599,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teams = Array.from(new Set(players.flatMap(p => p.teams)));
       const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
       
-      // Priority achievements for Immaculate Grid (most common and interesting combinations)
+      // Priority achievements for Immaculate Grid (comprehensive milestone system)
       const priorityAchievements = [
+        // Awards & Recognition
         "All Star",
         "MVP", 
         "Finals MVP",
         "Rookie of the Year",
         "Defensive Player of the Year",
+        "Sixth Man of the Year",
+        "Most Improved Player",
         "All-NBA",
+        "All-Defensive Team",
         "All-Rookie Team",
         "League Champ",
         "Hall of Fame",
-        "20+ Points Per Game",
-        "10+ Rebounds Per Game", 
-        "5+ Assists Per Game",
+        
+        // Career Milestones  
         "20000+ Points",
+        "10000+ Points",
+        "15000+ Points", 
+        "25000+ Points",
         "10000+ Rebounds",
+        "5000+ Rebounds",
+        "15000+ Rebounds",
         "5000+ Assists",
+        "3000+ Assists",
+        "8000+ Assists",
+        "10000+ Assists",
+        "2000+ Steals",
+        "1500+ Steals",
+        "1500+ Blocks",
+        "1000+ Blocks",
+        "2000+ Blocks",
+        "2000+ Made Threes",
+        "1000+ Made Threes",
+        "3000+ Made Threes",
+        
+        // Single-Season Milestones
+        "30+ Points Per Game",
+        "25+ Points Per Game", 
+        "20+ Points Per Game",
+        "15+ Points Per Game",
+        "10+ Rebounds Per Game",
+        "15+ Rebounds Per Game", 
+        "8+ Rebounds Per Game",
+        "10+ Assists Per Game",
+        "5+ Assists Per Game",
+        "8+ Assists Per Game",
+        "3+ Blocks Per Game",
+        "2+ Blocks Per Game",
+        "2.5+ Steals Per Game",
+        "2+ Steals Per Game",
+        "50/40/90 Season",
+        "Led League in Scoring",
+        "Led League in Rebounds",
+        "Led League in Assists", 
+        "Led League in Steals",
+        "Led League in Blocks",
+        
+        // Game Feats
+        "50+ Point Game",
+        "60+ Point Game",
+        "Triple-Double",
+        "Quadruple-Double",
+        "20+ Rebounds in Game",
+        "20+ Assists in Game", 
+        "10+ Threes in Game",
+        "8+ Threes in Game",
+        
+        // Other Categories
         "First Round Draft Pick",
+        "Top 5 Draft Pick",
+        "Lottery Pick",
         "Undrafted",
         "Only One Team",
+        "5+ Teams",
         "Born Outside US 50 States and DC"
       ];
       
-      // Use priority achievements that exist in our dataset
-      const achievements = priorityAchievements.filter(ach => 
-        allAchievements.includes(ach) && 
-        players.filter(p => p.achievements.includes(ach)).length >= 3 // At least 3 players
-      );
+      // Use priority achievements that exist in our dataset with sufficient players
+      const achievements = priorityAchievements.filter(ach => {
+        const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
+        return allAchievements.includes(ach) && playersWithAchievement >= 2; // At least 2 players (lowered from 3 to increase variety)
+      }).sort(() => Math.random() - 0.5); // Randomize order to ensure variety
 
       if (teams.length < 3) {
         return res.status(400).json({ 
@@ -629,11 +695,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let columnCriteria: GridCriteria[] = [];
         let rowCriteria: GridCriteria[] = [];
         
-        // Decide between team-only grid (3x3 teams) or mixed grid (3 teams x 2 teams + 1 achievement)
-        const useTeamOnlyGrid = Math.random() < 0.5 && teams.length >= 6; // 50% chance if we have enough teams
+        // More varied grid types with higher probability of stat-based criteria
+        const gridType = Math.random();
         
-        if (useTeamOnlyGrid) {
-          // 3 teams x 3 teams grid
+        if (gridType < 0.2 && teams.length >= 6) {
+          // 20% chance: 3 teams x 3 teams grid
           const selectedTeams = sample(teams, 6);
           columnCriteria = selectedTeams.slice(0, 3).map(team => ({
             label: team,
@@ -645,21 +711,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "team", 
             value: team,
           }));
-        } else {
-          // 3 teams x (2 teams + 1 achievement) grid
-          const selectedTeams = sample(teams, 5);
+        } else if (gridType < 0.6 && achievements.length >= 2) {
+          // 40% chance: 3 teams x (1 team + 2 achievements) grid
+          const selectedTeams = sample(teams, 4);
+          const selectedAchievements = sample(achievements, 2);
+          
           columnCriteria = selectedTeams.slice(0, 3).map(team => ({
             label: team,
             type: "team",
             value: team,
           }));
           
-          // For rows: 2 teams + 1 achievement
-          const rowTeams = selectedTeams.slice(3, 5);
-          const selectedAchievements = achievements.length > 0 ? sample(achievements, 1) : ['Hall of Fame'];
+          rowCriteria = [
+            {
+              label: selectedTeams[3],
+              type: "team",
+              value: selectedTeams[3],
+            },
+            ...selectedAchievements.map(achievement => ({
+              label: achievement,
+              type: "achievement",
+              value: achievement,
+            }))
+          ];
+        } else if (gridType < 0.9 && achievements.length >= 1) {
+          // 30% chance: 3 teams x (2 teams + 1 achievement) grid
+          const selectedTeams = sample(teams, 5);
+          const selectedAchievements = sample(achievements, 1);
+          
+          columnCriteria = selectedTeams.slice(0, 3).map(team => ({
+            label: team,
+            type: "team",
+            value: team,
+          }));
           
           rowCriteria = [
-            ...rowTeams.map(team => ({
+            ...selectedTeams.slice(3, 5).map(team => ({
               label: team,
               type: "team",
               value: team,
@@ -670,6 +757,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
               value: selectedAchievements[0],
             }
           ];
+        } else {
+          // 10% chance: Fallback to 3 teams x 3 teams if not enough achievements
+          const selectedTeams = sample(teams, Math.min(6, teams.length));
+          if (selectedTeams.length >= 6) {
+            columnCriteria = selectedTeams.slice(0, 3).map(team => ({
+              label: team,
+              type: "team",
+              value: team,
+            }));
+            rowCriteria = selectedTeams.slice(3, 6).map(team => ({
+              label: team,
+              type: "team", 
+              value: team,
+            }));
+          } else {
+            // If we don't have enough teams, try mixed approach with available data
+            columnCriteria = selectedTeams.slice(0, Math.min(3, selectedTeams.length)).map(team => ({
+              label: team,
+              type: "team",
+              value: team,
+            }));
+            
+            const rowTeams = selectedTeams.slice(Math.min(3, selectedTeams.length));
+            const availableAchievements = achievements.length > 0 ? sample(achievements, Math.min(1, 3 - rowTeams.length)) : [];
+            
+            rowCriteria = [
+              ...rowTeams.map(team => ({
+                label: team,
+                type: "team",
+                value: team,
+              })),
+              ...availableAchievements.map(achievement => ({
+                label: achievement,
+                type: "achievement",
+                value: achievement,
+              }))
+            ];
+          }
         }
 
         const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
