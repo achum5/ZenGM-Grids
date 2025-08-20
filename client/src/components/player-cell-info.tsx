@@ -180,7 +180,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
     return (
       <>
         <div 
-          className="w-full h-full flex flex-col items-center justify-between text-center p-1 cursor-pointer overflow-visible"
+          className="w-full h-full flex flex-col items-center justify-between text-center p-0.5 cursor-pointer overflow-visible"
           onClick={(e) => {
             console.log('Wrong tile clicked for player:', playerName);
             e.preventDefault();
@@ -201,9 +201,9 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         </div>
         
         {/* Player name */}
-        <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight mb-1 text-center px-1 w-full break-words hyphens-auto flex-shrink-0 min-h-[2em] flex items-center justify-center">
-          <span className="block text-center whitespace-pre-line" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-            {playerName.length > 12 ? playerName.replace(' ', '\n') : playerName}
+        <div className="text-[11px] sm:text-sm md:text-base font-bold text-white leading-tight mb-1 text-center px-0.5 w-full break-words hyphens-auto flex-shrink-0 min-h-[2em] flex items-center justify-center">
+          <span className="block text-center whitespace-pre-line w-full" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+            {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
           </span>
         </div>
         
@@ -306,7 +306,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
   return (
     <>
       <div 
-        className="w-full h-full flex flex-col items-center justify-between text-center p-1 cursor-pointer overflow-visible"
+        className="w-full h-full flex flex-col items-center justify-between text-center p-0.5 cursor-pointer overflow-visible"
         onClick={(e) => {
           console.log('Correct tile clicked for player:', playerName);
           e.preventDefault();
@@ -327,9 +327,9 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       </div>
       
       {/* Player name */}
-      <div className="text-[10px] sm:text-xs md:text-sm font-bold text-white leading-tight text-center break-words hyphens-auto mb-1 px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
-        <span className="block text-center whitespace-pre-line" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-          {playerName.length > 12 ? playerName.replace(' ', '\n') : playerName}
+      <div className="text-[11px] sm:text-sm md:text-base font-bold text-white leading-tight text-center break-words hyphens-auto mb-1 px-0.5 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
+        <span className="block text-center whitespace-pre-line w-full" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+          {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
         </span>
       </div>
       
