@@ -63,16 +63,7 @@ export default function Home() {
                   {currentScore}
                 </p>
               </div>
-              <Button
-                onClick={handleRestart}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm"
-                data-testid="button-restart"
-              >
-                <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Restart</span>
-              </Button>
+              
               <Button
                 onClick={() => setShowRules(true)}
                 className="bg-basketball text-white hover:bg-orange-600 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm"
