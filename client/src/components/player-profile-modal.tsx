@@ -33,12 +33,9 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-md mx-auto bg-slate-800 border-slate-700" 
-        aria-describedby="player-profile-description"
+        className="max-w-md mx-auto bg-slate-800 border-slate-700"
       >
         <DialogHeader className="text-center pb-4">
-          <DialogTitle className="text-xl font-bold text-white">Player Profile</DialogTitle>
-          <p id="player-profile-description" className="text-gray-400 mt-2 text-sm">Detailed player information</p>
         </DialogHeader>
         
         <div className="space-y-4 text-white">
