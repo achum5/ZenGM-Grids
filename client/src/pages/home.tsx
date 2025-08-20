@@ -51,7 +51,7 @@ export default function Home() {
                 <span className="text-white text-lg">🏀</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-court dark:text-white">BBGM Grids</h1>
+                <h1 className="text-xl font-bold text-court dark:text-white">ZenGM Grids</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Basketball-GM Edition</p>
               </div>
             </div>
