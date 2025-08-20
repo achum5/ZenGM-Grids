@@ -676,20 +676,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "Born Outside US 50 States and DC"
       ];
       
-      // Debug: Log available achievements
-      console.log("All available achievements in dataset:", allAchievements.slice(0, 20));
-      
       // Use priority achievements that exist in our dataset with sufficient players
       const achievements = priorityAchievements.filter(ach => {
         const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
-        const exists = allAchievements.includes(ach) && playersWithAchievement >= 2;
-        if (exists) {
-          console.log(`Achievement "${ach}" has ${playersWithAchievement} players`);
-        }
-        return exists;
+        return allAchievements.includes(ach) && playersWithAchievement >= 2;
       }).sort(() => Math.random() - 0.5); // Randomize order to ensure variety
-      
-      console.log("Filtered achievements for grid:", achievements.slice(0, 10));
 
       if (teams.length < 3) {
         return res.status(400).json({ 
@@ -702,11 +693,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let columnCriteria: GridCriteria[] = [];
         let rowCriteria: GridCriteria[] = [];
         
-        // Start with simpler grids to ensure success, then add complexity
+        // Heavily favor stat-based grids over team-only grids
         const gridType = Math.random();
         
-        if (gridType < 0.6 && teams.length >= 6) {
-          // 60% chance: 3 teams x 3 teams grid (most reliable)
+        if (gridType < 0.1 && teams.length >= 6) {
+          // 10% chance: 3 teams x 3 teams grid (rarely pure teams)
           const selectedTeams = sample(teams, 6);
           columnCriteria = selectedTeams.slice(0, 3).map(team => ({
             label: team,
@@ -718,8 +709,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "team", 
             value: team,
           }));
-        } else if (gridType < 0.8 && achievements.length >= 1) {
-          // 20% chance: 3 teams x (2 teams + 1 achievement) grid
+        } else if (gridType < 0.6 && achievements.length >= 1) {
+          // 50% chance: 3 teams x (2 teams + 1 achievement) grid
           const selectedTeams = sample(teams, 5);
           const selectedAchievements = sample(achievements, 1);
           
@@ -741,8 +732,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               value: selectedAchievements[0],
             }
           ];
-        } else if (gridType < 0.9 && achievements.length >= 2) {
-          // 10% chance: 3 teams x (1 team + 2 achievements) grid (most complex)
+        } else if (gridType < 0.95 && achievements.length >= 2) {
+          // 35% chance: 3 teams x (1 team + 2 achievements) grid (heavy stat focus)
           const selectedTeams = sample(teams, 4);
           const selectedAchievements = sample(achievements, 2);
           
@@ -765,7 +756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }))
           ];
         } else {
-          // 10% chance: Fallback to 3 teams x 3 teams if not enough achievements
+          // 5% chance: Fallback to 3 teams x 3 teams if not enough achievements
           const selectedTeams = sample(teams, Math.min(6, teams.length));
           if (selectedTeams.length >= 6) {
             columnCriteria = selectedTeams.slice(0, 3).map(team => ({
@@ -806,12 +797,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
         
-        // Debug logging for grid generation
-        if (attempt % 50 === 0) {
-          console.log(`Grid attempt ${attempt}:`);
-          console.log("Column criteria:", columnCriteria.map(c => c.label));
-          console.log("Row criteria:", rowCriteria.map(r => r.label));
-          console.log("Sample cell answers:", Object.entries(correctAnswers).slice(0, 3).map(([key, players]) => `${key}: ${players.length} players`));
+        // Log successful grid generation
+        if (attempt === 0) {
+          console.log("Generated grid with criteria:");
+          console.log("Columns:", columnCriteria.map(c => `${c.label} (${c.type})`));
+          console.log("Rows:", rowCriteria.map(r => `${r.label} (${r.type})`));
         }
 
         if (gridIsValid(correctAnswers)) {
@@ -827,7 +817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // If no valid grid after 200 tries, try a simpler approach
-      console.log("Failed to generate complex grid, trying simplified team-only approach...");
+      console.log(`Failed to generate grid after 200 attempts. Teams: ${teams.length}, Achievements: ${achievements.length}`);
       
       // Fallback: Simple team-only grid if we have enough teams
       if (teams.length >= 6) {
