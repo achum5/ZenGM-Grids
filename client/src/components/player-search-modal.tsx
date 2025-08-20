@@ -10,9 +10,10 @@ interface PlayerSearchModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectPlayer: (playerName: string) => void;
+  usedPlayers?: string[];
 }
 
-export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: PlayerSearchModalProps) {
+export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer, usedPlayers = [] }: PlayerSearchModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,6 +25,10 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
   });
 
   const handlePlayerSelect = (playerName: string) => {
+    // Prevent selecting already used players
+    if (usedPlayers.includes(playerName)) {
+      return;
+    }
     onSelectPlayer(playerName);
     setSearchQuery("");
     setSelectedIndex(0);
@@ -66,7 +71,7 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
         break;
       case 'Enter':
         e.preventDefault();
-        if (players[selectedIndex]) {
+        if (players[selectedIndex] && !usedPlayers.includes(players[selectedIndex].name)) {
           handlePlayerSelect(players[selectedIndex].name);
         }
         break;
@@ -129,30 +134,37 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer }: Player
               </div>
             )}
 
-            {players.map((player, index) => (
-              <Button
-                key={player.id}
-                variant="ghost"
-                className={`w-full text-left p-3 h-auto justify-start transition-all duration-200 rounded-lg border ${
-                  index === selectedIndex
-                    ? "bg-blue-600 border-blue-500 shadow-lg" 
-                    : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
-                }`}
-                onClick={() => handlePlayerSelect(player.name)}
-                data-testid={`button-select-player-${player.id}`}
-              >
-                <div className="flex items-center space-x-3 w-full">
-                  <div className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                    {player.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-white text-sm truncate">
-                      {player.name}
+            {players.map((player, index) => {
+              const isUsed = usedPlayers.includes(player.name);
+              return (
+                <Button
+                  key={player.id}
+                  variant="ghost"
+                  disabled={isUsed}
+                  className={`w-full text-left p-3 h-auto justify-start transition-all duration-200 rounded-lg border ${
+                    isUsed 
+                      ? "bg-gray-600 border-gray-500 text-gray-400 cursor-not-allowed opacity-60" 
+                      : index === selectedIndex
+                        ? "bg-blue-600 border-blue-500 shadow-lg" 
+                        : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                  }`}
+                  onClick={() => !isUsed && handlePlayerSelect(player.name)}
+                  data-testid={`button-select-player-${player.id}`}
+                >
+                  <div className="flex items-center space-x-3 w-full">
+                    <div className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                      {player.name.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-white text-sm truncate flex items-center justify-between">
+                        {player.name}
+                        {isUsed && <span className="text-xs text-gray-400 ml-2">Already used</span>}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Button>
-            ))}
+                </Button>
+              );
+            })}
           </div>
         </div>
       </DialogContent>

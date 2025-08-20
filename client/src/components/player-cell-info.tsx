@@ -209,8 +209,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           </span>
         </div>
         
-        {/* Status */}
-        <div className="text-[8px] sm:text-xs text-red-300 font-bold text-center">✗ Wrong</div>
+
       </div>
       
       <PlayerProfileModal 
@@ -310,7 +309,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
   return (
     <>
       <div 
-        className="w-full h-full flex flex-col items-center justify-between text-center p-0.5 cursor-pointer overflow-visible"
+        className="w-full h-full flex flex-col items-center justify-center text-center p-0.5 cursor-pointer overflow-visible"
         onClick={(e) => {
           console.log('Correct tile clicked for player:', playerName);
           e.preventDefault();
@@ -319,7 +318,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
         }}
       >
       {/* Player Face */}
-      <div className="flex items-center justify-center mb-1 flex-shrink-0">
+      <div className="flex items-center justify-center mb-2 flex-shrink-0">
         <PlayerFace 
           face={player.face}
           imageUrl={player.imageUrl}
@@ -331,16 +330,13 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
       </div>
       
       {/* Player name */}
-      <div className="text-[11px] sm:text-sm md:text-base font-bold text-white leading-tight text-center break-words hyphens-auto mb-1 px-0.5 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
+      <div className="text-[11px] sm:text-sm md:text-base font-bold text-white dark:text-white light:text-gray-900 leading-tight text-center break-words hyphens-auto px-0.5 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
         <span className="block text-center whitespace-pre-line w-full truncate" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
           {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
         </span>
       </div>
       
-      {/* Minimal status info */}
-      <div className="text-[8px] sm:text-xs text-green-300 font-bold text-center">
-        ✓ Correct
-      </div>
+
     </div>
     
     <PlayerProfileModal 

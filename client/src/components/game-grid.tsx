@@ -238,7 +238,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       // For now, display team name - can be enhanced with logos later
       return (
         <div className="text-center w-full h-full flex items-center justify-center px-1">
-          <div className="text-[9px] sm:text-xs font-semibold text-white leading-tight text-center break-words">
+          <div className="text-[9px] sm:text-xs font-semibold text-gray-900 dark:text-white leading-tight text-center break-words">
             {criteria.label}
           </div>
         </div>
@@ -246,7 +246,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     }
     return (
       <div className="text-center w-full h-full flex items-center justify-center px-1">
-        <div className="text-xs sm:text-sm font-semibold text-white leading-tight text-center">
+        <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white leading-tight text-center">
           {criteria.label}
         </div>
       </div>
@@ -254,32 +254,32 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
   };
 
   return (
-    <div className="bg-slate-800 dark:bg-slate-900 p-4 sm:p-8 rounded-xl">
+    <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-4 sm:p-8 rounded-xl shadow-sm">
       {/* Header with stats */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
-        <div className="text-white">
+        <div className="text-gray-900 dark:text-white">
           <h2 className="text-xl sm:text-2xl font-bold">Immaculate Grid</h2>
         </div>
         
         {/* Stats display */}
-        <div className="flex items-center space-x-4 sm:space-x-6 text-white">
+        <div className="flex items-center space-x-4 sm:space-x-6 text-gray-900 dark:text-white">
           <div className="text-center">
             <div className="text-xl sm:text-2xl font-bold text-green-400" data-testid="text-correct-answers">
               {correctAnswers}
             </div>
-            <div className="text-xs text-gray-300">CORRECT</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">CORRECT</div>
           </div>
           <div className="text-center">
             <div className="text-xl sm:text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
               {incorrectAnswers}
             </div>
-            <div className="text-xs text-gray-300">INCORRECT</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">INCORRECT</div>
           </div>
           <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-white" data-testid="text-remaining-cells">
+            <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-remaining-cells">
               {remainingCells}
             </div>
-            <div className="text-xs text-gray-300">GUESSES LEFT</div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">GUESSES LEFT</div>
           </div>
         </div>
       </div>
@@ -293,7 +293,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         {game.columnCriteria.map((criteria, index) => (
           <div
             key={`col-${index}`}
-            className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center rounded-sm"
+            className="aspect-square bg-gray-200 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm"
             data-testid={`header-column-${index}`}
           >
             {renderTeamHeader(criteria)}
@@ -305,7 +305,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
-              className="aspect-square bg-slate-700 dark:bg-slate-800 flex items-center justify-center rounded-sm"
+              className="aspect-square bg-gray-200 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm"
               data-testid={`header-row-${rowIndex}`}
             >
               {renderTeamHeader(rowCriteria)}
@@ -327,7 +327,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                         ? isCorrect
                           ? "bg-green-500 hover:bg-green-600"
                           : "bg-red-500 hover:bg-red-600"
-                        : "bg-slate-600 dark:bg-slate-700 hover:bg-slate-500 dark:hover:bg-slate-600"
+                        : "bg-gray-300 dark:bg-slate-600 hover:bg-gray-400 dark:hover:bg-slate-500 border border-gray-400 dark:border-slate-500"
                     }`}
                     onClick={(e) => {
                       // Don't handle click if cell is answered (let PlayerCellInfo handle it)
@@ -375,6 +375,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         open={showPlayerModal}
         onOpenChange={setShowPlayerModal}
         onSelectPlayer={handlePlayerSelect}
+        usedPlayers={session ? Object.values(session.answers).map(answer => answer.player) : []}
       />
 
       {correctAnswersData && (

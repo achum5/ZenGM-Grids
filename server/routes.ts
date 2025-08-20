@@ -696,8 +696,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Heavily favor stat-based grids over team-only grids
         const gridType = Math.random();
         
-        if (gridType < 0.1 && teams.length >= 6) {
-          // 10% chance: 3 teams x 3 teams grid (rarely pure teams)
+        if (gridType < 0.02 && teams.length >= 6) {
+          // 2% chance: 3 teams x 3 teams grid (very rare pure teams)
           const selectedTeams = sample(teams, 6);
           columnCriteria = selectedTeams.slice(0, 3).map(team => ({
             label: team,
@@ -709,31 +709,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "team", 
             value: team,
           }));
-        } else if (gridType < 0.6 && achievements.length >= 1) {
-          // 50% chance: 3 teams x (2 teams + 1 achievement) grid
-          const selectedTeams = sample(teams, 5);
-          const selectedAchievements = sample(achievements, 1);
+        } else if (gridType < 0.25 && achievements.length >= 1) {
+          // 23% chance: (2 teams + 1 achievement) x (2 teams + 1 achievement) - mixed grid
+          const selectedTeams = sample(teams, 4);
+          const selectedAchievements = sample(achievements, 2);
           
-          columnCriteria = selectedTeams.slice(0, 3).map(team => ({
-            label: team,
-            type: "team",
-            value: team,
-          }));
-          
-          rowCriteria = [
-            ...selectedTeams.slice(3, 5).map(team => ({
+          columnCriteria = [
+            ...selectedTeams.slice(0, 2).map(team => ({
               label: team,
               type: "team",
               value: team,
             })),
             {
               label: selectedAchievements[0],
-              type: "achievement",
+              type: "achievement", 
               value: selectedAchievements[0],
             }
           ];
-        } else if (gridType < 0.95 && achievements.length >= 2) {
-          // 35% chance: 3 teams x (1 team + 2 achievements) grid (heavy stat focus)
+          
+          rowCriteria = [
+            ...selectedTeams.slice(2, 4).map(team => ({
+              label: team,
+              type: "team",
+              value: team,
+            })),
+            {
+              label: selectedAchievements[1],
+              type: "achievement",
+              value: selectedAchievements[1],
+            }
+          ];
+        } else if (gridType < 0.5 && achievements.length >= 1) {
+          // 25% chance: (1 team + 2 achievements) x 3 teams grid
+          const selectedTeams = sample(teams, 4);
+          const selectedAchievements = sample(achievements, 2);
+          
+          columnCriteria = [
+            {
+              label: selectedTeams[0],
+              type: "team",
+              value: selectedTeams[0],
+            },
+            ...selectedAchievements.map(achievement => ({
+              label: achievement,
+              type: "achievement",
+              value: achievement,
+            }))
+          ];
+          
+          rowCriteria = selectedTeams.slice(1, 4).map(team => ({
+            label: team,
+            type: "team",
+            value: team,
+          }));
+        } else if (gridType < 0.75 && achievements.length >= 1) {
+          // 25% chance: 3 teams x (1 team + 2 achievements) grid
           const selectedTeams = sample(teams, 4);
           const selectedAchievements = sample(achievements, 2);
           
@@ -755,23 +785,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
               value: achievement,
             }))
           ];
-        } else {
-          // 5% chance: Fallback to 3 teams x 3 teams if not enough achievements
-          const selectedTeams = sample(teams, Math.min(6, teams.length));
-          if (selectedTeams.length >= 6) {
-            columnCriteria = selectedTeams.slice(0, 3).map(team => ({
-              label: team,
+        } else if (gridType < 0.98 && achievements.length >= 3) {
+          // 23% chance: (1 team + 2 achievements) x (1 team + 2 achievements) - heavy stats
+          const selectedTeams = sample(teams, 2);
+          const selectedAchievements = sample(achievements, 4);
+          
+          columnCriteria = [
+            {
+              label: selectedTeams[0],
               type: "team",
-              value: team,
-            }));
-            rowCriteria = selectedTeams.slice(3, 6).map(team => ({
-              label: team,
-              type: "team", 
-              value: team,
-            }));
-          } else {
-            // If we don't have enough teams, try mixed approach with available data
-            columnCriteria = selectedTeams.slice(0, Math.min(3, selectedTeams.length)).map(team => ({
+              value: selectedTeams[0],
+            },
+            ...selectedAchievements.slice(0, 2).map(achievement => ({
+              label: achievement,
+              type: "achievement",
+              value: achievement,
+            }))
+          ];
+          
+          rowCriteria = [
+            {
+              label: selectedTeams[1],
+              type: "team",
+              value: selectedTeams[1],
+            },
+            ...selectedAchievements.slice(2, 4).map(achievement => ({
+              label: achievement,
+              type: "achievement",
+              value: achievement,
+            }))
+          ];
+        } else {
+          // 2% chance: Fallback to mixed approach with available data
+          const selectedTeams = sample(teams, Math.min(4, teams.length));
+          const availableAchievements = sample(achievements, Math.min(2, achievements.length));
+          
+          if (selectedTeams.length >= 3 && availableAchievements.length >= 1) {
+            columnCriteria = selectedTeams.slice(0, 3).map(team => ({
               label: team,
               type: "team",
               value: team,

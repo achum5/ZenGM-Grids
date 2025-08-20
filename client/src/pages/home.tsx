@@ -72,8 +72,21 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
+          {/* Mobile: Game Area first when game exists */}
+          {currentGameId && (
+            <div className="lg:hidden lg:col-span-2 order-1">
+              <GameGrid 
+                gameId={currentGameId}
+                sessionId={currentSessionId}
+                onSessionCreated={handleSessionCreated}
+                onScoreUpdate={handleScoreUpdate}
+                teamData={teamData || undefined}
+              />
+            </div>
+          )}
+          
+          {/* Sidebar - shows first on mobile when no game, after game when game exists */}
+          <div className={`lg:col-span-1 space-y-6 ${currentGameId ? 'order-2' : 'order-1'}`}>
             <div className="bg-white dark:bg-gray-800 rounded-lg">
               <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
             </div>
@@ -82,8 +95,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Game Area */}
-          <div className="lg:col-span-2">
+          {/* Desktop Game Area */}
+          <div className="hidden lg:block lg:col-span-2">
             <GameGrid 
               gameId={currentGameId}
               sessionId={currentSessionId}
