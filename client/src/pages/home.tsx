@@ -45,7 +45,7 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-16 overflow-hidden">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-basketball rounded-lg flex items-center justify-center">
                 <span className="text-white text-lg">🏀</span>
@@ -55,9 +55,9 @@ export default function Home() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Basketball-GM Edition</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <ThemeToggle />
-              <div className="text-right">
+              <div className="text-right hidden sm:block">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Current Score</p>
                 <p className="text-lg font-semibold text-court dark:text-white" data-testid="text-current-score">
                   {currentScore}
@@ -67,18 +67,18 @@ export default function Home() {
                 onClick={handleRestart}
                 variant="outline"
                 size="sm"
-                className="flex items-center space-x-2"
+                className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm"
                 data-testid="button-restart"
               >
-                <RotateCcw className="h-4 w-4" />
-                <span>Restart</span>
+                <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Restart</span>
               </Button>
               <Button
                 onClick={() => setShowRules(true)}
-                className="bg-basketball text-white hover:bg-orange-600 flex items-center space-x-2"
+                className="bg-basketball text-white hover:bg-orange-600 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm"
                 data-testid="button-rules"
               >
-                <HelpCircle className="h-4 w-4" />
+                <HelpCircle className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span>Rules</span>
               </Button>
             </div>
@@ -105,7 +105,7 @@ export default function Home() {
               sessionId={currentSessionId}
               onSessionCreated={handleSessionCreated}
               onScoreUpdate={handleScoreUpdate}
-              teamData={teamData}
+              teamData={teamData || undefined}
             />
           </div>
         </div>

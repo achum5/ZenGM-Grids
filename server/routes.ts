@@ -887,6 +887,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get top players for a cell (for "Other Top Answers" section)
+  app.get("/api/players/top-for-cell", async (req, res) => {
+    try {
+      const { columnCriteria, rowCriteria, excludePlayer } = req.query;
+      const players = await storage.getPlayers();
+      
+      if (!columnCriteria || !rowCriteria) {
+        return res.status(400).json({ message: "Column and row criteria required" });
+      }
+
+      // Parse criteria from query strings
+      const colCriteria = JSON.parse(columnCriteria as string);
+      const rowCriteria_item = JSON.parse(rowCriteria as string);
+      
+      let eligiblePlayers: any[] = [];
+      
+      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
+        // Both are teams - find players who played for both teams
+        eligiblePlayers = players.filter(p => 
+          p.teams.includes(colCriteria.value) && 
+          p.teams.includes(rowCriteria_item.value)
+        );
+      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
+        // Team x Achievement - find players who played for team AND have achievement
+        eligiblePlayers = players.filter(p => 
+          p.teams.includes(colCriteria.value) && 
+          p.achievements.includes(rowCriteria_item.value)
+        );
+      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
+        // Achievement x Team - find players who have achievement AND played for team
+        eligiblePlayers = players.filter(p => 
+          p.achievements.includes(colCriteria.value) && 
+          p.teams.includes(rowCriteria_item.value)
+        );
+      }
+      
+      // Sort by career win shares descending and exclude the current player
+      const topPlayers = eligiblePlayers
+        .filter(p => p.name !== excludePlayer)
+        .sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
+        .slice(0, 10)
+        .map(p => ({ name: p.name, teams: p.teams }));
+      
+      res.json(topPlayers);
+    } catch (error) {
+      console.error("Get top players error:", error);
+      res.status(500).json({ message: "Failed to get top players" });
+    }
+  });
+
   // Debug endpoint to check player matches for specific criteria
   
 app.get("/api/debug/matches", async (req, res) => {

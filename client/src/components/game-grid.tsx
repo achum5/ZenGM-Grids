@@ -4,7 +4,7 @@ import { Clock, RotateCcw } from "lucide-react";
 import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { CorrectAnswersModal } from "./correct-answers-modal";
-import { PlayerCellInfo } from "./player-cell-info";
+import PlayerCellInfo from "./player-cell-info";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -352,6 +352,8 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                         }}
                         candidateCount={game.correctAnswers[cellKey]?.length || 0}
                         teamData={teamData}
+                        columnCriteria={game.columnCriteria[colIndex]}
+                        rowCriteria={game.rowCriteria[rowIndex]}
                       />
                     )}
                     {!isAnswered && (

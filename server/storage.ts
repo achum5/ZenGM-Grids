@@ -38,7 +38,11 @@ export class MemStorage implements IStorage {
     const player: Player = { 
       ...insertPlayer, 
       id,
-      stats: insertPlayer.stats || null
+      stats: insertPlayer.stats || null,
+      face: insertPlayer.face || null,
+      imageUrl: insertPlayer.imageUrl || null,
+      careerWinShares: insertPlayer.careerWinShares || null,
+      quality: insertPlayer.quality || null
     };
     this.players.set(id, player);
     return player;
@@ -58,11 +62,18 @@ export class MemStorage implements IStorage {
   }
 
   async searchPlayers(query: string): Promise<Player[]> {
-    const searchTerm = query.toLowerCase();
-    return Array.from(this.players.values()).filter(player =>
-      player.name.toLowerCase().includes(searchTerm) ||
-      player.teams.some(team => team.toLowerCase().includes(searchTerm))
-    );
+    const normalizedQuery = this.normalizeString(query.toLowerCase());
+    return Array.from(this.players.values())
+      .filter(player => {
+        const normalizedName = this.normalizeString(player.name.toLowerCase());
+        return normalizedName.includes(normalizedQuery);
+      })
+      .slice(0, 10);
+  }
+
+  private normalizeString(str: string): string {
+    // Remove diacritics (accents, tildes, etc.) for better search matching
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
   async createGame(insertGame: InsertGame): Promise<Game> {
@@ -103,6 +114,21 @@ export class MemStorage implements IStorage {
     if (!session) return undefined;
     
     const updatedSession = { ...session, ...updates };
+    
+    // Fix type issues with answers
+    if (updates.answers) {
+      updatedSession.answers = Object.fromEntries(
+        Object.entries(updates.answers).map(([key, existing]) => [
+          key, {
+            player: existing.player,
+            correct: existing.correct,
+            rarity: typeof existing.rarity === 'number' ? existing.rarity : 0,
+            quality: typeof existing.quality === 'number' ? existing.quality : 0,
+          }
+        ])
+      );
+    }
+    
     this.gameSessions.set(id, updatedSession);
     return updatedSession;
   }

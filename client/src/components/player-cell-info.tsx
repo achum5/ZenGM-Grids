@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import type { Player, TeamInfo } from "@shared/schema";
+import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
 
@@ -11,6 +11,8 @@ interface PlayerCellInfoProps {
   cellCriteria?: { row: string; column: string };
   candidateCount?: number;
   teamData?: TeamInfo[];
+  columnCriteria?: GridCriteria;
+  rowCriteria?: GridCriteria;
 }
 
 // Team abbreviations mapping
@@ -78,7 +80,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -202,7 +204,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         
         {/* Player name */}
         <div className="text-[11px] sm:text-sm md:text-base font-bold text-white leading-tight mb-1 text-center px-0.5 w-full break-words hyphens-auto flex-shrink-0 min-h-[2em] flex items-center justify-center">
-          <span className="block text-center whitespace-pre-line w-full" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+          <span className="block text-center whitespace-pre-line w-full truncate" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
             {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
           </span>
         </div>
@@ -215,6 +217,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
         player={player}
         open={showProfileModal}
         onOpenChange={setShowProfileModal}
+        columnCriteria={columnCriteria}
+        rowCriteria={rowCriteria}
       />
       </>
     );
@@ -328,7 +332,7 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       
       {/* Player name */}
       <div className="text-[11px] sm:text-sm md:text-base font-bold text-white leading-tight text-center break-words hyphens-auto mb-1 px-0.5 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
-        <span className="block text-center whitespace-pre-line w-full" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+        <span className="block text-center whitespace-pre-line w-full truncate" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
           {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
         </span>
       </div>
@@ -343,6 +347,8 @@ export function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, ca
       player={player}
       open={showProfileModal}
       onOpenChange={setShowProfileModal}
+      columnCriteria={columnCriteria}
+      rowCriteria={rowCriteria}
     />
     </>
   );
