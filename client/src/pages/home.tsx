@@ -4,7 +4,7 @@ import { GameGrid } from "@/components/game-grid";
 import { GameStats } from "@/components/game-stats";
 import { RulesModal } from "@/components/rules-modal";
 import { Button } from "@/components/ui/button";
-import { HelpCircle, RotateCcw } from "lucide-react";
+import { HelpCircle, RotateCcw, Play } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useQuery } from "@tanstack/react-query";
 import type { Game, SessionStats, TeamInfo } from "@shared/schema";
@@ -82,15 +82,29 @@ export default function Home() {
                 onScoreUpdate={handleScoreUpdate}
                 teamData={teamData || undefined}
               />
+              
+              {/* Generate New Grid button below game on mobile */}
+              {teamData && (
+                <div className="mt-4 bg-white dark:bg-slate-800 rounded-lg p-4">
+                  <Button
+                    onClick={() => window.location.reload()}
+                    className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
+                    data-testid="button-generate-new-grid-mobile"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Generate New Grid
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           
           {/* Sidebar - shows first on mobile when no game, after game when game exists */}
           <div className={`lg:col-span-1 space-y-6 ${currentGameId ? 'order-2' : 'order-1'}`}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg">
+            <div className="bg-white dark:bg-slate-800 rounded-lg">
               <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg">
+            <div className="bg-white dark:bg-slate-800 rounded-lg">
               <GameStats stats={stats} />
             </div>
           </div>

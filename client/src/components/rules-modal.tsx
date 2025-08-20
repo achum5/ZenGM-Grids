@@ -13,7 +13,7 @@ export function RulesModal({ open, onOpenChange }: RulesModalProps) {
           <DialogTitle>How to Play</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4 text-sm text-gray-700">
+        <div className="space-y-4 text-sm text-gray-700 dark:text-white">
           <div>
             <h4 className="font-semibold text-court mb-2">Objective</h4>
             <p>Fill the 3x3 grid with players who satisfy both the row and column criteria.</p>

@@ -614,25 +614,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "Hall of Fame",
         
         // Career Milestones  
-        "20000+ Points",
-        "10000+ Points",
-        "15000+ Points", 
-        "25000+ Points",
-        "10000+ Rebounds",
-        "5000+ Rebounds",
-        "15000+ Rebounds",
-        "5000+ Assists",
-        "3000+ Assists",
-        "8000+ Assists",
-        "10000+ Assists",
-        "2000+ Steals",
-        "1500+ Steals",
-        "1500+ Blocks",
-        "1000+ Blocks",
-        "2000+ Blocks",
-        "2000+ Made Threes",
-        "1000+ Made Threes",
-        "3000+ Made Threes",
+        "20,000+ Points",
+        "10,000+ Points",
+        "15,000+ Points", 
+        "25,000+ Points",
+        "10,000+ Rebounds",
+        "5,000+ Rebounds",
+        "15,000+ Rebounds",
+        "5,000+ Assists",
+        "3,000+ Assists",
+        "8,000+ Assists",
+        "10,000+ Assists",
+        "2,000+ Steals",
+        "1,500+ Steals",
+        "1,500+ Blocks",
+        "1,000+ Blocks",
+        "2,000+ Blocks",
+        "2,000+ Made Threes",
+        "1,000+ Made Threes",
+        "3,000+ Made Threes",
         
         // Single-Season Milestones
         "30+ Points Per Game",
@@ -827,8 +827,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               value: team,
             }));
             
-            const rowTeams = selectedTeams.slice(Math.min(3, selectedTeams.length));
-            const availableAchievements = achievements.length > 0 ? sample(achievements, Math.min(1, 3 - rowTeams.length)) : [];
+            const rowTeams = selectedTeams.slice(3, Math.min(4, selectedTeams.length));
+            const neededAchievements = Math.max(1, 3 - rowTeams.length);
+            const selectedRowAchievements = achievements.length > 0 ? sample(achievements, neededAchievements) : [];
             
             rowCriteria = [
               ...rowTeams.map(team => ({
@@ -836,12 +837,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 type: "team",
                 value: team,
               })),
-              ...availableAchievements.map(achievement => ({
+              ...selectedRowAchievements.map(achievement => ({
                 label: achievement,
                 type: "achievement",
                 value: achievement,
               }))
             ];
+            
+            // Ensure we always have exactly 3 row criteria
+            while (rowCriteria.length < 3 && achievements.length > 0) {
+              const extraAchievement = sample(achievements.filter(a => !rowCriteria.some(r => r.value === a)), 1)[0];
+              if (extraAchievement) {
+                rowCriteria.push({
+                  label: extraAchievement,
+                  type: "achievement",
+                  value: extraAchievement,
+                });
+              } else {
+                break;
+              }
+            }
           }
         }
 

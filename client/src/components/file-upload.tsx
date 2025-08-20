@@ -64,6 +64,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       toast({
         title: "New grid generated",
         description: "Ready to play!",
+        duration: 1000,
       });
     },
     onError: (error) => {
@@ -169,15 +170,17 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
           </div>
         )}
 
-        <Button
-          onClick={generateGrid}
-          disabled={!uploadData || generateGameMutation.isPending}
-          className="w-full bg-court text-white hover:bg-slate-700"
-          data-testid="button-generate-grid"
-        >
-          <Play className="h-4 w-4 mr-2" />
-          {generateGameMutation.isPending ? "Generating..." : "Generate New Grid"}
-        </Button>
+        {uploadData && (
+          <Button
+            onClick={generateGrid}
+            disabled={generateGameMutation.isPending}
+            className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
+            data-testid="button-generate-grid"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            {generateGameMutation.isPending ? "Generating..." : "Generate New Grid"}
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

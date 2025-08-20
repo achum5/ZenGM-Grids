@@ -69,13 +69,18 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         
         img.onload = () => {
           if (faceRef.current) {
+            // Center the image in the container
+            img.style.display = 'block';
+            img.style.margin = 'auto';
             faceRef.current.appendChild(img);
           }
         };
         
         img.onerror = () => {
           // Fallback to faces.js if image fails to load
-          generateFacesJSFace();
+          if (faceRef.current) {
+            generateFacesJSFace();
+          }
         };
         
         return;
@@ -254,6 +259,25 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
       }
     }
   }, [face, imageUrl, size, teams, currentTeam]);
+
+  // Add window resize handler to redraw faces on layout changes
+  useEffect(() => {
+    const handleResize = () => {
+      // Redraw face after a brief delay to allow for layout settling
+      setTimeout(() => {
+        if (faceRef.current && !imageUrl) {
+          // Only redraw faces.js content, not real images
+          faceRef.current.innerHTML = "";
+          if (faceRef.current) {
+            generateFacesJSFace();
+          }
+        }
+      }, 100);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [face, teams, currentTeam, imageUrl]);
 
   return (
     <div 
