@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CloudUpload, FileCheck, X, Play, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CloudUpload, FileCheck, X, Play, Loader2, Link } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,29 +18,46 @@ interface FileUploadProps {
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
+  const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
+  const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
 
 
 
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Upload failed");
+    mutationFn: async (fileOrUrl: File | string) => {
+      if (typeof fileOrUrl === 'string') {
+        // URL upload
+        const response = await fetch("/api/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: fileOrUrl }),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "URL upload failed");
+        }
+        return response.json() as Promise<FileUploadData>;
+      } else {
+        // File upload
+        const formData = new FormData();
+        formData.append("file", fileOrUrl);
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Upload failed");
+        }
+        return response.json() as Promise<FileUploadData>;
       }
-      return response.json() as Promise<FileUploadData>;
     },
     onSuccess: (data) => {
       setUploadData(data);
       onTeamDataUpdate?.(data.teams);
       toast({
-        title: "File uploaded successfully",
+        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
       // Automatically generate a new grid after successful upload
@@ -46,7 +65,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
     onError: (error) => {
       toast({
-        title: "Upload failed",
+        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
         description: error.message,
         variant: "destructive",
       });
@@ -84,6 +103,19 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     }
   }, [uploadMutation]);
 
+  const handleUrlUpload = () => {
+    if (!urlInput.trim()) {
+      toast({
+        title: "Invalid URL",
+        description: "Please enter a valid URL",
+        variant: "destructive",
+      });
+      return;
+    }
+    setUploadedFile(null);
+    uploadMutation.mutate(urlInput.trim());
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -109,38 +141,88 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         <CardTitle>Upload League Data</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div
-          {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-            isDragActive
-              ? "border-basketball bg-orange-50"
-              : "border-gray-300 hover:border-gray-400"
-          }`}
-          data-testid="upload-dropzone"
-        >
-          <input {...getInputProps()} data-testid="input-file" />
-          <CloudUpload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-          <p className="text-gray-600 mb-2">
-            {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
-          </p>
-          <p className="text-sm text-gray-500 mb-4">Supports JSON and gzipped league files</p>
-          <Button
-            type="button"
-            variant="outline"
-            className="bg-basketball text-white hover:bg-orange-600 border-basketball"
-            disabled={uploadMutation.isPending}
-            data-testid="button-browse-files"
-          >
-            {uploadMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              "Browse Files"
-            )}
-          </Button>
-        </div>
+        <Tabs value={uploadMode} onValueChange={(value) => setUploadMode(value as 'file' | 'url')} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="file">File Upload</TabsTrigger>
+            <TabsTrigger value="url">URL Upload</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="file" className="space-y-4">
+            <div
+              {...getRootProps()}
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+                isDragActive
+                  ? "border-basketball bg-orange-50 dark:bg-orange-900/20"
+                  : "border-gray-300 dark:border-gray-600 hover:border-basketball hover:bg-gray-50 dark:hover:bg-gray-800"
+              }`}
+              data-testid="upload-dropzone"
+            >
+              <input {...getInputProps()} data-testid="input-file" />
+              <CloudUpload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-600 dark:text-gray-300 mb-2">
+                {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Supports JSON and gzipped league files</p>
+              <Button
+                type="button"
+                className="bg-basketball text-white hover:bg-orange-600 border-basketball"
+                disabled={uploadMutation.isPending}
+                data-testid="button-browse-files"
+              >
+                {uploadMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  "Browse Files"
+                )}
+              </Button>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="url" className="space-y-4">
+            <div className="space-y-4">
+              <div className="text-center">
+                <Link className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Enter League File URL
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Paste a direct link to a JSON or gzipped league file
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  type="url"
+                  placeholder="https://example.com/league-file.json.gz"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  className="flex-1"
+                  disabled={uploadMutation.isPending}
+                />
+                <Button
+                  onClick={handleUrlUpload}
+                  className="bg-basketball text-white hover:bg-orange-600"
+                  disabled={uploadMutation.isPending || !urlInput.trim()}
+                  data-testid="button-upload-url"
+                >
+                  {uploadMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <Link className="mr-2 h-4 w-4" />
+                      Load URL
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
 
         {uploadedFile && (
           <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">

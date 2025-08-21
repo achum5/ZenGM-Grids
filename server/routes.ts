@@ -152,6 +152,31 @@ const answerSchema = z.object({
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Upload league file from URL
+  app.post("/api/upload-url", async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url) {
+        return res.status(400).json({ message: "URL is required" });
+      }
+      
+      console.log("Downloading file from URL:", url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        return res.status(400).json({ message: `Failed to download file: ${response.statusText}` });
+      }
+      
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const filename = url.split('/').pop() || 'league-file';
+      
+      // Process the downloaded file using the same logic as file upload
+      await processLeagueFile(buffer, filename, res);
+    } catch (error: any) {
+      console.error("URL upload error:", error);
+      res.status(500).json({ message: error.message || "Failed to process URL" });
+    }
+  });
+
   // Upload league file and parse players
   app.post("/api/upload", upload.single("file"), async (req: MulterRequest, res) => {
     try {
@@ -159,13 +184,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      let fileBuffer = req.file.buffer;
+      await processLeagueFile(req.file.buffer, req.file.originalname || 'league-file', res);
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      res.status(500).json({ message: error.message || "Upload failed" });
+    }
+  });
+
+  // Helper function to process league files
+  async function processLeagueFile(fileBuffer: Buffer, filename: string, res: any) {
+    try {
       let fileContent: string;
       
       // Check if file is gzipped
-      const isGzipped = req.file.mimetype === "application/gzip" || 
-                       req.file.originalname?.endsWith(".gz") ||
-                       req.file.originalname?.endsWith(".gzip");
+      const isGzipped = filename.endsWith(".gz") || filename.endsWith(".gzip");
       
       if (isGzipped) {
         try {
@@ -178,9 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       fileContent = fileBuffer.toString();
       let players: any[] = [];
 
-      const isJson = req.file.mimetype === "application/json" || 
-                    req.file.originalname?.includes(".json") ||
-                    (isGzipped && req.file.originalname?.includes(".json"));
+      const isJson = filename.includes(".json") || (isGzipped && filename.includes(".json"));
 
       if (isJson) {
         const data = JSON.parse(fileContent);
@@ -581,7 +611,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Upload error:", error);
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid file format" });
     }
-  });
+  }
 
   // Generate a new game grid
   app.post("/api/games/generate", async (req, res) => {
