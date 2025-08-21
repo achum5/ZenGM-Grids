@@ -196,7 +196,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
             <PlayerFace 
               face={player.face}
               imageUrl={player.imageUrl}
-              size={38} 
+              size={window.innerWidth >= 1024 ? 50 : window.innerWidth >= 768 ? 42 : 38} 
               className="rounded-full overflow-hidden"
               teams={player.teams}
               currentTeam={player.years?.[player.years.length - 1]?.team}
@@ -325,7 +325,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           <PlayerFace 
             face={player.face}
             imageUrl={player.imageUrl}
-            size={38} 
+            size={window.innerWidth >= 1024 ? 50 : window.innerWidth >= 768 ? 42 : 38} 
             className="rounded-full overflow-hidden"
             teams={player.teams}
             currentTeam={player.years?.[player.years.length - 1]?.team}
@@ -334,8 +334,13 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
       </div>
       
       {/* Player name */}
-      <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-white leading-tight text-center px-0.5 w-full flex-shrink-0 flex items-center justify-center">
-        <span className="block text-center w-full truncate" title={playerName}>
+      <div className="text-[8px] sm:text-[10px] md:text-xs lg:text-sm font-bold text-white leading-tight text-center px-0.5 w-full flex-shrink-0 flex items-center justify-center">
+        <span className="block text-center w-full" title={playerName} style={{ 
+          fontSize: window.innerWidth >= 1024 ? '14px' : window.innerWidth >= 768 ? '12px' : '10px',
+          lineHeight: '1.2',
+          overflowWrap: 'break-word',
+          hyphens: 'auto'
+        }}>
           {playerName}
         </span>
       </div>

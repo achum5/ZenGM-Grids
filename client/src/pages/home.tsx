@@ -62,14 +62,6 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <ThemeToggle />
-              <Button
-                onClick={() => setShowRules(true)}
-                className="bg-basketball text-white hover:bg-orange-600 flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm"
-                data-testid="button-rules"
-              >
-                <HelpCircle className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span>Rules</span>
-              </Button>
             </div>
           </div>
         </div>
@@ -88,19 +80,7 @@ export default function Home() {
                 teamData={teamData || undefined}
               />
               
-              {/* Generate New Grid button below game on mobile */}
-              {teamData && (
-                <div className="mt-4 bg-white dark:bg-slate-800 rounded-lg p-4">
-                  <Button
-                    onClick={handleGameGenerated}
-                    className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
-                    data-testid="button-generate-new-grid-mobile"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Generate New Grid
-                  </Button>
-                </div>
-              )}
+
             </div>
           )}
           

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Clock, RotateCcw } from "lucide-react";
+import { Clock, RotateCcw, Play } from "lucide-react";
 import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { CorrectAnswersModal } from "./correct-answers-modal";
@@ -346,14 +346,14 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                         playerName={answer.player}
                         isCorrect={!!isCorrect}
                         rarity={answer.rarity || 47}
-                        cellCriteria={{
+                        cellCriteria={game ? {
                           row: game.rowCriteria[rowIndex].label,
                           column: game.columnCriteria[colIndex].label
-                        }}
-                        candidateCount={game.correctAnswers[cellKey]?.length || 0}
+                        } : undefined}
+                        candidateCount={game?.correctAnswers[cellKey]?.length || 0}
                         teamData={teamData}
-                        columnCriteria={game.columnCriteria[colIndex]}
-                        rowCriteria={game.rowCriteria[rowIndex]}
+                        columnCriteria={game?.columnCriteria[colIndex]}
+                        rowCriteria={game?.rowCriteria[rowIndex]}
                       />
                     )}
                     {!isAnswered && (
@@ -386,6 +386,20 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           playerDetails={correctAnswersData.playerDetails}
           cellCriteria={correctAnswersData.cellCriteria}
         />
+      )}
+      
+      {/* Generate New Grid button - shows after game is loaded */}
+      {game && (
+        <div className="mt-4 bg-white dark:bg-slate-800 rounded-lg p-4">
+          <Button
+            onClick={() => window.location.reload()}
+            className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
+            data-testid="button-generate-new-grid"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            Generate New Grid
+          </Button>
+        </div>
       )}
     </div>
   );

@@ -63,10 +63,38 @@ export class MemStorage implements IStorage {
 
   async searchPlayers(query: string): Promise<Player[]> {
     const normalizedQuery = this.normalizeString(query.toLowerCase());
+    
     return Array.from(this.players.values())
       .filter(player => {
         const normalizedName = this.normalizeString(player.name.toLowerCase());
-        return normalizedName.includes(normalizedQuery);
+        
+        // Direct match
+        if (normalizedName.includes(normalizedQuery)) {
+          return true;
+        }
+        
+        // Enhanced search for abbreviated names (e.g., "CJ L" should match "C.J. Lewis")
+        const queryParts = normalizedQuery.split(/\s+/);
+        const nameParts = normalizedName.split(/\s+/);
+        
+        // Check if all query parts can be matched to name parts
+        return queryParts.every(queryPart => {
+          return nameParts.some(namePart => {
+            // Direct substring match
+            if (namePart.includes(queryPart)) return true;
+            
+            // Check if query part matches initials (e.g., "cj" matches "c.j.")
+            const queryLetters = queryPart.replace(/[^a-z]/g, '');
+            const nameLetters = namePart.replace(/[^a-z]/g, '');
+            
+            if (queryLetters.length > 0 && nameLetters.length > 0) {
+              // Check if name starts with the query letters
+              return nameLetters.startsWith(queryLetters);
+            }
+            
+            return false;
+          });
+        });
       })
       .slice(0, 10);
   }

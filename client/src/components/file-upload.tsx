@@ -170,17 +170,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
           </div>
         )}
 
-        {uploadData && (
-          <Button
-            onClick={generateGrid}
-            disabled={generateGameMutation.isPending}
-            className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
-            data-testid="button-generate-grid"
-          >
-            <Play className="h-4 w-4 mr-2" />
-            {generateGameMutation.isPending ? "Generating..." : "Generate New Grid"}
-          </Button>
-        )}
+
       </CardContent>
     </Card>
   );
