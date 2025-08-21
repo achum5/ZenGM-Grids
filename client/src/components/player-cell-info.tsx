@@ -232,6 +232,33 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           </span>
         </div>
         
+        {/* Player name for incorrect squares - ALWAYS VISIBLE */}
+        <div className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-75 text-white text-center py-1 px-1 rounded shadow-lg border border-gray-600">
+          <div className="text-xs sm:text-sm font-bold leading-tight" title={playerName}>
+            {(() => {
+              const maxLength = 16; // Slightly more space for incorrect squares
+              if (playerName.length <= maxLength) {
+                return playerName;
+              }
+              
+              const nameParts = playerName.split(' ');
+              if (nameParts.length >= 2) {
+                const firstInitial = nameParts[0][0] + '.';
+                const lastName = nameParts[nameParts.length - 1];
+                const truncatedName = firstInitial + ' ' + lastName;
+                
+                if (truncatedName.length <= maxLength) {
+                  return truncatedName;
+                } else {
+                  const availableSpace = maxLength - firstInitial.length - 4;
+                  return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
+                }
+              }
+              
+              return playerName.substring(0, maxLength - 3) + '...';
+            })()}
+          </div>
+        </div>
 
       </div>
       
@@ -354,10 +381,31 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
         </div>
       </div>
       
-      {/* Player name */}
-      <div className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-75 text-white text-center py-1 px-1 rounded">
-        <div className="text-xs sm:text-sm md:text-base font-bold leading-tight truncate" title={playerName}>
-          {playerName}
+      {/* Player name for correct squares - ALWAYS VISIBLE */}
+      <div className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-75 text-white text-center py-1 px-1 rounded shadow-lg border border-gray-600">
+        <div className="text-xs sm:text-sm font-bold leading-tight" title={playerName}>
+          {(() => {
+            const maxLength = 16; // Adjust for correct squares
+            if (playerName.length <= maxLength) {
+              return playerName;
+            }
+            
+            const nameParts = playerName.split(' ');
+            if (nameParts.length >= 2) {
+              const firstInitial = nameParts[0][0] + '.';
+              const lastName = nameParts[nameParts.length - 1];
+              const truncatedName = firstInitial + ' ' + lastName;
+              
+              if (truncatedName.length <= maxLength) {
+                return truncatedName;
+              } else {
+                const availableSpace = maxLength - firstInitial.length - 4;
+                return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
+              }
+            }
+            
+            return playerName.substring(0, maxLength - 3) + '...';
+          })()}
         </div>
       </div>
       
