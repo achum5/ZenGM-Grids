@@ -292,7 +292,7 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
           // Only redraw faces.js content, not real images
           faceRef.current.innerHTML = "";
           // Re-call the main generation function
-          generateFace();
+          generateFacesJSFace();
         }
       }, 100);
     };

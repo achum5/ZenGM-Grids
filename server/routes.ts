@@ -196,13 +196,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let fileContent: string;
       
-      // Check if file is gzipped
-      const isGzipped = filename.endsWith(".gz") || filename.endsWith(".gzip");
+      // Check if file is gzipped by magic bytes or filename
+      const isGzipped = filename.endsWith(".gz") || filename.endsWith(".gzip") || 
+                       (fileBuffer.length >= 2 && fileBuffer[0] === 0x1f && fileBuffer[1] === 0x8b);
       
       if (isGzipped) {
         try {
           fileBuffer = await gunzipAsync(fileBuffer);
+          console.log("Successfully decompressed gzip file");
         } catch (error) {
+          console.error("Gzip decompression error:", error);
           return res.status(400).json({ message: "Failed to decompress gzip file" });
         }
       }

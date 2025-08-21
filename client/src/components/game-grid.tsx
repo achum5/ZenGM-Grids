@@ -388,19 +388,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         />
       )}
       
-      {/* Generate New Grid button - shows after game is loaded */}
-      {game && (
-        <div className="mt-4 bg-white dark:bg-slate-800 rounded-lg p-4">
-          <Button
-            onClick={() => window.location.reload()}
-            className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
-            data-testid="button-generate-new-grid"
-          >
-            <Play className="h-4 w-4 mr-2" />
-            Generate New Grid
-          </Button>
-        </div>
-      )}
+
     </div>
   );
 }

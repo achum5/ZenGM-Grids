@@ -205,9 +205,9 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
         </div>
         
         {/* Player name */}
-        <div className="text-[11px] sm:text-sm md:text-base font-bold text-white leading-tight mb-1 text-center px-0.5 w-full break-words hyphens-auto flex-shrink-0 min-h-[2em] flex items-center justify-center">
-          <span className="block text-center whitespace-pre-line w-full truncate" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-            {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
+        <div className="text-sm sm:text-base font-semibold text-white leading-tight mb-1 text-center px-1 w-full break-words flex-shrink-0 min-h-[2em] flex items-center justify-center">
+          <span className="block text-center w-full" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+            {playerName}
           </span>
         </div>
         
