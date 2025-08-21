@@ -198,6 +198,11 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   placeholder=""
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
+                      handleUrlUpload();
+                    }
+                  }}
                   className="flex-1"
                   disabled={uploadMutation.isPending}
                 />

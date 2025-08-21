@@ -205,9 +205,30 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
         </div>
         
         {/* Player name */}
-        <div className="text-sm sm:text-base font-semibold text-white leading-tight mb-1 text-center px-1 w-full break-words flex-shrink-0 min-h-[2em] flex items-center justify-center">
-          <span className="block text-center w-full" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-            {playerName}
+        <div className="text-sm sm:text-base font-semibold text-white leading-tight mb-1 text-center px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
+          <span className="block text-center w-full" title={playerName}>
+            {(() => {
+              const maxLength = 14; // Adjust based on cell width
+              if (playerName.length <= maxLength) {
+                return playerName;
+              }
+              
+              const nameParts = playerName.split(' ');
+              if (nameParts.length >= 2) {
+                const firstInitial = nameParts[0][0] + '.';
+                const lastName = nameParts[nameParts.length - 1];
+                const truncatedName = firstInitial + ' ' + lastName;
+                
+                if (truncatedName.length <= maxLength) {
+                  return truncatedName;
+                } else {
+                  const availableSpace = maxLength - firstInitial.length - 4; // -4 for space and "..."
+                  return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
+                }
+              }
+              
+              return playerName.substring(0, maxLength - 3) + '...';
+            })()}
           </span>
         </div>
         
