@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useRef } from "react";
 import { display, generate } from "facesjs";
 
 interface PlayerFaceProps {
@@ -50,21 +50,63 @@ const TEAM_COLORS: Record<string, string[]> = {
 };
 
 export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = [], currentTeam }: PlayerFaceProps) {
-  // Generate SVG markup once and memoize it - no resize handlers needed
-  const svgMarkup = useMemo(() => {
-    if (imageUrl) {
-      // Return image markup for real player photos
-      return `
-        <img 
-          src="${imageUrl}" 
-          alt="Player" 
-          style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;"
-        />
-      `;
-    } else if (face) {
+  const faceRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (faceRef.current) {
+      // Clear previous content
+      faceRef.current.innerHTML = "";
+      
+      // Priority 1: Real player image URL
+      if (imageUrl) {
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.style.width = `${size}px`;
+        img.style.height = `${size}px`;
+        img.style.objectFit = 'cover';
+        img.style.borderRadius = '50%';
+        img.style.background = '#374151';
+        img.style.position = 'absolute';
+        img.style.top = '50%';
+        img.style.left = '50%';
+        img.style.transform = 'translate(-50%, -50%)';
+        
+        img.onload = () => {
+          if (faceRef.current) {
+            // Create container with relative positioning
+            const container = document.createElement('div');
+            container.style.position = 'relative';
+            container.style.width = `${size}px`;
+            container.style.height = `${size}px`;
+            container.style.borderRadius = '50%';
+            container.style.overflow = 'hidden';
+            container.appendChild(img);
+            faceRef.current.appendChild(container);
+          }
+        };
+        
+        img.onerror = () => {
+          // Fallback to faces.js if image fails to load
+          if (faceRef.current) {
+            generateFacesJSFace();
+          }
+        };
+        
+        return;
+      }
+      
+      // Priority 2: faces.js generated face
+      if (faceRef.current) {
+        generateFacesJSFace();
+      }
+    }
+    
+    function generateFacesJSFace() {
+      if (!faceRef.current) return;
+      
       try {
-        // Generate face using faces.js
-        let faceData = face as any;
+        // Generate face - use provided face data or generate random
+        let faceData = face ? face as any : generate();
         
         // Determine team colors - prioritize current active team
         let teamColors: string[] = [];
@@ -82,130 +124,262 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
           }
         }
         
-        // Use mapped team colors if available
+        // If we have player data with years, find the current active team
+        // First try from the passed data, then from face data
+        const playerYears = (faceData && faceData.years) || [];
+        if (playerYears.length > 0) {
+          // For retired players or simulation years far in future, use their last team
+          // Sort by end year to get the most recent team
+          const sortedYears = [...playerYears].sort((a: any, b: any) => b.end - a.end);
+          const lastTeam = sortedYears[0];
+          if (lastTeam) {
+            activeTeam = lastTeam.team;
+          }
+        }
+        
+        // Try to use the active team's colors
         if (activeTeam && TEAM_COLORS[activeTeam]) {
           teamColors = TEAM_COLORS[activeTeam];
           console.log(`Using mapped colors for active team ${activeTeam}:`, teamColors);
-        }
-        
-        // Apply team colors if available
-        if (teamColors.length >= 2) {
-          console.log("Applying team colors:", teamColors[0], teamColors[1]);
-          
-          // Override face colors with team colors
-          faceData.teamColors = {
-            primary: teamColors[0],
-            secondary: teamColors[1],
-            accent: teamColors[2] || teamColors[0]
-          };
-        }
-        
-        // Generate the SVG using faces.js display function
-        // The display function should return an SVG string
-        let svg: string;
-        
-        // Try different ways to call the display function
-        if (typeof display === 'function') {
-          // Check if display returns a string or modifies a DOM element
-          const result = display(faceData);
-          if (typeof result === 'string') {
-            svg = result;
-          } else {
-            // If display modifies DOM, create temp element
-            const tempDiv = document.createElement('div');
-            display(tempDiv, faceData);
-            svg = tempDiv.innerHTML;
+        } else if (currentTeam && TEAM_COLORS[currentTeam]) {
+          teamColors = TEAM_COLORS[currentTeam];
+          console.log(`Using mapped colors for ${currentTeam}:`, teamColors);
+        } else if (teams.length > 0) {
+          // Use the first team with mapped colors
+          const mappedTeam = teams.find(team => TEAM_COLORS[team]);
+          if (mappedTeam) {
+            teamColors = TEAM_COLORS[mappedTeam];
+            console.log(`Using mapped colors for ${mappedTeam}:`, teamColors);
           }
-        } else {
-          throw new Error('faces.js display function not available');
         }
         
-        // Validate that we have a proper SVG
-        if (!svg || !svg.includes('<svg')) {
-          throw new Error('No SVG generated by faces.js');
+        // Fallback to face data team colors if no mapping found
+        if (teamColors.length === 0 && faceData && faceData.teamColors && Array.isArray(faceData.teamColors)) {
+          teamColors = faceData.teamColors;
+          console.log('Using team colors from face data:', teamColors);
         }
         
-        // Ensure the SVG is scalable by modifying its attributes
-        svg = svg.replace(/<svg[^>]*>/, (match) => {
-          // Remove fixed width/height 
-          let modifiedMatch = match
-            .replace(/\s*width\s*=\s*["'][^"']*["']/gi, '')
-            .replace(/\s*height\s*=\s*["'][^"']*["']/gi, '');
+        // Final fallback to default colors
+        if (teamColors.length === 0) {
+          teamColors = ["#0066cc", "#ff0000"];
+          console.log('Using default team colors');
+        }
+        
+        // Apply team colors and jersey style to the face data before display
+        if (faceData) {
+          faceData.teamColors = teamColors;
           
-          // Add viewBox if not present (faces.js typically uses 400x600)
-          if (!modifiedMatch.includes('viewBox')) {
-            modifiedMatch = modifiedMatch.replace('<svg', '<svg viewBox="0 0 400 600"');
+          // Set jersey style based on the team (simplified for now)
+          if (currentTeam && TEAM_COLORS[currentTeam]) {
+            // Use more varied jersey styles based on team
+            if (currentTeam.includes('Lakers') || currentTeam.includes('Warriors')) {
+              faceData.jerseyStyle = 'v-neck';
+            } else if (currentTeam.includes('Celtics') || currentTeam.includes('Knicks')) {
+              faceData.jerseyStyle = 'tank';
+            } else {
+              faceData.jerseyStyle = 'regular';
+            }
           }
-          
-          // Add style for responsive sizing
-          modifiedMatch = modifiedMatch.replace('<svg', '<svg style="width: 100%; height: 100%; max-width: 100%; max-height: 100%;"');
-          
-          return modifiedMatch;
-        });
+        }
         
-        // Apply additional team styling if colors are available
-        if (teamColors.length >= 2) {
-          // Update jersey colors in the SVG
-          const parser = new DOMParser();
-          const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
-          const jerseyElements = svgDoc.querySelectorAll('[class*="jersey"]');
-          jerseyElements.forEach(element => {
-            element.setAttribute('fill', teamColors[0]);
-            console.log(`Updated element [class*="jersey"] to color:`, teamColors[0]);
+        // Display the face with updated team colors
+        display(faceRef.current, faceData);
+        
+        // Apply size styling and team colors to SVG
+        const svg = faceRef.current?.querySelector('svg');
+        if (svg) {
+          svg.style.width = `${size}px`;
+          svg.style.height = `${size}px`;
+          svg.style.maxWidth = '100%';
+          svg.style.maxHeight = '100%';
+          svg.style.overflow = 'visible';
+          
+          // Apply team colors to jersey elements 
+          const primaryColor = teamColors[0];
+          const secondaryColor = teamColors[1] || teamColors[0];
+            
+          // Find and update jersey elements with team colors
+          console.log('Applying team colors:', primaryColor, secondaryColor);
+          
+          // More comprehensive search for jersey elements
+          const jerseySelectors = [
+            '[id*="jersey"]',
+            '[class*="jersey"]', 
+            'g[id*="jersey"] path',
+            'g[id*="jersey"] rect',
+            'g[id*="jersey"] polygon',
+            '[fill="#0066cc"]', // Default blue
+            '[fill="#ff0000"]', // Default red
+            '[fill="#0000ff"]', // Default blue variant
+            '[fill="#cc0000"]', // Default red variant
+            '[fill="#4682b4"]', // Default steel blue
+            '[fill="#dc143c"]', // Default crimson
+            '[fill="#1e90ff"]', // Default dodger blue
+            '[fill="#b22222"]'  // Default fire brick
+          ];
+          
+          jerseySelectors.forEach(selector => {
+            const elements = svg.querySelectorAll(selector);
+            elements.forEach((element, index) => {
+              const color = index % 2 === 0 ? primaryColor : secondaryColor;
+              element.setAttribute('fill', color);
+              (element as HTMLElement).style.fill = color;
+              console.log(`Updated element ${selector} to color:`, color);
+            });
           });
           
-          // Serialize back to string
-          const serializer = new XMLSerializer();
-          svg = serializer.serializeToString(svgDoc);
+          // Find all path/rect elements within jersey groups and update them
+          const jerseyGroups = svg.querySelectorAll('g[id*="jersey"], g[class*="jersey"]');
+          jerseyGroups.forEach(group => {
+            const paths = group.querySelectorAll('path, rect, polygon, circle');
+            paths.forEach((element, index) => {
+              const color = index % 2 === 0 ? primaryColor : secondaryColor;
+              element.setAttribute('fill', color);
+              (element as HTMLElement).style.fill = color;
+              console.log('Updated jersey group element to color:', color);
+            });
+          });
+          
+          // Use CSS to hide white backgrounds without removing elements
+          const style = document.createElement('style');
+          style.textContent = `
+            svg rect[fill="#ffffff"],
+            svg rect[fill="white"],
+            svg rect[fill="#fff"],
+            svg rect[fill="#f8f8f8"] {
+              opacity: 0 !important;
+              display: none !important;
+            }
+          `;
+          svg.appendChild(style);
+          
+          // Ensure proper viewBox to prevent cutoff
+          if (!svg.getAttribute('viewBox')) {
+            svg.setAttribute('viewBox', '0 0 400 600');
+          }
+          svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+          
+          // Ensure SVG fits within container without cutoff
+          svg.style.objectFit = 'contain';
         }
-        
-        return svg;
       } catch (error) {
         console.error("Error generating face:", error);
-        // Fallback: return a simple colored circle
-        return `
-          <div style="
-            width: 100%; 
-            height: 100%; 
-            background-color: #6b7280; 
-            border-radius: 50%; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 12px; 
-            color: white;
-          ">?</div>
-        `;
+        // Fallback: create a simple colored div
+        if (faceRef.current) {
+          const fallback = document.createElement('div');
+          fallback.style.width = `${size}px`;
+          fallback.style.height = `${size}px`;
+          fallback.style.backgroundColor = '#6b7280';
+          fallback.style.borderRadius = '50%';
+          fallback.style.display = 'flex';
+          fallback.style.alignItems = 'center';
+          fallback.style.justifyContent = 'center';
+          fallback.style.fontSize = '12px';
+          fallback.style.color = 'white';
+          fallback.textContent = '?';
+          faceRef.current.appendChild(fallback);
+        }
       }
-    } else {
-      // No face data or image - show fallback
-      return `
-        <div style="
-          width: 100%; 
-          height: 100%; 
-          background-color: #6b7280; 
-          border-radius: 50%; 
-          display: flex; 
-          align-items: center; 
-          justify-content: center; 
-          font-size: 12px; 
-          color: white;
-        ">?</div>
-      `;
     }
-  }, [face, imageUrl, teams, currentTeam]);
+  }, [face, imageUrl, size, teams, currentTeam]);
+
+  // Add window resize handler to properly regenerate faces
+  useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    
+    const handleResize = () => {
+      // Clear any existing timeout to debounce rapid resize events
+      clearTimeout(resizeTimeout);
+      
+      // Wait for resize to complete before regenerating face
+      resizeTimeout = setTimeout(() => {
+        if (faceRef.current && !imageUrl) {
+          // Clear the current face content
+          faceRef.current.innerHTML = "";
+          
+          // Trigger a complete face regeneration using the original generation logic
+          try {
+            // Generate face - use provided face data or generate random
+            let faceData = face ? face as any : generate();
+            
+            // Determine team colors - prioritize current active team
+            let teamColors: string[] = [];
+            let activeTeam = currentTeam;
+            
+            // Check for tid (team ID) in the face data first
+            if (faceData && faceData.tid !== undefined) {
+              // Use the current team from face data if available
+              if (faceData.currentTeam && TEAM_COLORS[faceData.currentTeam]) {
+                activeTeam = faceData.currentTeam;
+              }
+            }
+            
+            // Use mapped team colors if available
+            if (activeTeam && TEAM_COLORS[activeTeam]) {
+              teamColors = TEAM_COLORS[activeTeam];
+            }
+            
+            // Apply team colors if available
+            if (teamColors.length >= 2) {
+              // Override face colors with team colors
+              if (faceData) {
+                faceData.teamColors = {
+                  primary: teamColors[0],
+                  secondary: teamColors[1],
+                  accent: teamColors[2] || teamColors[0]
+                };
+              }
+            }
+            
+            // Generate the SVG with current size
+            const svg = display(faceData);
+            
+            // Apply additional team styling if colors are available
+            if (teamColors.length >= 2 && faceRef.current) {
+              // Update jersey colors in the SVG
+              const parser = new DOMParser();
+              const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+              const jerseyElements = svgDoc.querySelectorAll('[class*="jersey"]');
+              jerseyElements.forEach(element => {
+                element.setAttribute('fill', teamColors[0]);
+              });
+              
+              // Serialize back to string
+              const serializer = new XMLSerializer();
+              const updatedSvg = serializer.serializeToString(svgDoc);
+              faceRef.current.innerHTML = updatedSvg;
+            } else {
+              faceRef.current.innerHTML = svg;
+            }
+          } catch (error) {
+            console.error("Error regenerating face on resize:", error);
+            // Trigger the original face generation again as fallback
+            if (faceRef.current) {
+              // Re-trigger the main useEffect by clearing and forcing regeneration
+              setTimeout(() => {
+                if (faceRef.current && !imageUrl) {
+                  faceRef.current.innerHTML = "";
+                  // This will trigger the main face generation useEffect
+                }
+              }, 50);
+            }
+          }
+        }
+      }, 250); // Wait 250ms after resize stops
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, [face, teams, currentTeam, imageUrl, size]);
 
   return (
     <div 
+      ref={faceRef} 
       className={`relative flex-shrink-0 ${className}`}
-      style={{ 
-        width: size, 
-        height: size,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
-      dangerouslySetInnerHTML={{ __html: svgMarkup }}
+      style={{ width: size, height: size }}
     />
   );
 }
