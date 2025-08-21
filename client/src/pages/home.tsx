@@ -22,12 +22,10 @@ export default function Home() {
 
   const handleGameGenerated = (game?: Game) => {
     if (game) {
+      // Always reset state for new grid without page reload
       setCurrentGameId(game.id);
       setCurrentSessionId(null);
       setCurrentScore(0);
-    } else {
-      // Generate new grid - reload the page to create a new game
-      window.location.reload();
     }
   };
 

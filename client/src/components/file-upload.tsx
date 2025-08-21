@@ -195,7 +195,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <div className="flex gap-2">
                 <Input
                   type="url"
-                  placeholder="https://example.com/league-file.json.gz"
+                  placeholder=""
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   className="flex-1"
@@ -245,13 +245,35 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         )}
 
         {uploadData && (
-          <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-            <p data-testid="text-players-count">Players: {uploadData.players.length}</p>
-            <p data-testid="text-teams-count">Teams: {uploadData.teams.length}</p>
-            <p data-testid="text-achievements-count">Achievements: {uploadData.achievements.length}</p>
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+              <p data-testid="text-players-count">Players: {uploadData.players.length}</p>
+              <p data-testid="text-teams-count">Teams: {uploadData.teams.length}</p>
+              <p data-testid="text-achievements-count">Achievements: {uploadData.achievements.length}</p>
+            </div>
+            
+            <div className="text-center">
+              <Button 
+                onClick={generateGrid}
+                disabled={generateGameMutation.isPending}
+                className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold"
+                data-testid="button-generate-grid"
+              >
+                {generateGameMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-5 w-5" />
+                    Generate New Grid
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         )}
-
 
       </CardContent>
     </Card>
