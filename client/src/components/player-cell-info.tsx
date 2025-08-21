@@ -204,9 +204,9 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           </div>
         </div>
         
-        {/* Player name */}
-        <div className="text-sm sm:text-base font-semibold text-white leading-tight mb-1 text-center px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
-          <span className="block text-center w-full" title={playerName}>
+        {/* Player name - ALWAYS VISIBLE with stronger background */}
+        <div className="text-sm sm:text-base font-semibold text-white leading-tight mb-1 text-center px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center bg-black bg-opacity-75 rounded shadow-lg border border-gray-600">
+          <span className="block text-center w-full text-shadow" title={playerName}>
             {(() => {
               const maxLength = 14; // Adjust based on cell width
               if (playerName.length <= maxLength) {

@@ -303,10 +303,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          // Add career milestone achievements based on Immaculate Grid rules
-          if (careerStats.points >= 20000) achievements.push("20000+ Points");
-          if (careerStats.rebounds >= 10000) achievements.push("10000+ Rebounds");
-          if (careerStats.assists >= 5000) achievements.push("5000+ Assists");
+          // Add career milestone achievements based on comprehensive criteria
+          if (careerStats.points >= 20000) achievements.push("20,000+ Career Points");
+          if (careerStats.rebounds >= 10000) achievements.push("10,000+ Career Rebounds");
+          if (careerStats.assists >= 5000) achievements.push("5,000+ Career Assists");
+          if (careerStats.steals >= 2000) achievements.push("2,000+ Career Steals");
+          if (careerStats.blocks >= 1500) achievements.push("1,500+ Career Blocks");
 
           // Check for season-based statistical achievements
           if (player.stats && Array.isArray(player.stats)) {
@@ -324,8 +326,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const ppg = (season.pts || 0);
               const rpg = (season.trb || 0);
               const apg = (season.ast || 0);
+              const spg = (season.stl || 0);  
               const bpg = (season.blk || 0);
-              const spg = (season.stl || 0);
+              
+              // Single-season achievements  
+              if (ppg >= 30) achievements.push("Averaged 30+ PPG in a Season");
+              if (apg >= 10) achievements.push("Averaged 10+ APG in a Season");
+              if (rpg >= 15) achievements.push("Averaged 15+ RPG in a Season");
+              if (bpg >= 3) achievements.push("Averaged 3+ BPG in a Season");  
+              if (spg >= 2.5) achievements.push("Averaged 2.5+ SPG in a Season");
               
               if (ppg >= 20 && !hasHighScoring) {
                 achievements.push("20+ Points Per Game");
@@ -357,19 +366,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
           
-          // Process awards from BBGM data with Immaculate Grid mappings
+          // Process awards from BBGM data with comprehensive achievement mappings
           if (player.awards && Array.isArray(player.awards)) {
             player.awards.forEach((award: any) => {
               if (award.type) {
                 switch (award.type) {
                   case "Champion":
-                    achievements.push("League Champ");
+                    achievements.push("NBA Champion");
+                    achievements.push("Champion");
                     break;
                   case "Finals MVP":
                     achievements.push("Finals MVP");
                     break;
                   case "MVP":
-                    achievements.push("MVP");
+                    achievements.push("MVP Winner");
                     break;
                   case "DPOY":
                     achievements.push("Defensive Player of the Year");
@@ -381,17 +391,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     achievements.push("Rookie of the Year");
                     break;
                   case "All Star":
-                    achievements.push("All Star");
+                    achievements.push("All-Star Selection");
                     break;
                   case "All-League":
-                    achievements.push("All-NBA");
+                    achievements.push("All-League Team");
+                    break;
+                  case "All-Defensive":
+                    achievements.push("All-Defensive Team");
                     break;
                   case "All-Rookie":
-                    achievements.push("All-Rookie Team");
+                    achievements.push("All-League Team");
                     break;
                 }
               }
             });
+          }
+
+          // Add draft-based achievements
+          if (player.draft && player.draft.round) {
+            if (player.draft.pick === 1) {
+              achievements.push("#1 Overall Draft Pick");
+            } else if (player.draft.round === 1) {
+              achievements.push("First Round Pick");
+            } else if (player.draft.round === 2) {
+              achievements.push("2nd Round Pick");
+            }
+          } else {
+            achievements.push("Undrafted Player");
+          }
+
+          // Add team-based achievements
+          if (allTeams.size === 1) {
+            achievements.push("Only One Team");
+          }
+
+          // Add career length achievement
+          if (player.stats && player.stats.length >= 15) {
+            achievements.push("Played 15+ Seasons");
+          }
+
+          // Add special BBGM Player easter egg (very rare - 0.1% chance)
+          if (Math.random() < 0.001) {
+            achievements.push("BBGM Player");
           }
 
           // Check special categories based on Immaculate Grid rules
@@ -630,84 +671,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teams = Array.from(new Set(players.flatMap(p => p.teams)));
       const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
       
-      // Priority achievements for Immaculate Grid (comprehensive milestone system)
+      // Comprehensive Immaculate Grid criteria system
       const priorityAchievements = [
-        // Awards & Recognition
-        "All Star",
-        "MVP", 
-        "Finals MVP",
-        "Rookie of the Year",
-        "Defensive Player of the Year",
-        "Sixth Man of the Year",
-        "Most Improved Player",
-        "All-NBA",
-        "All-Defensive Team",
-        "All-Rookie Team",
-        "League Champ",
-        "Hall of Fame",
-        
-        // Career Milestones  
-        "20,000+ Points",
-        "10,000+ Points",
-        "15,000+ Points", 
-        "25,000+ Points",
-        "10,000+ Rebounds",
-        "5,000+ Rebounds",
-        "15,000+ Rebounds",
-        "5,000+ Assists",
-        "3,000+ Assists",
-        "8,000+ Assists",
-        "10,000+ Assists",
-        "2,000+ Steals",
-        "1,500+ Steals",
-        "1,500+ Blocks",
-        "1,000+ Blocks",
-        "2,000+ Blocks",
+        // Career Milestones
+        "20,000+ Career Points",
+        "10,000+ Career Rebounds", 
+        "5,000+ Career Assists",
+        "2,000+ Career Steals",
+        "1,500+ Career Blocks",
         "2,000+ Made Threes",
-        "1,000+ Made Threes",
-        "3,000+ Made Threes",
         
-        // Single-Season Milestones
-        "30+ Points Per Game",
-        "25+ Points Per Game", 
-        "20+ Points Per Game",
-        "15+ Points Per Game",
-        "10+ Rebounds Per Game",
-        "15+ Rebounds Per Game", 
-        "8+ Rebounds Per Game",
-        "10+ Assists Per Game",
-        "5+ Assists Per Game",
-        "8+ Assists Per Game",
-        "3+ Blocks Per Game",
-        "2+ Blocks Per Game",
-        "2.5+ Steals Per Game",
-        "2+ Steals Per Game",
-        "50/40/90 Season",
+        // Single-Season Statistical Achievements
+        "Averaged 30+ PPG in a Season",
+        "Averaged 10+ APG in a Season",
+        "Averaged 15+ RPG in a Season", 
+        "Averaged 3+ BPG in a Season",
+        "Averaged 2.5+ SPG in a Season",
+        "Shot 50/40/90 in a Season",
+        
+        // League Leadership
         "Led League in Scoring",
         "Led League in Rebounds",
-        "Led League in Assists", 
-        "Led League in Steals",
+        "Led League in Assists",
+        "Led League in Steals", 
         "Led League in Blocks",
         
-        // Game Feats
-        "50+ Point Game",
-        "60+ Point Game",
-        "Triple-Double",
-        "Quadruple-Double",
-        "20+ Rebounds in Game",
-        "20+ Assists in Game", 
-        "10+ Threes in Game",
-        "8+ Threes in Game",
+        // Game Performance Feats
+        "Scored 50+ in a Game",
+        "Triple-Double in a Game",
+        "20+ Rebounds in a Game",
+        "20+ Assists in a Game",
+        "10+ Threes in a Game",
         
-        // Other Categories
-        "First Round Draft Pick",
-        "Top 5 Draft Pick",
-        "Lottery Pick",
-        "Undrafted",
+        // Major Awards
+        "MVP Winner",
+        "Defensive Player of the Year", 
+        "Rookie of the Year",
+        "Sixth Man of the Year",
+        "Most Improved Player",
+        "Finals MVP",
+        
+        // Team Honors
+        "All-League Team",
+        "All-Defensive Team", 
+        "All-Star Selection",
+        "NBA Champion",
+        
+        // Career Length & Draft
+        "Played 15+ Seasons",
+        "#1 Overall Draft Pick",
+        "Undrafted Player",
+        "First Round Pick",
+        "2nd Round Pick",
+        
+        // Special Categories
+        "Made All-Star Team at Age 35+",
         "Only One Team",
-        "5+ Teams",
-        "Born Outside US 50 States and DC"
+        "Champion",
+        "Hall of Fame",
+        
+        // Dynamic Teammate Criteria (will be populated with high Win Shares players)
+        "Teammate of All-Time Greats",
+        
+        // Easter Egg - extremely rare
+        "BBGM Player"
       ];
+
+      // Add dynamic "Teammate of All-Time Greats" criteria based on career Win Shares
+      const allTimeGreats = players
+        .filter(p => p.careerWinShares && p.careerWinShares >= 150) // Very high threshold for all-time greats
+        .sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
+        .slice(0, 20); // Top 20 by Win Shares
+      
+      // For each player, check if they were teammates with any all-time greats
+      players.forEach(player => {
+        for (const great of allTimeGreats) {
+          if (player.name !== great.name) {
+            // Check if they shared any teams
+            const sharedTeams = player.teams.filter(team => great.teams.includes(team));
+            if (sharedTeams.length > 0) {
+              // Verify they actually played together (overlapping years)
+              const playerYears = player.years || [];
+              const greatYears = great.years || [];
+              
+              for (const team of sharedTeams) {
+                const playerTeamYears = playerYears.find(y => y.team === team);
+                const greatTeamYears = greatYears.find(y => y.team === team);
+                
+                if (playerTeamYears && greatTeamYears) {
+                  // Check for year overlap
+                  if (playerTeamYears.start <= greatTeamYears.end && 
+                      playerTeamYears.end >= greatTeamYears.start) {
+                    if (!player.achievements.includes("Teammate of All-Time Greats")) {
+                      player.achievements.push("Teammate of All-Time Greats");
+                    }
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
       
       // Use priority achievements that exist in our dataset with sufficient players
       const achievements = priorityAchievements.filter(ach => {
