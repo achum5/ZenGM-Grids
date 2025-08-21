@@ -1,0 +1,57 @@
+when in full sized window mode, the player names do not show up at all for the faces.js players
+for the imaged players, however, the names do show up if the name is short enough. if it is a long name, the name does not come up at all. i need you to do dynamic font size for player names depending on how long the name is
+the full name should always show in the sqaure
+when in smaller windowed mode, the names do come up as intended. so, for only full sized mode this needs to be resolved
+but then for a small iphone, the font size of the player name needs to be lessened so the full name can still appear in the square
+
+still getting this bug anytime i resize the window after having guessed a player with a faces.js face. please make sure this is resolved. if you need to just make the sizing of the faces.js faces static without changing, please do that. the current sizing is very good
+[plugin:runtime-error-plugin] generateFacesJSFace is not defined
+/home/runner/workspace/client/src/components/player-face.tsx:295:11
+293|            faceRef.current.innerHTML = "";
+294|            // Re-call the main generation function
+295|            generateFacesJSFace();
+|            ^
+296|          }
+297|        }, 100);
+
+add in all the new awards. its still not populating awards/info other than the basic stuff we started with
+lets delete out all the award/stats/info data that we have in the code then import this exact list in to use as our pool to generate the grids with
+the amount of rows/columns generation that have stats/awards should remain the same. that is functioning very well
+20,000+ career points
+10,000+ career rebounds
+5,000+ career assists
+2,000+ career steals
+1,500+ career blocks
+2,000+ made threes
+Averaged 30+ PPG in a season
+Averaged 10+ APG in a season
+Averaged 15+ RPG in a season
+Averaged 3+ BPG in a season
+Averaged 2.5+ SPG in a season
+Shot 50/40/90 in a season
+Led league in scoring/rebounds/assists/steals/blocks
+Scored 50+ in a game (game highs stored in player profile)
+Triple-double in a game (stored as "TD" in feats)
+20+ rebounds in a game
+20+ assists in a game
+10+ threes in a game
+MVP winner
+Defensive Player of the Year
+Rookie of the Year
+Sixth Man of the Year
+Most Improved Player
+Finals MVP
+All-League Team
+All-Defensive Team
+All-Star selection
+NBA Champion
+Played 15+ seasons ("experience" in player profile in league file)
+#1 overall draft pick
+Undrafted player
+Made an All-Star team at age 35+
+Teammate of LeBron / Kobe / Shaq / Curry (use a random assortment of very famous players and great players - use career WS as a benchmark for this. it should be the very best of the best. but it shouldnt just be a static list of players that this can be for. it should always update based on live career WS of all time great players)
+Only one team
+First round pick
+2nd round pick
+Champion
+An Easter egg that should pop up very very rarely - "BBGM Player" which is every player obviously 

@@ -291,15 +291,95 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         if (faceRef.current && !imageUrl) {
           // Only redraw faces.js content, not real images
           faceRef.current.innerHTML = "";
-          // Re-call the main generation function
-          generateFacesJSFace();
+          // Re-generate face with same parameters
+          if (faceRef.current) {
+            try {
+              // Generate face - use provided face data or generate random
+              let faceData = face ? face as any : generate();
+              
+              // Determine team colors - prioritize current active team
+              let teamColors: string[] = [];
+              let activeTeam = currentTeam;
+              
+              // Check for tid (team ID) in the face data first
+              if (faceData && faceData.tid !== undefined) {
+                console.log('Found team ID (tid):', faceData.tid);
+                console.log('Current team from face data:', faceData.currentTeam);
+                
+                // Use the current team from face data if available
+                if (faceData.currentTeam && TEAM_COLORS[faceData.currentTeam]) {
+                  activeTeam = faceData.currentTeam;
+                  console.log(`Using current team from face data: ${activeTeam}`);
+                }
+              }
+              
+              // Use mapped team colors if available
+              if (activeTeam && TEAM_COLORS[activeTeam]) {
+                teamColors = TEAM_COLORS[activeTeam];
+                console.log(`Using mapped colors for active team ${activeTeam}:`, teamColors);
+              }
+              
+              // Apply team colors if available
+              if (teamColors.length >= 2) {
+                console.log("Applying team colors:", teamColors[0], teamColors[1]);
+                
+                // Override face colors with team colors
+                if (faceData) {
+                  faceData.teamColors = {
+                    primary: teamColors[0],
+                    secondary: teamColors[1],
+                    accent: teamColors[2] || teamColors[0]
+                  };
+                }
+              }
+              
+              // Generate the SVG
+              const svg = display(faceData);
+              
+              // Apply additional team styling if colors are available
+              if (teamColors.length >= 2 && faceRef.current) {
+                // Update jersey colors in the SVG
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+                const jerseyElements = svgDoc.querySelectorAll('[class*="jersey"]');
+                jerseyElements.forEach(element => {
+                  element.setAttribute('fill', teamColors[0]);
+                  console.log(`Updated element [class*="jersey"] to color:`, teamColors[0]);
+                });
+                
+                // Serialize back to string
+                const serializer = new XMLSerializer();
+                const updatedSvg = serializer.serializeToString(svgDoc);
+                faceRef.current.innerHTML = updatedSvg;
+              } else {
+                faceRef.current.innerHTML = svg;
+              }
+            } catch (error) {
+              console.error("Error regenerating face on resize:", error);
+              // Fallback: create a simple colored div
+              if (faceRef.current) {
+                const fallback = document.createElement('div');
+                fallback.style.width = `${size}px`;
+                fallback.style.height = `${size}px`;
+                fallback.style.backgroundColor = '#6b7280';
+                fallback.style.borderRadius = '50%';
+                fallback.style.display = 'flex';
+                fallback.style.alignItems = 'center';
+                fallback.style.justifyContent = 'center';
+                fallback.style.fontSize = '12px';
+                fallback.style.color = 'white';
+                fallback.textContent = '?';
+                faceRef.current.appendChild(fallback);
+              }
+            }
+          }
         }
       }, 100);
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [face, teams, currentTeam, imageUrl]);
+  }, [face, teams, currentTeam, imageUrl, size]);
 
   return (
     <div 
