@@ -191,15 +191,17 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           }}
         >
         {/* Player Face */}
-        <div className="flex items-center justify-center mb-1 flex-shrink-0">
-          <PlayerFace 
-            face={player.face}
-            imageUrl={player.imageUrl}
-            size={38} 
-            className="rounded-full overflow-hidden"
-            teams={player.teams}
-            currentTeam={player.years?.[player.years.length - 1]?.team}
-          />
+        <div className="flex items-center justify-center mb-1 flex-shrink-0 w-full h-full">
+          <div className="flex items-center justify-center">
+            <PlayerFace 
+              face={player.face}
+              imageUrl={player.imageUrl}
+              size={38} 
+              className="rounded-full overflow-hidden"
+              teams={player.teams}
+              currentTeam={player.years?.[player.years.length - 1]?.team}
+            />
+          </div>
         </div>
         
         {/* Player name */}
@@ -318,21 +320,23 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
         }}
       >
       {/* Player Face */}
-      <div className="flex items-center justify-center mb-2 flex-shrink-0">
-        <PlayerFace 
-          face={player.face}
-          imageUrl={player.imageUrl}
-          size={38} 
-          className="rounded-full overflow-hidden"
-          teams={player.teams}
-          currentTeam={player.years?.[player.years.length - 1]?.team}
-        />
+      <div className="flex items-center justify-center mb-2 flex-shrink-0 w-full h-full">
+        <div className="flex items-center justify-center">
+          <PlayerFace 
+            face={player.face}
+            imageUrl={player.imageUrl}
+            size={38} 
+            className="rounded-full overflow-hidden"
+            teams={player.teams}
+            currentTeam={player.years?.[player.years.length - 1]?.team}
+          />
+        </div>
       </div>
       
       {/* Player name */}
-      <div className="text-[11px] sm:text-sm md:text-base font-bold text-white dark:text-white light:text-gray-900 leading-tight text-center break-words hyphens-auto px-0.5 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center">
-        <span className="block text-center whitespace-pre-line w-full truncate" title={playerName} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-          {playerName.length > 15 ? playerName.replace(' ', '\n') : playerName}
+      <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-white leading-tight text-center px-0.5 w-full flex-shrink-0 flex items-center justify-center">
+        <span className="block text-center w-full truncate" title={playerName}>
+          {playerName}
         </span>
       </div>
       

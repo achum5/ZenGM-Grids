@@ -143,10 +143,10 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         </div>
 
         {uploadedFile && (
-          <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <FileCheck className="h-5 w-5 text-green-600" />
-              <span className="text-sm text-green-800" data-testid="text-uploaded-filename">
+          <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <div className="flex items-center space-x-2 min-w-0 flex-1">
+              <FileCheck className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+              <span className="text-sm text-green-800 dark:text-green-300 truncate" data-testid="text-uploaded-filename" title={uploadedFile.name}>
                 {uploadedFile.name}
               </span>
             </div>

@@ -63,16 +63,25 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         img.src = imageUrl;
         img.style.width = `${size}px`;
         img.style.height = `${size}px`;
-        img.style.objectFit = 'contain';
+        img.style.objectFit = 'cover';
         img.style.borderRadius = '50%';
         img.style.background = '#374151';
+        img.style.position = 'absolute';
+        img.style.top = '50%';
+        img.style.left = '50%';
+        img.style.transform = 'translate(-50%, -50%)';
         
         img.onload = () => {
           if (faceRef.current) {
-            // Center the image in the container
-            img.style.display = 'block';
-            img.style.margin = 'auto';
-            faceRef.current.appendChild(img);
+            // Create container with relative positioning
+            const container = document.createElement('div');
+            container.style.position = 'relative';
+            container.style.width = `${size}px`;
+            container.style.height = `${size}px`;
+            container.style.borderRadius = '50%';
+            container.style.overflow = 'hidden';
+            container.appendChild(img);
+            faceRef.current.appendChild(container);
           }
         };
         
@@ -87,7 +96,9 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
       }
       
       // Priority 2: faces.js generated face
-      generateFacesJSFace();
+      if (faceRef.current) {
+        generateFacesJSFace();
+      }
     }
     
     function generateFacesJSFace() {
@@ -154,9 +165,21 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
           console.log('Using default team colors');
         }
         
-        // Apply team colors to the face data before display
+        // Apply team colors and jersey style to the face data before display
         if (faceData) {
           faceData.teamColors = teamColors;
+          
+          // Set jersey style based on the team (simplified for now)
+          if (currentTeam && TEAM_COLORS[currentTeam]) {
+            // Use more varied jersey styles based on team
+            if (currentTeam.includes('Lakers') || currentTeam.includes('Warriors')) {
+              faceData.jerseyStyle = 'v-neck';
+            } else if (currentTeam.includes('Celtics') || currentTeam.includes('Knicks')) {
+              faceData.jerseyStyle = 'tank';
+            } else {
+              faceData.jerseyStyle = 'regular';
+            }
+          }
         }
         
         // Display the face with updated team colors

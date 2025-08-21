@@ -20,10 +20,15 @@ export default function Home() {
     queryKey: ["/api/sessions/stats"],
   });
 
-  const handleGameGenerated = (game: Game) => {
-    setCurrentGameId(game.id);
-    setCurrentSessionId(null);
-    setCurrentScore(0);
+  const handleGameGenerated = (game?: Game) => {
+    if (game) {
+      setCurrentGameId(game.id);
+      setCurrentSessionId(null);
+      setCurrentScore(0);
+    } else {
+      // Generate new grid - reload the page to create a new game
+      window.location.reload();
+    }
   };
 
   const handleSessionCreated = (sessionId: string) => {
@@ -87,7 +92,7 @@ export default function Home() {
               {teamData && (
                 <div className="mt-4 bg-white dark:bg-slate-800 rounded-lg p-4">
                   <Button
-                    onClick={() => window.location.reload()}
+                    onClick={handleGameGenerated}
                     className="w-full bg-court text-white hover:bg-slate-700 dark:text-white"
                     data-testid="button-generate-new-grid-mobile"
                   >
