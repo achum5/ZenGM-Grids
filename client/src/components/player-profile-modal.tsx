@@ -34,7 +34,7 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-md mx-auto bg-slate-800 border-slate-700"
+        className="max-w-md mx-auto bg-slate-800 border-slate-700 max-h-[90vh] overflow-y-auto fixed top-4"
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Player Information</DialogTitle>

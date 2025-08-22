@@ -7,12 +7,30 @@ type Props = { player: Player };
 
 export default function PlayerCareerStats({ player }: Props) {
   // Convert the player object to match the expected format
-  const careerPlayer = useMemo(() => ({
-    pid: parseInt(player.id) || 0,
-    firstName: player.name.split(' ')[0] || '',
-    lastName: player.name.split(' ').slice(1).join(' ') || '',
-    stats: player.stats ? Object.values(player.stats) : []
-  }), [player]);
+  const careerPlayer = useMemo(() => {
+    // Debug logging to see what stats structure we have
+    console.log('Player stats structure:', player.stats);
+    
+    // Handle different possible stats structures
+    let statsArray = [];
+    if (player.stats) {
+      if (Array.isArray(player.stats)) {
+        statsArray = player.stats;
+      } else if (typeof player.stats === 'object') {
+        // If stats is an object, try to convert to array
+        statsArray = Object.values(player.stats);
+      }
+    }
+    
+    console.log('Processed stats array:', statsArray);
+    
+    return {
+      pid: parseInt(player.id) || 0,
+      firstName: player.name.split(' ')[0] || '',
+      lastName: player.name.split(' ').slice(1).join(' ') || '',
+      stats: statsArray
+    };
+  }, [player]);
 
   // Regular season only
   const totals = useMemo(() => getCareerTotalsRS(careerPlayer), [careerPlayer]);
