@@ -54,35 +54,54 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
   const lastRenderedType = useRef<'image' | 'face' | null>(null);
   const lastImageUrl = useRef<string | null>(null);
   const lastFaceData = useRef<any>(null);
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!faceRef.current) return;
-    
-    // Determine what we want to render
-    const wantImage = !!imageUrl;
-    const wantFace = !imageUrl;
-    
-    // Check what's currently rendered
-    const hasImage = faceRef.current.querySelector('img') !== null;
-    const hasFace = faceRef.current.querySelector('svg') !== null;
-    
-    // Skip if we already have what we want and it hasn't changed
-    if (wantImage && hasImage && lastImageUrl.current === imageUrl && lastRenderedType.current === 'image') {
-      return;
+    // Clear any pending render timeouts
+    if (renderTimeoutRef.current) {
+      clearTimeout(renderTimeoutRef.current);
     }
-    
-    if (wantFace && hasFace && lastFaceData.current === face && lastRenderedType.current === 'face') {
-      return;
-    }
-    
-    // Only clear if we're switching content types or it's the first render
-    const needsClear = !hasImage && !hasFace || (wantImage && hasFace) || (wantFace && hasImage);
-    if (needsClear) {
+
+    // Mobile-specific fix: Use longer timeout to ensure DOM stability
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const renderDelay = isMobile ? 100 : 0;
+
+    renderTimeoutRef.current = setTimeout(() => {
+      if (!faceRef.current) return;
+      
+      // Determine what we want to render
+      const wantImage = !!imageUrl;
+      const wantFace = !imageUrl;
+      
+      // Check what's currently rendered - use more robust detection
+      const hasImage = faceRef.current.querySelector('img') !== null;
+      const hasFace = faceRef.current.querySelector('svg') !== null;
+      const hasContent = hasImage || hasFace;
+      
+      // Force re-render on mobile if content disappeared (common mobile bug)
+      const mobileForceRender = isMobile && !hasContent && (lastRenderedType.current !== null);
+      
+      // Skip if we already have what we want and it hasn't changed (unless mobile force render)
+      if (!mobileForceRender) {
+        if (wantImage && hasImage && lastImageUrl.current === imageUrl && lastRenderedType.current === 'image') {
+          return;
+        }
+        
+        if (wantFace && hasFace && lastFaceData.current === face && lastRenderedType.current === 'face') {
+          return;
+        }
+      }
+      
+      // Always clear content before rendering new content (mobile compatibility)
       faceRef.current.innerHTML = "";
-    }
-    
-    // Priority 1: Real player image URL
-    if (imageUrl) {
+      
+      // Force layout reflow on mobile to prevent rendering issues
+      if (isMobile) {
+        faceRef.current.offsetHeight;
+      }
+      
+      // Priority 1: Real player image URL
+      if (imageUrl) {
       const img = document.createElement('img');
       img.src = imageUrl;
       img.style.width = `${size}px`;
@@ -311,6 +330,14 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
         }
       }
     }
+    }, renderDelay);
+
+    // Cleanup function
+    return () => {
+      if (renderTimeoutRef.current) {
+        clearTimeout(renderTimeoutRef.current);
+      }
+    };
   }, [face, imageUrl, size, teams, currentTeam]);
 
   return (
