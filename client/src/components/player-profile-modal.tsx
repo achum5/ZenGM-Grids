@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
+import PlayerCareerStats from "./player-career-stats";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -74,13 +75,8 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             </div>
           </div>
 
-          {/* Stats Section - Placeholder */}
-          <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-green-300 mb-2">Career Stats</h3>
-            <div className="text-sm text-gray-400">
-              Coming soon...
-            </div>
-          </div>
+          {/* Career Statistics */}
+          <PlayerCareerStats player={player} />
 
           {/* Other Top Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">

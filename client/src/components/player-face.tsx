@@ -313,9 +313,6 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
     }
   }, [face, imageUrl, size, teams, currentTeam]);
 
-  // REMOVED: Resize handler was causing faces to disappear on mobile
-  // Faces should remain stable after being rendered once
-
   return (
     <div 
       ref={faceRef} 

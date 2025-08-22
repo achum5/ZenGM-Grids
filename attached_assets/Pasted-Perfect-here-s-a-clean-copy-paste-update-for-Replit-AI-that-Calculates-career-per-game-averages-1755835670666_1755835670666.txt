@@ -1,0 +1,198 @@
+Perfect—here’s a clean, copy-paste update for Replit AI that:
+	•	Calculates career per-game averages (PPG/RPG/APG/SPG/BPG/MPG and FG% / 3P% / FT%)
+	•	Calculates career totals
+	•	Excludes playoffs (regular season only)
+	•	Shows Averages first, then Totals
+	•	Uses only the fields already in your league JSON’s player.stats objects (gp, pts, orb, drb, ast, stl, blk, min, fg, fga, tp, tpa, ft, fta, etc.).
+
+⸻
+
+1) src/utils/careerStats.ts (drop-in)
+
+// src/utils/careerStats.ts
+
+export type PlayerSeasonStats = {
+  playoffs: boolean;
+  season: number;
+  gp: number;
+  min: number;
+  fg: number; fga: number;
+  tp: number; tpa: number;
+  ft: number; fta: number;
+  orb: number; drb: number;
+  ast: number; tov: number;
+  stl: number; blk: number;
+  pts: number;
+};
+
+export type Player = {
+  pid: number;
+  firstName: string;
+  lastName: string;
+  stats?: Partial<PlayerSeasonStats>[];
+};
+
+export type Totals = {
+  gp: number; min: number;
+  fg: number; fga: number;
+  tp: number; tpa: number;
+  ft: number; fta: number;
+  orb: number; drb: number;
+  ast: number; tov: number;
+  stl: number; blk: number;
+  pts: number;
+};
+
+const ZERO: Totals = {
+  gp: 0, min: 0,
+  fg: 0, fga: 0,
+  tp: 0, tpa: 0,
+  ft: 0, fta: 0,
+  orb: 0, drb: 0,
+  ast: 0, tov: 0,
+  stl: 0, blk: 0,
+  pts: 0,
+};
+
+/** Career totals from regular season ONLY (playoffs excluded). */
+export function getCareerTotalsRS(player: Player): Totals {
+  const out: Totals = { ...ZERO };
+  const seasons = (player.stats ?? []).filter(s => s && s.playoffs === false);
+
+  for (const s of seasons) {
+    out.gp += s.gp ?? 0;
+    out.min += s.min ?? 0;
+
+    out.fg  += s.fg  ?? 0; out.fga += s.fga ?? 0;
+    out.tp  += s.tp  ?? 0; out.tpa += s.tpa ?? 0;
+    out.ft  += s.ft  ?? 0; out.fta += s.fta ?? 0;
+
+    out.orb += s.orb ?? 0; out.drb += s.drb ?? 0;
+    out.ast += s.ast ?? 0; out.tov += s.tov ?? 0;
+    out.stl += s.stl ?? 0; out.blk += s.blk ?? 0;
+    out.pts += s.pts ?? 0;
+  }
+  return out;
+}
+
+export type Averages = {
+  ppg: number; rpg: number; apg: number; spg: number; bpg: number; mpg: number;
+  fgp: number; tpp: number; ftp: number; // 0–100 (percent)
+};
+
+/** Per-game averages + career shooting percentages (regular season only). */
+export function getCareerAveragesRS(t: Totals): Averages {
+  const gp = t.gp || 1;
+  const reb = t.orb + t.drb;
+
+  return {
+    ppg: r1(t.pts / gp),
+    rpg: r1(reb / gp),
+    apg: r1(t.ast / gp),
+    spg: r1(t.stl / gp),
+    bpg: r1(t.blk / gp),
+    mpg: r1(t.min / gp),
+    fgp: pct(t.fg, t.fga),
+    tpp: pct(t.tp, t.tpa),
+    ftp: pct(t.ft, t.fta),
+  };
+}
+
+function pct(makes: number, att: number): number {
+  if (!att) return 0;
+  return Math.round((makes / att) * 1000) / 10; // one decimal place
+}
+function r1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+
+⸻
+
+2) src/components/PlayerCareerStats.tsx (Averages FIRST, then Totals)
+
+// src/components/PlayerCareerStats.tsx
+import React, { useMemo } from "react";
+import { getCareerTotalsRS, getCareerAveragesRS, Player } from "../utils/careerStats";
+
+type Props = { player: Player };
+
+export default function PlayerCareerStats({ player }: Props) {
+  // Regular season only
+  const totals = useMemo(() => getCareerTotalsRS(player), [player]);
+  const avg = useMemo(() => getCareerAveragesRS(totals), [totals]);
+
+  return (
+    <div className="player-career-stats">
+      {/* Averages FIRST */}
+      <div className="stat-card" style={card}>
+        <div style={hdr}>Career Averages (RS)</div>
+        <div style={row}>
+          <Stat label="PPG" value={avg.ppg} />
+          <Stat label="RPG" value={avg.rpg} />
+          <Stat label="APG" value={avg.apg} />
+          <Stat label="SPG" value={avg.spg} />
+          <Stat label="BPG" value={avg.bpg} />
+          <Stat label="MPG" value={avg.mpg} />
+        </div>
+        <div style={row}>
+          <Stat label="FG%" value={`${avg.fgp.toFixed(1)}%`} />
+          <Stat label="3P%" value={`${avg.tpp.toFixed(1)}%`} />
+          <Stat label="FT%" value={`${avg.ftp.toFixed(1)}%`} />
+        </div>
+      </div>
+
+      {/* Totals SECOND */}
+      <div className="stat-card" style={card}>
+        <div style={hdr}>Career Totals (RS)</div>
+        <div style={row}>
+          <Stat label="GP" value={totals.gp} />
+          <Stat label="PTS" value={totals.pts} />
+          <Stat label="REB" value={totals.orb + totals.drb} />
+          <Stat label="AST" value={totals.ast} />
+          <Stat label="STL" value={totals.stl} />
+          <Stat label="BLK" value={totals.blk} />
+          <Stat label="MIN" value={Math.round(totals.min)} />
+        </div>
+        <div style={row}>
+          <Stat label="FG" value={`${totals.fg}/${totals.fga}`} />
+          <Stat label="3P" value={`${totals.tp}/${totals.tpa}`} />
+          <Stat label="FT" value={`${totals.ft}/${totals.fta}`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{minWidth:64, marginRight:12}}>
+      <div style={{opacity:.7, fontSize:12}}>{label}</div>
+      <div style={{fontWeight:600}}>{value}</div>
+    </div>
+  );
+}
+
+const card: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  borderRadius: 14,
+  padding: 12,
+  marginTop: 10,
+};
+const row: React.CSSProperties = { display:"flex", flexWrap:"wrap", gap:12, marginTop:6 };
+const hdr: React.CSSProperties = { fontWeight:600, marginBottom:6 };
+
+
+⸻
+
+3) Mount in your player modal
+
+// src/components/PlayerProfileModal.tsx
+import PlayerCareerStats from "./PlayerCareerStats";
+
+// ...inside your modal body:
+<PlayerCareerStats player={player} />
+
+That’s it. This shows Averages first (including FG% / 3P% / FT% based on career makes/attempts), then Totals, using regular season only from the player.stats array in your BBGM file.
+
+If you later want a playoffs toggle, we can add a checkbox and switch to a getCareerTotals(player, {playoffs:true}) variant, but this version strictly excludes playoffs as requested.
