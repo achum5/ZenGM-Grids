@@ -53,52 +53,71 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
   const faceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (faceRef.current) {
-      // Clear previous content
+    if (!faceRef.current) return;
+    
+    // Check if content already exists and matches what we want
+    const currentHasImage = faceRef.current.querySelector('img') !== null;
+    const currentHasSvg = faceRef.current.querySelector('svg') !== null;
+    
+    // If we want an image and already have one, don't recreate
+    if (imageUrl && currentHasImage) {
+      const existingImg = faceRef.current.querySelector('img');
+      if (existingImg && existingImg.src === imageUrl) {
+        return; // Already showing correct image
+      }
+    }
+    
+    // If we want a face and already have one, don't recreate unless forced
+    if (!imageUrl && currentHasSvg && face) {
+      return; // Already showing face, keep it stable
+    }
+    
+    // Clear only when switching types or first render
+    if ((imageUrl && currentHasSvg) || (!imageUrl && currentHasImage) || (!currentHasImage && !currentHasSvg)) {
       faceRef.current.innerHTML = "";
+    }
+    
+    // Priority 1: Real player image URL
+    if (imageUrl) {
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      img.style.width = `${size}px`;
+      img.style.height = `${size}px`;
+      img.style.objectFit = 'cover';
+      img.style.borderRadius = '50%';
+      img.style.background = '#374151';
+      img.style.position = 'absolute';
+      img.style.top = '50%';
+      img.style.left = '50%';
+      img.style.transform = 'translate(-50%, -50%)';
       
-      // Priority 1: Real player image URL
-      if (imageUrl) {
-        const img = document.createElement('img');
-        img.src = imageUrl;
-        img.style.width = `${size}px`;
-        img.style.height = `${size}px`;
-        img.style.objectFit = 'cover';
-        img.style.borderRadius = '50%';
-        img.style.background = '#374151';
-        img.style.position = 'absolute';
-        img.style.top = '50%';
-        img.style.left = '50%';
-        img.style.transform = 'translate(-50%, -50%)';
-        
-        img.onload = () => {
-          if (faceRef.current) {
-            // Create container with relative positioning
-            const container = document.createElement('div');
-            container.style.position = 'relative';
-            container.style.width = `${size}px`;
-            container.style.height = `${size}px`;
-            container.style.borderRadius = '50%';
-            container.style.overflow = 'hidden';
-            container.appendChild(img);
-            faceRef.current.appendChild(container);
-          }
-        };
-        
-        img.onerror = () => {
-          // Fallback to faces.js if image fails to load
-          if (faceRef.current) {
-            generateFacesJSFace();
-          }
-        };
-        
-        return;
-      }
+      img.onload = () => {
+        if (faceRef.current) {
+          // Create container with relative positioning
+          const container = document.createElement('div');
+          container.style.position = 'relative';
+          container.style.width = `${size}px`;
+          container.style.height = `${size}px`;
+          container.style.borderRadius = '50%';
+          container.style.overflow = 'hidden';
+          container.appendChild(img);
+          faceRef.current.appendChild(container);
+        }
+      };
       
-      // Priority 2: faces.js generated face
-      if (faceRef.current) {
-        generateFacesJSFace();
-      }
+      img.onerror = () => {
+        // Fallback to faces.js if image fails to load
+        if (faceRef.current) {
+          generateFacesJSFace();
+        }
+      };
+      
+      return;
+    }
+    
+    // Priority 2: faces.js generated face
+    if (faceRef.current) {
+      generateFacesJSFace();
     }
     
     function generateFacesJSFace() {
@@ -379,7 +398,14 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
     <div 
       ref={faceRef} 
       className={`relative flex-shrink-0 ${className}`}
-      style={{ width: size, height: size }}
+      style={{ 
+        width: size, 
+        height: size,
+        minWidth: size,
+        minHeight: size,
+        maxWidth: size,
+        maxHeight: size
+      }}
     />
   );
 }
