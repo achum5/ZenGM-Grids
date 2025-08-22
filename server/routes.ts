@@ -667,8 +667,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get unique teams and achievements (prioritize Immaculate Grid criteria)
-      const teams = Array.from(new Set(players.flatMap(p => p.teams)));
+      // Get unique teams and filter out inactive franchises
+      const allTeams = Array.from(new Set(players.flatMap(p => p.teams)));
+      
+      // Current active NBA teams (30 teams)
+      const activeTeams = [
+        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
+        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
+        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
+        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
+        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
+        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
+        "Portland Trail Blazers", "Portland Trailblazers", "Sacramento Kings", "San Antonio Spurs",
+        "Toronto Raptors", "Utah Jazz", "Washington Wizards"
+      ];
+      
+      // Filter to only include active teams
+      const teams = allTeams.filter(team => activeTeams.includes(team));
       const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
       
       // Comprehensive Immaculate Grid criteria system

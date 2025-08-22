@@ -216,7 +216,15 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
               const nameParts = playerName.split(' ');
               if (nameParts.length >= 2) {
                 const firstInitial = nameParts[0][0] + '.';
-                const lastName = nameParts[nameParts.length - 1];
+                // Handle suffixes like Jr., Sr., III, etc.
+                const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
+                let lastName = nameParts[nameParts.length - 1];
+                
+                // If the last part is a suffix, use the second-to-last part as the last name
+                if (suffixes.includes(lastName) && nameParts.length >= 3) {
+                  lastName = nameParts[nameParts.length - 2];
+                }
+                
                 const truncatedName = firstInitial + ' ' + lastName;
                 
                 if (truncatedName.length <= maxLength) {
@@ -244,7 +252,15 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
               const nameParts = playerName.split(' ');
               if (nameParts.length >= 2) {
                 const firstInitial = nameParts[0][0] + '.';
-                const lastName = nameParts[nameParts.length - 1];
+                // Handle suffixes like Jr., Sr., III, etc.
+                const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
+                let lastName = nameParts[nameParts.length - 1];
+                
+                // If the last part is a suffix, use the second-to-last part as the last name
+                if (suffixes.includes(lastName) && nameParts.length >= 3) {
+                  lastName = nameParts[nameParts.length - 2];
+                }
+                
                 const truncatedName = firstInitial + ' ' + lastName;
                 
                 if (truncatedName.length <= maxLength) {
