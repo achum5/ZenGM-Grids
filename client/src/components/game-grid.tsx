@@ -346,8 +346,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                         playerName={answer.player}
                         isCorrect={!!isCorrect}
                         rarity={answer.rarity || 47}
-                        rank={answer.rank}
-                        eligibleCount={answer.eligibleCount}
                         cellCriteria={game ? {
                           row: game.rowCriteria[rowIndex].label,
                           column: game.columnCriteria[colIndex].label

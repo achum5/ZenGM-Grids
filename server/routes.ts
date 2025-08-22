@@ -1231,57 +1231,19 @@ app.get("/api/debug/matches", async (req, res) => {
       
 
 
-      // Calculate proper rarity using new prominence system
+      // Get player quality for rarity scoring
       const players = await storage.getPlayers();
-      const eligiblePlayers = players.filter(p => 
-        correctPlayers.some(correctName => correctName.toLowerCase() === p.name.toLowerCase())
-      );
-      
-      // Import new rarity calculation
-      let rarityPercent = 50;
-      let playerRank = 1;
-      let eligibleCount = eligiblePlayers.length;
-      
-      try {
-        const { computeCellRarity } = await import('./logic/cellRarity');
-        const { rarityMap, rankMap, eligibleCount: totalEligible } = computeCellRarity(eligiblePlayers);
-        
-        // Find the guessed player's pid
-        const guessedPlayer = eligiblePlayers.find(p => p.name.toLowerCase() === player.toLowerCase());
-        if (guessedPlayer && guessedPlayer.pid) {
-          rarityPercent = rarityMap.get(guessedPlayer.pid) || 50;
-          playerRank = rankMap.get(guessedPlayer.pid) || 1;
-          eligibleCount = totalEligible;
-        }
-        
-        // Debug logging
-        console.log(`DEBUG: Rarity calculation for "${player}"`);
-        console.log(`Eligible players count: ${eligibleCount}`);
-        console.log(`Calculated rarity: ${rarityPercent}, rank: ${playerRank}`);
-        
-      } catch (error) {
-        console.error('Rarity calculation error:', error);
-        // Fallback to simple calculation
-        const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
-        const playerQuality = foundPlayer?.quality || 50;
-        rarityPercent = Math.round(0.5 * playerQuality + 0.5 * (100 / Math.min(20, correctPlayers.length)));
-      }
-
-      // Get player quality for session storage
       const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
       const playerQuality = foundPlayer?.quality || 50;
+      
+      // Calculate rarity percentage (combines quality with cell scarcity)
+      const candidateCount = correctPlayers.length;
+      const rarityPercent = Math.round(0.5 * playerQuality + 0.5 * (100 / Math.min(20, candidateCount)));
 
       // Update session with the answer
       const updatedAnswers = {
         ...session.answers,
-        [cellKey]: { 
-          player, 
-          correct: isCorrect, 
-          quality: playerQuality, 
-          rarity: rarityPercent,
-          rank: playerRank,
-          eligibleCount
-        }
+        [cellKey]: { player, correct: isCorrect, quality: playerQuality, rarity: rarityPercent }
       };
 
       const newScore = session.score + (isCorrect ? 1 : 0);

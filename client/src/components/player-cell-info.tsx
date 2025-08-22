@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
-import { rarityColor } from "../utils/rarity";
 
 interface PlayerCellInfoProps {
   playerName: string;
@@ -81,7 +80,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -410,15 +409,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
             const nameParts = playerName.split(' ');
             if (nameParts.length >= 2) {
               const firstInitial = nameParts[0][0] + '.';
-              // Handle suffixes like Jr., Sr., III, etc.
-              const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
-              let lastName = nameParts[nameParts.length - 1];
-              
-              // If the last part is a suffix, use the second-to-last part as the last name
-              if (suffixes.includes(lastName) && nameParts.length >= 3) {
-                lastName = nameParts[nameParts.length - 2];
-              }
-              
+              const lastName = nameParts[nameParts.length - 1];
               const truncatedName = firstInitial + ' ' + lastName;
               
               if (truncatedName.length <= maxLength) {
@@ -433,27 +424,6 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
           })()}
         </div>
       </div>
-
-      {/* Rarity chip for correct answers only */}
-      {isCorrect && typeof rarity === "number" && (
-        <div
-          className="absolute top-1 right-1"
-          title={`Rarity ${rarity} (0=common, 100=rare) • Rank ${rank || 'N/A'} of ${eligibleCount || candidateCount || 'N'} eligible`}
-          style={{
-            padding: "2px 6px",
-            borderRadius: 999,
-            fontSize: 10,
-            fontWeight: 600,
-            background: rarityColor(rarity),
-            color: "black",
-            boxShadow: "0 0 0 2px rgba(0,0,0,0.35)",
-            zIndex: 10,
-          }}
-          data-testid={`rarity-chip-${rarity}`}
-        >
-          {rarity}
-        </div>
-      )}
       
 
     </div>
@@ -464,9 +434,6 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
       onOpenChange={setShowProfileModal}
       columnCriteria={columnCriteria}
       rowCriteria={rowCriteria}
-      rarity={rarity}
-      rank={rank}
-      eligibleCount={eligibleCount || candidateCount}
     />
     </>
   );

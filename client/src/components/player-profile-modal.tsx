@@ -9,12 +9,9 @@ interface PlayerProfileModalProps {
   onOpenChange: (open: boolean) => void;
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
-  rarity?: number;
-  rank?: number;
-  eligibleCount?: number;
 }
 
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount }: PlayerProfileModalProps) {
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria }: PlayerProfileModalProps) {
   if (!player) return null;
 
   // Fetch top players for this cell
@@ -55,26 +52,6 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             />
             <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
-
-          {/* Rarity Section */}
-          {typeof rarity === "number" && (
-            <div className="bg-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-white mb-1">{rarity}</div>
-                <div className="text-sm text-gray-300 mb-2">
-                  {rank && eligibleCount ? `Rank ${rank} of ${eligibleCount} eligible` : "Rarity Score"}
-                </div>
-                <div className="text-xs text-gray-400">
-                  {rarity === 0 ? "Most common pick" : 
-                   rarity >= 80 ? "Ultra-rare pick! 🏆" :
-                   rarity >= 60 ? "Rare pick! ⭐" :
-                   rarity >= 40 ? "Notable pick" :
-                   rarity >= 20 ? "Uncommon pick" : "Common pick"}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Teams Section */}
           <div className="bg-slate-700 rounded-lg p-4">
