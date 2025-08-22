@@ -51,29 +51,33 @@ const TEAM_COLORS: Record<string, string[]> = {
 
 export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = [], currentTeam }: PlayerFaceProps) {
   const faceRef = useRef<HTMLDivElement>(null);
+  const lastRenderedType = useRef<'image' | 'face' | null>(null);
+  const lastImageUrl = useRef<string | null>(null);
+  const lastFaceData = useRef<any>(null);
 
   useEffect(() => {
     if (!faceRef.current) return;
     
-    // Check if content already exists and matches what we want
-    const currentHasImage = faceRef.current.querySelector('img') !== null;
-    const currentHasSvg = faceRef.current.querySelector('svg') !== null;
+    // Determine what we want to render
+    const wantImage = !!imageUrl;
+    const wantFace = !imageUrl;
     
-    // If we want an image and already have one, don't recreate
-    if (imageUrl && currentHasImage) {
-      const existingImg = faceRef.current.querySelector('img');
-      if (existingImg && existingImg.src === imageUrl) {
-        return; // Already showing correct image
-      }
+    // Check what's currently rendered
+    const hasImage = faceRef.current.querySelector('img') !== null;
+    const hasFace = faceRef.current.querySelector('svg') !== null;
+    
+    // Skip if we already have what we want and it hasn't changed
+    if (wantImage && hasImage && lastImageUrl.current === imageUrl && lastRenderedType.current === 'image') {
+      return;
     }
     
-    // If we want a face and already have one, don't recreate unless forced
-    if (!imageUrl && currentHasSvg && face) {
-      return; // Already showing face, keep it stable
+    if (wantFace && hasFace && lastFaceData.current === face && lastRenderedType.current === 'face') {
+      return;
     }
     
-    // Clear only when switching types or first render
-    if ((imageUrl && currentHasSvg) || (!imageUrl && currentHasImage) || (!currentHasImage && !currentHasSvg)) {
+    // Only clear if we're switching content types or it's the first render
+    const needsClear = !hasImage && !hasFace || (wantImage && hasFace) || (wantFace && hasImage);
+    if (needsClear) {
       faceRef.current.innerHTML = "";
     }
     
@@ -102,6 +106,10 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
           container.style.overflow = 'hidden';
           container.appendChild(img);
           faceRef.current.appendChild(container);
+          
+          // Track what we rendered
+          lastRenderedType.current = 'image';
+          lastImageUrl.current = imageUrl;
         }
       };
       
@@ -118,6 +126,9 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
     // Priority 2: faces.js generated face
     if (faceRef.current) {
       generateFacesJSFace();
+      // Track what we rendered
+      lastRenderedType.current = 'face';
+      lastFaceData.current = face;
     }
     
     function generateFacesJSFace() {
@@ -302,97 +313,8 @@ export function PlayerFace({ face, imageUrl, size = 64, className = "", teams = 
     }
   }, [face, imageUrl, size, teams, currentTeam]);
 
-  // Add window resize handler to properly regenerate faces
-  useEffect(() => {
-    let resizeTimeout: NodeJS.Timeout;
-    
-    const handleResize = () => {
-      // Clear any existing timeout to debounce rapid resize events
-      clearTimeout(resizeTimeout);
-      
-      // Wait for resize to complete before regenerating face
-      resizeTimeout = setTimeout(() => {
-        if (faceRef.current && !imageUrl) {
-          // Clear the current face content
-          faceRef.current.innerHTML = "";
-          
-          // Trigger a complete face regeneration using the original generation logic
-          try {
-            // Generate face - use provided face data or generate random
-            let faceData = face ? face as any : generate();
-            
-            // Determine team colors - prioritize current active team
-            let teamColors: string[] = [];
-            let activeTeam = currentTeam;
-            
-            // Check for tid (team ID) in the face data first
-            if (faceData && faceData.tid !== undefined) {
-              // Use the current team from face data if available
-              if (faceData.currentTeam && TEAM_COLORS[faceData.currentTeam]) {
-                activeTeam = faceData.currentTeam;
-              }
-            }
-            
-            // Use mapped team colors if available
-            if (activeTeam && TEAM_COLORS[activeTeam]) {
-              teamColors = TEAM_COLORS[activeTeam];
-            }
-            
-            // Apply team colors if available
-            if (teamColors.length >= 2) {
-              // Override face colors with team colors
-              if (faceData) {
-                faceData.teamColors = {
-                  primary: teamColors[0],
-                  secondary: teamColors[1],
-                  accent: teamColors[2] || teamColors[0]
-                };
-              }
-            }
-            
-            // Generate the SVG with current size
-            const svg = display(faceData);
-            
-            // Apply additional team styling if colors are available
-            if (teamColors.length >= 2 && faceRef.current) {
-              // Update jersey colors in the SVG
-              const parser = new DOMParser();
-              const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
-              const jerseyElements = svgDoc.querySelectorAll('[class*="jersey"]');
-              jerseyElements.forEach(element => {
-                element.setAttribute('fill', teamColors[0]);
-              });
-              
-              // Serialize back to string
-              const serializer = new XMLSerializer();
-              const updatedSvg = serializer.serializeToString(svgDoc);
-              faceRef.current.innerHTML = updatedSvg;
-            } else {
-              faceRef.current.innerHTML = svg;
-            }
-          } catch (error) {
-            console.error("Error regenerating face on resize:", error);
-            // Trigger the original face generation again as fallback
-            if (faceRef.current) {
-              // Re-trigger the main useEffect by clearing and forcing regeneration
-              setTimeout(() => {
-                if (faceRef.current && !imageUrl) {
-                  faceRef.current.innerHTML = "";
-                  // This will trigger the main face generation useEffect
-                }
-              }, 50);
-            }
-          }
-        }
-      }, 250); // Wait 250ms after resize stops
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      clearTimeout(resizeTimeout);
-    };
-  }, [face, teams, currentTeam, imageUrl, size]);
+  // REMOVED: Resize handler was causing faces to disappear on mobile
+  // Faces should remain stable after being rendered once
 
   return (
     <div 
