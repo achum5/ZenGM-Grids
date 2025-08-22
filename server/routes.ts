@@ -1231,14 +1231,24 @@ app.get("/api/debug/matches", async (req, res) => {
       
 
 
-      // Get player quality for rarity scoring
+      // Calculate proper rarity using prominence system
       const players = await storage.getPlayers();
-      const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
-      const playerQuality = foundPlayer?.quality || 50;
+      const eligiblePlayers = players.filter(p => 
+        correctPlayers.some(correctName => correctName.toLowerCase() === p.name.toLowerCase())
+      );
       
-      // Calculate rarity percentage (combines quality with cell scarcity)
-      const candidateCount = correctPlayers.length;
-      const rarityPercent = Math.round(0.5 * playerQuality + 0.5 * (100 / Math.min(20, candidateCount)));
+      // Import rarity calculation
+      const { computeCellRarity } = await import('./utils/rarity');
+      const cellRarityMap = computeCellRarity(eligiblePlayers);
+      const rarityPercent = cellRarityMap.get(player) || 50;
+      
+      // Debug logging for rarity calculation
+      console.log(`DEBUG: Rarity calculation for "${player}"`);
+      console.log(`Eligible players count: ${eligiblePlayers.length}`);
+      console.log(`Calculated rarity: ${rarityPercent}`);
+      if (eligiblePlayers.length <= 5) {
+        console.log(`All rarities in cell:`, Array.from(cellRarityMap.entries()));
+      }
 
       // Update session with the answer
       const updatedAnswers = {
