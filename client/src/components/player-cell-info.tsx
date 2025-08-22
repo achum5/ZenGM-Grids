@@ -215,32 +215,15 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
               
               const nameParts = playerName.split(' ');
               if (nameParts.length >= 2) {
-                // Handle suffix cases like "Jr.", "Sr.", "II", "III"
-                const suffixes = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
-                const lastName = nameParts[nameParts.length - 1];
-                let actualLastName = lastName;
-                let suffix = '';
-                
-                // Check if last part is a suffix
-                if (suffixes.includes(lastName)) {
-                  suffix = ' ' + lastName;
-                  actualLastName = nameParts.length >= 3 ? nameParts[nameParts.length - 2] : nameParts[0];
-                }
-                
                 const firstInitial = nameParts[0][0] + '.';
-                const truncatedName = firstInitial + ' ' + actualLastName + suffix;
+                const lastName = nameParts[nameParts.length - 1];
+                const truncatedName = firstInitial + ' ' + lastName;
                 
                 if (truncatedName.length <= maxLength) {
                   return truncatedName;
                 } else {
-                  // Try without suffix first
-                  const nameWithoutSuffix = firstInitial + ' ' + actualLastName;
-                  if (nameWithoutSuffix.length <= maxLength) {
-                    return nameWithoutSuffix;
-                  } else {
-                    const availableSpace = maxLength - firstInitial.length - 4; // -4 for space and "..."
-                    return firstInitial + ' ' + actualLastName.substring(0, availableSpace) + '...';
-                  }
+                  const availableSpace = maxLength - firstInitial.length - 4; // -4 for space and "..."
+                  return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
                 }
               }
               
@@ -409,32 +392,15 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
             
             const nameParts = playerName.split(' ');
             if (nameParts.length >= 2) {
-              // Handle suffix cases like "Jr.", "Sr.", "II", "III"
-              const suffixes = ['Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
-              const lastName = nameParts[nameParts.length - 1];
-              let actualLastName = lastName;
-              let suffix = '';
-              
-              // Check if last part is a suffix
-              if (suffixes.includes(lastName)) {
-                suffix = ' ' + lastName;
-                actualLastName = nameParts.length >= 3 ? nameParts[nameParts.length - 2] : nameParts[0];
-              }
-              
               const firstInitial = nameParts[0][0] + '.';
-              const truncatedName = firstInitial + ' ' + actualLastName + suffix;
+              const lastName = nameParts[nameParts.length - 1];
+              const truncatedName = firstInitial + ' ' + lastName;
               
               if (truncatedName.length <= maxLength) {
                 return truncatedName;
               } else {
-                // Try without suffix first
-                const nameWithoutSuffix = firstInitial + ' ' + actualLastName;
-                if (nameWithoutSuffix.length <= maxLength) {
-                  return nameWithoutSuffix;
-                } else {
-                  const availableSpace = maxLength - firstInitial.length - 4;
-                  return firstInitial + ' ' + actualLastName.substring(0, availableSpace) + '...';
-                }
+                const availableSpace = maxLength - firstInitial.length - 4;
+                return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
               }
             }
             

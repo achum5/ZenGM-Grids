@@ -101,7 +101,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           title: "Correct!",
           description: "Great pick!",
         });
-      } else if (data.isCorrect === false && selectedCell && game) {
+      } else if (data.isCorrect === false) {
         // Get top 5 players based on career win shares for this cell
         const cellKey = `${selectedCell.row}_${selectedCell.col}`;
         const correctPlayersForCell = game.correctAnswers[cellKey] || [];

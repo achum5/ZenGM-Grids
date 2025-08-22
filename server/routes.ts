@@ -667,21 +667,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Define active NBA franchises only (remove inactive/historical teams)
-      const activeNBATeams = [
-        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets", 
-        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
-        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
-        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
-        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
-        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
-        "Portland Trail Blazers", "Portland Trailblazers", "Sacramento Kings", "San Antonio Spurs",
-        "Toronto Raptors", "Utah Jazz", "Washington Wizards"
-      ];
-      
-      // Get unique teams and filter to only include active franchises
-      const allTeams = Array.from(new Set(players.flatMap(p => p.teams)));
-      const teams = allTeams.filter(team => activeNBATeams.includes(team));
+      // Get unique teams and achievements (prioritize Immaculate Grid criteria)
+      const teams = Array.from(new Set(players.flatMap(p => p.teams)));
       const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
       
       // Comprehensive Immaculate Grid criteria system
@@ -927,32 +914,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }))
           ];
         } else {
-          // 2% chance: Pure stat-stat grid (3 achievements x 3 achievements)
-          if (achievements.length >= 6) {
-            const selectedAchievements = sample(achievements, 6);
-            columnCriteria = selectedAchievements.slice(0, 3).map(achievement => ({
-              label: achievement,
-              type: "achievement",
-              value: achievement,
+          // 2% chance: Fallback to mixed approach with available data
+          const selectedTeams = sample(teams, Math.min(4, teams.length));
+          const availableAchievements = sample(achievements, Math.min(2, achievements.length));
+          
+          if (selectedTeams.length >= 3 && availableAchievements.length >= 1) {
+            columnCriteria = selectedTeams.slice(0, 3).map(team => ({
+              label: team,
+              type: "team",
+              value: team,
             }));
-            rowCriteria = selectedAchievements.slice(3, 6).map(achievement => ({
-              label: achievement,
-              type: "achievement", 
-              value: achievement,
-            }));
-          } else {
-            // Fallback to mixed approach with available data
-            const selectedTeams = sample(teams, Math.min(4, teams.length));
-            const availableAchievements = sample(achievements, Math.min(2, achievements.length));
             
-            if (selectedTeams.length >= 3 && availableAchievements.length >= 1) {
-              columnCriteria = selectedTeams.slice(0, 3).map(team => ({
-                label: team,
-                type: "team",
-                value: team,
-              }));
-            
-              const rowTeams = selectedTeams.slice(3, Math.min(4, selectedTeams.length));
+            const rowTeams = selectedTeams.slice(3, Math.min(4, selectedTeams.length));
             const neededAchievements = Math.max(1, 3 - rowTeams.length);
             const selectedRowAchievements = achievements.length > 0 ? sample(achievements, neededAchievements) : [];
             
@@ -1036,11 +1009,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.json(newGame);
         }
       }
-      }
       
       res.status(400).json({ 
         message: `Couldn't generate a valid grid. Available teams: ${teams.length}, available achievements: ${achievements.length}. Dataset may need more variety.` 
       });
+
     } catch (error: any) {
       console.error("Generate game error:", error);
       res.status(500).json({ 
