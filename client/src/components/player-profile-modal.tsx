@@ -41,162 +41,88 @@ function calculateCareerStats(statsData: any) {
   let totalSteals = 0;
   let totalFGMade = 0;
   let totalFGAttempted = 0;
+  let totalThreesMade = 0;
+  let totalThreesAttempted = 0;
   let totalFTMade = 0;
   let totalFTAttempted = 0;
   let seasonsPlayed = 0;
   
   stats.forEach((season: any) => {
-    // For BBGM data, assume 82 games per season (or use available data)
-    const games = season.gp || season.games || 82;
+    // Skip playoff stats - only regular season (playoffs=false)
+    if (season.playoffs === true) {
+      return;
+    }
     
-    // Skip seasons with missing core data
-    if (!season.ovr && !season.fg && !season.pts) return;
+    // Get games played for this season
+    const games = season.gp || 0;
+    if (games === 0) return; // Skip seasons with no games
     
     seasonsPlayed++;
     totalGames += games;
     
-    // Points calculation - try multiple formats
-    let seasonPoints = 0;
+    // Points: Use pts field directly (this is total points for the season)
     if (season.pts !== undefined) {
-      // Direct points per game
-      seasonPoints = season.pts * games;
-    } else if (season.ppg !== undefined) {
-      seasonPoints = season.ppg * games;
-    } else if (season.fg !== undefined) {
-      // Estimate from BBGM shooting attributes
-      // fg = field goal shooting ability (0-100)
-      // tp = three point shooting ability (0-100) 
-      // ft = free throw shooting ability (0-100)
-      // ins = inside scoring (0-100)
-      const fg = season.fg || 0;
-      const tp = season.tp || 0;
-      const ft = season.ft || 0;
-      const ins = season.ins || 0;
-      
-      // Rough estimation: higher attributes = more points
-      // Scale attributes to realistic PPG (very rough approximation)
-      const estimatedPPG = ((fg + ins) * 0.15 + tp * 0.05 + ft * 0.05) / 10;
-      seasonPoints = Math.max(0, estimatedPPG * games);
+      totalPoints += season.pts;
     }
-    totalPoints += seasonPoints;
     
-    // Rebounds
+    // Rebounds: Use drb (defensive) + orb (offensive) rebounds
     let seasonRebounds = 0;
-    if (season.reb !== undefined) {
-      seasonRebounds = season.reb * games;
-    } else if (season.rpg !== undefined) {
-      seasonRebounds = season.rpg * games;
-    } else if (season.drb !== undefined) {
-      // Estimate from BBGM rebounding attributes
-      // drb = defensive rebounding ability (0-100)
-      // Use height (hgt) as additional factor if available
-      const drb = season.drb || 0;
-      const hgt = season.hgt || 50; // Height in some scale
-      
-      // Rough estimation: higher attributes = more rebounds
-      const estimatedRPG = (drb * 0.12 + (hgt - 50) * 0.05) / 10;
-      seasonRebounds = Math.max(0, estimatedRPG * games);
+    if (season.drb !== undefined && season.orb !== undefined) {
+      seasonRebounds = season.drb + season.orb;
+    } else if (season.reb !== undefined) {
+      seasonRebounds = season.reb;
     }
     totalRebounds += seasonRebounds;
     
-    // Assists
-    let seasonAssists = 0;
+    // Assists: Use ast field directly
     if (season.ast !== undefined) {
-      seasonAssists = season.ast * games;
-    } else if (season.apg !== undefined) {
-      seasonAssists = season.apg * games;
-    } else if (season.pss !== undefined) {
-      // Estimate from BBGM passing attribute
-      // pss = passing ability (0-100)
-      const pss = season.pss || 0;
-      
-      // Rough estimation: higher passing = more assists
-      const estimatedAPG = (pss * 0.08) / 10;
-      seasonAssists = Math.max(0, estimatedAPG * games);
+      totalAssists += season.ast;
     }
-    totalAssists += seasonAssists;
     
-    // Blocks (estimate from height and defensive ability)
-    let seasonBlocks = 0;
+    // Blocks: Use blk field directly
     if (season.blk !== undefined) {
-      seasonBlocks = season.blk * games;
-    } else if (season.bpg !== undefined) {
-      seasonBlocks = season.bpg * games;
-    } else {
-      // Estimate from height and defensive attributes
-      const hgt = season.hgt || 50;
-      const diq = season.diq || 0; // Defensive IQ
-      
-      // Taller players with good defense get more blocks
-      if (hgt > 70) { // Only tall players typically get significant blocks
-        const estimatedBPG = ((hgt - 70) * 0.02 + diq * 0.01) / 10;
-        seasonBlocks = Math.max(0, estimatedBPG * games);
-      }
+      totalBlocks += season.blk;
     }
-    totalBlocks += seasonBlocks;
     
-    // Steals (estimate from speed and defensive ability)
-    let seasonSteals = 0;
+    // Steals: Use stl field directly
     if (season.stl !== undefined) {
-      seasonSteals = season.stl * games;
-    } else if (season.spg !== undefined) {
-      seasonSteals = season.spg * games;
-    } else {
-      // Estimate from speed and defensive attributes
-      const spd = season.spd || 0; // Speed
-      const diq = season.diq || 0; // Defensive IQ
-      
-      const estimatedSPG = (spd * 0.015 + diq * 0.01) / 10;
-      seasonSteals = Math.max(0, estimatedSPG * games);
-    }
-    totalSteals += seasonSteals;
-    
-    // Field Goals (estimate from BBGM shooting attributes)
-    if (season.fgm !== undefined && season.fga !== undefined) {
-      totalFGMade += season.fgm * games;
-      totalFGAttempted += season.fga * games;
-    } else if (season.fg_pct !== undefined && season.fga !== undefined) {
-      totalFGMade += (season.fg_pct * season.fga) * games;
-      totalFGAttempted += season.fga * games;
-    } else if (season.fg !== undefined) {
-      // Estimate shooting percentage from BBGM fg attribute
-      // fg attribute typically ranges 0-100, convert to realistic FG%
-      const fgAttribute = season.fg || 0;
-      const estimatedFGPercent = Math.min(0.6, Math.max(0.3, fgAttribute / 100 * 0.6 + 0.3)); // Scale to 30-60%
-      
-      // Estimate attempts based on offensive role (rough approximation)
-      const estimatedFGA = 8; // Average FGA per game
-      totalFGMade += (estimatedFGPercent * estimatedFGA) * games;
-      totalFGAttempted += estimatedFGA * games;
+      totalSteals += season.stl;
     }
     
-    // Free Throws (estimate from BBGM ft attribute)
-    if (season.ftm !== undefined && season.fta !== undefined) {
-      totalFTMade += season.ftm * games;
-      totalFTAttempted += season.fta * games;
-    } else if (season.ft_pct !== undefined && season.fta !== undefined) {
-      totalFTMade += (season.ft_pct * season.fta) * games;
-      totalFTAttempted += season.fta * games;
-    } else if (season.ft !== undefined) {
-      // Estimate free throw percentage from BBGM ft attribute
-      const ftAttribute = season.ft || 0;
-      const estimatedFTPercent = Math.min(0.9, Math.max(0.5, ftAttribute / 100 * 0.5 + 0.5)); // Scale to 50-90%
-      
-      // Estimate attempts based on playstyle
-      const estimatedFTA = 3; // Average FTA per game
-      totalFTMade += (estimatedFTPercent * estimatedFTA) * games;
-      totalFTAttempted += estimatedFTA * games;
+    // Field Goals: Use fg (made) and fga (attempted)
+    if (season.fg !== undefined) {
+      totalFGMade += season.fg;
+    }
+    if (season.fga !== undefined) {
+      totalFGAttempted += season.fga;
+    }
+    
+    // Three Pointers: Use tp (made) and tpa (attempted)
+    if (season.tp !== undefined) {
+      totalThreesMade += season.tp;
+    }
+    if (season.tpa !== undefined) {
+      totalThreesAttempted += season.tpa;
+    }
+    
+    // Free Throws: Use ft (made) and fta (attempted)
+    if (season.ft !== undefined) {
+      totalFTMade += season.ft;
+    }
+    if (season.fta !== undefined) {
+      totalFTAttempted += season.fta;
     }
   });
   
-  if (totalGames === 0) return null;
+  if (totalGames === 0 || seasonsPlayed === 0) return null;
   
   // Calculate percentages
   const fgPercentage = totalFGAttempted > 0 ? (totalFGMade / totalFGAttempted) * 100 : 0;
+  const threePercentage = totalThreesAttempted > 0 ? (totalThreesMade / totalThreesAttempted) * 100 : 0;
   const ftPercentage = totalFTAttempted > 0 ? (totalFTMade / totalFTAttempted) * 100 : 0;
   
   return {
-    // Career averages
+    // Career averages (per game)
     averages: {
       points: totalPoints / totalGames,
       rebounds: totalRebounds / totalGames,
@@ -204,15 +130,16 @@ function calculateCareerStats(statsData: any) {
       blocks: totalBlocks / totalGames,
       steals: totalSteals / totalGames,
       fgPercentage: fgPercentage,
+      threePercentage: threePercentage,
       ftPercentage: ftPercentage
     },
     // Career totals
     totals: {
-      points: Math.round(totalPoints),
-      rebounds: Math.round(totalRebounds),
-      assists: Math.round(totalAssists),
-      blocks: Math.round(totalBlocks),
-      steals: Math.round(totalSteals),
+      points: totalPoints,
+      rebounds: totalRebounds,
+      assists: totalAssists,
+      blocks: totalBlocks,
+      steals: totalSteals,
       games: totalGames,
       seasons: seasonsPlayed
     }
@@ -321,6 +248,12 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
                     <span className="text-gray-300">FG%:</span>
                     <span className="text-white font-medium">
                       {careerStats.averages.fgPercentage > 0 ? `${careerStats.averages.fgPercentage.toFixed(1)}%` : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">3P%:</span>
+                    <span className="text-white font-medium">
+                      {careerStats.averages.threePercentage > 0 ? `${careerStats.averages.threePercentage.toFixed(1)}%` : 'N/A'}
                     </span>
                   </div>
                   <div className="flex justify-between">
