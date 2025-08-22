@@ -8,6 +8,7 @@ import { HelpCircle, RotateCcw, Play } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useQuery } from "@tanstack/react-query";
 import type { Game, SessionStats, TeamInfo } from "@shared/schema";
+import RaritySummary from "@/components/RaritySummary";
 
 export default function Home() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
@@ -18,6 +19,11 @@ export default function Home() {
 
   const { data: stats } = useQuery<SessionStats>({
     queryKey: ["/api/sessions/stats"],
+  });
+
+  const { data: currentSession } = useQuery({
+    queryKey: ["/api/sessions", currentSessionId],
+    enabled: !!currentSessionId,
   });
 
   const handleGameGenerated = (game?: Game) => {
@@ -89,6 +95,16 @@ export default function Home() {
             </div>
             <div className="bg-white dark:bg-slate-800 rounded-lg">
               <GameStats stats={stats} />
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-lg">
+              <RaritySummary picked={
+                currentSession?.answers ? 
+                  Object.values(currentSession.answers).map(answer => ({
+                    correct: answer.correct,
+                    rarity: answer.rarity
+                  })) 
+                  : []
+              } />
             </div>
           </div>
 
