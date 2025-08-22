@@ -1,3 +1,12 @@
+Goal: Rarity is broken (everyone shows 100 and the same rank). Please replace our rarity pipeline with the exact code below and wire it into the cell evaluation. This fixes:
+• wrong/constant prominence (NaN/0 from bad data)
+• min==max normalization bugs
+• incorrect rank mapping (same rank for everyone)
+• playoff leakage and string/number coercion issues
+
+Then show the rarity chip + rank correctly on correct guesses, and update the modal.
+
+1) Replace server/utils/rarity.ts (or src/utils/rarity.ts) with this
 // utils/rarity.ts
 export type PlayerAwards = {
   champ?: number; allStar?: number; allStarMvp?: number; mvp?: number;
@@ -117,3 +126,108 @@ export function reduceAwards(rawAwards: Array<{ type: string }>): PlayerAwards {
   }
   return acc;
 }
+
+2) Replace the adapter that builds PlayerCareer (regular season only)
+// utils/careerAdapter.ts
+import type { PlayerCareer } from "./rarity";
+import { reduceAwards } from "./rarity";
+
+export function toPlayerCareerRS(player: any): PlayerCareer {
+  const rs = (player.stats ?? []).filter((s: any) => s && s.playoffs === false);
+
+  const seasons = new Set(rs.map((s: any) => s.season)).size;
+  const sum = (k: string) => rs.reduce((t: number, s: any) => t + (Number(s?.[k]) || 0), 0);
+  const avg = (k: string, fallback = 0) => {
+    const vals = rs.map((s: any) => Number(s?.[k])).filter((v) => Number.isFinite(v));
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : fallback;
+  };
+
+  return {
+    pid: player.pid,
+    numSeasons: seasons,
+    gp: sum("gp"),
+    min: sum("min"),
+    vorp: sum("vorp"),
+    ows: sum("ows"),
+    dws: sum("dws"),
+    per: avg("per", 15),
+    obpm: avg("obpm", 0),
+    dbpm: avg("dbpm", 0),
+    pm100: avg("pm100", 0),
+    onOff100: avg("onOff100", 0),
+    awards: reduceAwards(player.awards ?? []),
+  };
+}
+
+3) Fix per-cell normalization + rank mapping
+// logic/cellRarity.ts
+import { rarityScoresForEligible } from "../utils/rarity";
+import { toPlayerCareerRS } from "../utils/careerAdapter";
+
+export function computeCellRarity(eligiblePlayers: any[]) {
+  const careers = eligiblePlayers.map(toPlayerCareerRS);
+  const scores = rarityScoresForEligible(careers);
+
+  // Build rarity + rank maps (rank 1 = most common = lowest rarity)
+  const byRarityAsc = [...scores].sort((a, b) => a.rarity - b.rarity);
+  const rankMap = new Map<number, number>();
+  byRarityAsc.forEach((s, i) => rankMap.set(s.pid, i + 1)); // 1-based rank
+
+  const rarityMap = new Map<number, number>();
+  scores.forEach(s => rarityMap.set(s.pid, s.rarity));
+
+  return { rarityMap, rankMap, eligibleCount: scores.length };
+}
+
+
+Important UI fix: don’t compute rank using findIndex on a different array (that caused the constant “rank 6”). Always compute a dedicated rank map from the sorted results, then read rankMap.get(pid).
+
+4) Wire into the grid cell + modal
+
+When a cell becomes visible or on first guess, call computeCellRarity(eligiblePlayers) once and cache it per cell key (rowId|colId).
+
+On a correct guess, read:
+
+rarity = rarityMap.get(guessedPid)
+
+rank = rankMap.get(guessedPid)
+
+eligibleCount
+
+Show the chip in the tile and the numbers in the modal.
+
+5) Add guards + debug to catch regressions
+
+If rarity === undefined, log the cell key + player PID and don’t show the chip.
+
+If eligibleCount < 2, set rarity = 50 and rank = 1 of N.
+
+Log once per cell: min/max/prominence range and how many ties there are.
+
+Example:
+
+if (process.env.NODE_ENV !== "production") {
+  const proms = [...rarityMap.entries()].map(([pid]) => scores.find(s => s.pid === pid)!.prom);
+  const min = Math.min(...proms), max = Math.max(...proms);
+  console.debug(`[rarity] cell=${cellKey} eligible=${eligibleCount} promRange=[${min.toFixed(2)}, ${max.toFixed(2)}]`);
+}
+
+🎨 Color & display (keep yours; ensure values vary)
+
+Tile stays green/red for correctness.
+
+Rarity chip uses your function or a fixed palette:
+
+0–19 teal, 20–39 green, 40–59 amber, 60–79 orange, 80–100 violet.
+
+🧪 What to test (tell the bot)
+
+Pick an obvious answer (e.g., LeBron in a Cavs+5k AST cell) → rarity should be near 0 and rank ≈ 1.
+
+Pick a deep cut for the same cell → rarity should be much higher and rank higher (e.g., 40th of 120).
+
+Open the modal → “Rarity • Rank X of N eligible” must match the chip.
+
+Try a cell with very few eligibles → no crash; rarity ~50; rank correct.
+
+Confirm that regular season only is used (no playoff rows in sums).

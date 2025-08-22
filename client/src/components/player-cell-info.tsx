@@ -81,7 +81,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -438,7 +438,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
       {isCorrect && typeof rarity === "number" && (
         <div
           className="absolute top-1 right-1"
-          title={`Rarity ${rarity} (0=common, 100=rare) • Rank ${Math.floor(rarity/20)+1} of ${candidateCount || 'N'} eligible`}
+          title={`Rarity ${rarity} (0=common, 100=rare) • Rank ${rank || 'N/A'} of ${eligibleCount || candidateCount || 'N'} eligible`}
           style={{
             padding: "2px 6px",
             borderRadius: 999,
@@ -465,8 +465,8 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
       columnCriteria={columnCriteria}
       rowCriteria={rowCriteria}
       rarity={rarity}
-      rank={Math.floor(rarity/20)+1}
-      eligibleCount={candidateCount}
+      rank={rank}
+      eligibleCount={eligibleCount || candidateCount}
     />
     </>
   );
