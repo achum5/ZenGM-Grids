@@ -1238,17 +1238,27 @@ app.get("/api/debug/matches", async (req, res) => {
       );
       
       // Import rarity calculation
-      const { computeCellRarity } = await import('./utils/rarity');
-      const cellRarityMap = computeCellRarity(eligiblePlayers);
-      const rarityPercent = cellRarityMap.get(player) || 50;
+      let rarityPercent = 50;
+      try {
+        const { computeCellRarity } = await import('./utils/rarity');
+        const cellRarityMap = computeCellRarity(eligiblePlayers);
+        rarityPercent = cellRarityMap.get(player) || 50;
+      } catch (error) {
+        console.error('Rarity calculation error:', error);
+        // Fallback to simple calculation
+        const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
+        const playerQuality = foundPlayer?.quality || 50;
+        rarityPercent = Math.round(0.5 * playerQuality + 0.5 * (100 / Math.min(20, correctPlayers.length)));
+      }
       
       // Debug logging for rarity calculation
       console.log(`DEBUG: Rarity calculation for "${player}"`);
       console.log(`Eligible players count: ${eligiblePlayers.length}`);
       console.log(`Calculated rarity: ${rarityPercent}`);
-      if (eligiblePlayers.length <= 5) {
-        console.log(`All rarities in cell:`, Array.from(cellRarityMap.entries()));
-      }
+
+      // Get player quality for session storage
+      const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
+      const playerQuality = foundPlayer?.quality || 50;
 
       // Update session with the answer
       const updatedAnswers = {
