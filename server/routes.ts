@@ -1231,19 +1231,77 @@ app.get("/api/debug/matches", async (req, res) => {
       
 
 
-      // Get player quality for rarity scoring
+      // Get all players for WS-based rarity calculation
       const players = await storage.getPlayers();
       const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
       const playerQuality = foundPlayer?.quality || 50;
       
-      // Calculate rarity percentage (combines quality with cell scarcity)
-      const candidateCount = correctPlayers.length;
-      const rarityPercent = Math.round(0.5 * playerQuality + 0.5 * (100 / Math.min(20, candidateCount)));
+      // Build eligible players for this cell to calculate WS-based rarity
+      const colCriteria = game.columnCriteria[col];
+      const rowCriteria = game.rowCriteria[row];
+      
+      let eligiblePlayers = [];
+      if (colCriteria.type === "team" && rowCriteria.type === "team") {
+        eligiblePlayers = players.filter(p => 
+          p.teams.includes(colCriteria.value) && p.teams.includes(rowCriteria.value)
+        );
+      } else if (colCriteria.type === "team" && rowCriteria.type === "achievement") {
+        eligiblePlayers = players.filter(p => 
+          p.teams.includes(colCriteria.value) && p.achievements.includes(rowCriteria.value)
+        );
+      } else if (colCriteria.type === "achievement" && rowCriteria.type === "team") {
+        eligiblePlayers = players.filter(p => 
+          p.achievements.includes(colCriteria.value) && p.teams.includes(rowCriteria.value)
+        );
+      }
 
-      // Update session with the answer
+      // Calculate WS-based rarity if correct
+      let wsRarity = null;
+      let wsRank = null;
+      let careerWS = null;
+      let eligibleCount = eligiblePlayers.length;
+      
+      if (isCorrect && foundPlayer) {
+        // Compute career WS for eligible players
+        const playersWithWS = eligiblePlayers.map(p => {
+          const stats = (p.stats ?? []).filter((s: any) => !s?.playoffs);
+          let ows = 0, dws = 0;
+          for (const s of stats) {
+            ows += Number(s?.ows ?? 0);
+            dws += Number(s?.dws ?? 0);
+          }
+          const ws = ows + dws;
+          return { pid: p.id, ws: Number.isFinite(ws) ? ws : 0, player: p };
+        });
+        
+        // Sort by WS descending (highest first = most common)
+        playersWithWS.sort((a, b) => (b.ws - a.ws) || (a.pid - b.pid));
+        
+        // Find player's position and calculate rarity
+        const playerIndex = playersWithWS.findIndex(p => p.player.name.toLowerCase() === player.toLowerCase());
+        if (playerIndex !== -1 && playersWithWS.length > 1) {
+          wsRarity = Math.round(100 * (playerIndex / (playersWithWS.length - 1)));
+          wsRank = playerIndex + 1;
+          careerWS = playersWithWS[playerIndex].ws;
+        } else if (playerIndex !== -1 && playersWithWS.length === 1) {
+          wsRarity = 50; // neutral when only one option
+          wsRank = 1;
+          careerWS = playersWithWS[playerIndex].ws;
+        }
+      }
+
+      // Update session with the answer including WS-based rarity
       const updatedAnswers = {
         ...session.answers,
-        [cellKey]: { player, correct: isCorrect, quality: playerQuality, rarity: rarityPercent }
+        [cellKey]: { 
+          player, 
+          correct: isCorrect, 
+          quality: playerQuality, 
+          rarity: wsRarity, // WS-based rarity (0-100, lower is better)
+          rarityRank: wsRank, // 1-based rank (1 = highest WS)
+          careerWS: careerWS, // Career win shares
+          eligibleCount: eligibleCount
+        }
       };
 
       const newScore = session.score + (isCorrect ? 1 : 0);

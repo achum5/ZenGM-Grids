@@ -3,11 +3,15 @@ import { useState } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
+import { rarityColor, rarityBucket } from "@/utils/rarityWS";
 
 interface PlayerCellInfoProps {
   playerName: string;
   isCorrect: boolean;
   rarity: number;
+  rarityRank?: number;
+  careerWS?: number;
+  eligibleCount?: number;
   cellCriteria?: { row: string; column: string };
   candidateCount?: number;
   teamData?: TeamInfo[];
@@ -424,7 +428,19 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           })()}
         </div>
       </div>
-      
+
+      {/* Rarity chip for correct guesses only */}
+      {isCorrect && typeof rarity === "number" && (
+        <div
+          className="absolute top-1 right-1 px-2 py-1 rounded-full text-xs font-bold text-black shadow-lg border border-black border-opacity-30"
+          title={`Rarity ${rarity} (${rarityBucket(rarity)})${rarityRank ? ` • Rank ${rarityRank}` : ''}${eligibleCount ? ` of ${eligibleCount}` : ''}${careerWS ? ` • ${careerWS.toFixed(1)} WS` : ''}`}
+          style={{
+            backgroundColor: rarityColor(rarity),
+          }}
+        >
+          {rarity}
+        </div>
+      )}
 
     </div>
     

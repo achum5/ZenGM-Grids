@@ -5,6 +5,7 @@ import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { CorrectAnswersModal } from "./correct-answers-modal";
 import PlayerCellInfo from "./player-cell-info";
+import RaritySummaryUnderGrid from "./RaritySummaryUnderGrid";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -346,6 +347,9 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                         playerName={answer.player}
                         isCorrect={!!isCorrect}
                         rarity={answer.rarity || 47}
+                        rarityRank={answer.rarityRank}
+                        careerWS={answer.careerWS}
+                        eligibleCount={answer.eligibleCount}
                         cellCriteria={game ? {
                           row: game.rowCriteria[rowIndex].label,
                           column: game.columnCriteria[colIndex].label
@@ -370,6 +374,18 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           </div>
         ))}
       </div>
+
+      {/* Rarity Score Summary */}
+      {session && (
+        <RaritySummaryUnderGrid 
+          samples={Object.entries(session.answers).map(([cellKey, answer]) => ({
+            cellKey,
+            pid: 0, // Not needed for display
+            rarity: answer.rarity || 0,
+            correct: answer.correct
+          })).filter(sample => sample.correct && typeof sample.rarity === 'number')}
+        />
+      )}
 
       <PlayerSearchModal
         open={showPlayerModal}
