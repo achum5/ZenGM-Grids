@@ -3,7 +3,7 @@ import type { PlayerCareer } from "./rarity";
 import { reduceAwards } from "./rarity";
 
 export function toPlayerCareerRS(player: any): PlayerCareer {
-  const rs = (player.stats ?? []).filter((s: any) => s && s.playoffs === false);
+  const rs = (player.stats ?? []).filter((s: any) => s && (s.playoffs === false || s.playoffs === 0 || s.playoffs == null));
 
   const seasons = new Set(rs.map((s: any) => s.season)).size;
   const sum = (k: string) => rs.reduce((t: number, s: any) => t + (Number(s?.[k]) || 0), 0);
@@ -11,6 +11,11 @@ export function toPlayerCareerRS(player: any): PlayerCareer {
     const vals = rs.map((s: any) => Number(s?.[k])).filter((v: number) => Number.isFinite(v));
     return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : fallback;
   };
+
+  // Debug logging to confirm RS stats are found
+  if (rs.length > 0) {
+    console.log(`DEBUG: Player ${player.name || player.pid} has ${rs.length} RS seasons, GP: ${sum("gp")}, VORP: ${sum("vorp")}`);
+  }
 
   return {
     pid: player.pid,
