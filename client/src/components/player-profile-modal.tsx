@@ -2,7 +2,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
-import PlayerCareerStats from "./player-career-stats";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -34,7 +33,7 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="max-w-md mx-auto bg-slate-800 border-slate-700 max-h-[90vh] overflow-y-auto fixed top-4"
+        className="max-w-md bg-slate-800 border-slate-700 max-h-[80vh] overflow-y-auto"
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Player Information</DialogTitle>
@@ -74,9 +73,6 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
               )}
             </div>
           </div>
-
-          {/* Career Statistics */}
-          <PlayerCareerStats player={player} />
 
           {/* Other Top Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">
