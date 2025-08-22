@@ -117,7 +117,30 @@ export function computeCellRarity(eligiblePlayers: any[]) {
   }
 
   const careers = eligiblePlayers.map(toPlayerCareerRS);
+  
+  // Debug logging
+  console.log('DEBUG: First few player career conversions:');
+  careers.slice(0, 2).forEach((career, i) => {
+    console.log(`Player ${i}:`, {
+      name: eligiblePlayers[i]?.name,
+      seasons: career.numSeasons,
+      gp: career.gp,
+      vorp: career.vorp,
+      awards: Object.keys(career.awards).length,
+      prominence: prominence(career)
+    });
+  });
+  
   const scores = rarityScoresForEligible(careers);
+  
+  // Debug rarity distribution
+  const rarities = scores.map(s => s.rarity);
+  console.log('DEBUG: Rarity distribution:', {
+    min: Math.min(...rarities),
+    max: Math.max(...rarities),
+    avg: rarities.reduce((a, b) => a + b, 0) / rarities.length,
+    scores: scores.slice(0, 3).map(s => ({ rarity: s.rarity, prom: s.prom }))
+  });
   
   const map = new Map<string, number>();
   scores.forEach((s, index) => {
