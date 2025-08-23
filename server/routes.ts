@@ -1284,10 +1284,10 @@ app.get("/api/debug/matches", async (req, res) => {
             rarityPercent = 50;
             playerRank = 1;
           } else {
-            // Formula: rarity = round(100 * idx / (N - 1))
+            // Formula: rarity = round(100 * (N - 1 - idx) / (N - 1))
             // idx = 0 (top of list, most common) → rarity 0
             // idx = N-1 (bottom of list, rarest) → rarity 100
-            rarityPercent = Math.round(100 * idx / (N - 1));
+            rarityPercent = Math.round(100 * (N - 1 - idx) / (N - 1));
             playerRank = idx + 1;
           }
           eligibleCount = N;
