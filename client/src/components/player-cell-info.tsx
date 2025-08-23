@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
-import { rarityColor, rarityLabel } from "@/utils/rarityWS";
+import { rarityColor, rarityLabel } from "@/utils/wsRarity";
 
 interface PlayerCellInfoProps {
   playerName: string;

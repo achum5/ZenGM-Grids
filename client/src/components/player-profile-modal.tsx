@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
-import { rarityLabel } from "@/utils/rarityWS";
+import { rarityLabel } from "@/utils/wsRarity";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -58,10 +58,10 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
 
           {/* Rarity Section */}
           {typeof rarity === "number" && rarityRank && eligibleCount && (
-            <div className="bg-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
-              <div className="text-2xl font-bold mb-1">{Math.round(rarity)}</div>
-              <div className="text-sm text-gray-300">
+            <div className="bg-slate-700 rounded-lg p-4" style={{marginBottom:12}}>
+              <div style={{fontWeight:700, marginBottom:6}}>Rarity</div>
+              <div style={{fontSize:28, fontWeight:800}}>{rarity}</div>
+              <div style={{opacity:.8, marginTop:4}}>
                 Rank {rarityRank} of {eligibleCount} eligible • {rarityLabel(rarity)}
               </div>
             </div>
@@ -91,25 +91,27 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
           {/* Other Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">
             <h3 className="font-semibold text-yellow-300 mb-2">Other Answers</h3>
-            <div className="space-y-1 max-h-48 overflow-y-auto">
+            <ol style={{maxHeight:240, overflowY:"auto", paddingLeft:18, margin:0}}>
               {allPlayers && allPlayers.length > 0 ? (
                 allPlayers.map((answerPlayer, idx) => {
                   const isChosen = answerPlayer.name === player.name;
                   return (
-                    <div key={answerPlayer.name} className="text-sm truncate">
-                      <span style={{ fontWeight: isChosen ? 800 : 500 }}>
-                        {idx + 1}. {answerPlayer.name}
+                    <li key={answerPlayer.name} style={{padding:"2px 0"}}>
+                      <span style={{fontWeight: isChosen ? 800 : 500}}>
+                        {answerPlayer.name}
                       </span>
-                      <span className="text-gray-400"> — WS {answerPlayer.careerWinShares?.toFixed(1) || '0.0'}</span>
-                    </div>
+                      <span style={{opacity:.7}}> — WS {answerPlayer.careerWinShares?.toFixed(1) || '0.0'}</span>
+                    </li>
                   );
                 })
               ) : (
-                <div className="text-sm text-gray-400">
-                  {columnCriteria && rowCriteria ? "Loading players..." : "No criteria available"}
-                </div>
+                <li style={{padding:"2px 0", listStyle:"none"}}>
+                  <div className="text-sm text-gray-400">
+                    {columnCriteria && rowCriteria ? "Loading players..." : "No criteria available"}
+                  </div>
+                </li>
               )}
-            </div>
+            </ol>
           </div>
 
         </div>

@@ -1,5 +1,5 @@
 // src/logic/cellRarityByWS.ts
-import { computeCellRarityByWS } from "../utils/rarityWS";
+import { computeCellRarityByWS } from "../utils/wsRarity";
 
 // Optionally add a cache Map<cellKey, { rarityMap, rankMap, wsMap, eligibleCount }>
 const cache = new Map<string, any>();
