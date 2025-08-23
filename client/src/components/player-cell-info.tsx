@@ -84,7 +84,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRank, careerWS, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
