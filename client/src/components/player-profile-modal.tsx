@@ -14,13 +14,13 @@ interface PlayerProfileModalProps {
   eligibleCount?: number;
 }
 
-// Function to get rarity text based on percentile  
+// Function to get rarity text based on user's tier specifications
 function getRarityText(rarity: number): string {
-  if (rarity >= 90) return "Ultra rare!";
-  if (rarity >= 75) return "Very rare!";
-  if (rarity >= 60) return "Rare!";
-  if (rarity >= 40) return "Notable pick!";
-  if (rarity >= 25) return "Common pick";
+  if (rarity >= 90) return "Ultra rare";
+  if (rarity >= 75) return "Very rare";
+  if (rarity >= 60) return "Rare";
+  if (rarity >= 40) return "Notable";
+  if (rarity >= 25) return "Common";
   if (rarity >= 10) return "Very common";
   return "Ultra common";
 }
@@ -87,10 +87,10 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
                   {getRarityText(rarity || 0)}
                 </div>
                 <div className="text-sm text-gray-300">
-                  Ranked {rank} out of {eligibleCount} eligible players for this cell
+                  Ranked {rank} out of {eligibleCount} eligible players
                 </div>
-                <div className="text-sm text-gray-400">
-                  Rarity Score: {rarity}%
+                <div className="text-xs text-gray-400">
+                  Higher rank = rarer
                 </div>
               </div>
             </div>

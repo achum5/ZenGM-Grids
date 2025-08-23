@@ -82,18 +82,22 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-// Function to get rarity color based on percentile
+// Function to get rarity color as a gradient from red (0) to green (100)
 function getRarityColor(rarity: number): string {
-  if (rarity >= 90) return "bg-green-500"; // Ultra rare
-  if (rarity >= 75) return "bg-green-400"; // Very rare  
-  if (rarity >= 60) return "bg-blue-500"; // Rare
-  if (rarity >= 40) return "bg-yellow-500"; // Notable
-  if (rarity >= 25) return "bg-orange-500"; // Common
-  if (rarity >= 10) return "bg-red-400"; // Very common
-  return "bg-red-500"; // Ultra common
+  // Clamp rarity between 0 and 100
+  const clamped = Math.max(0, Math.min(100, rarity));
+  
+  // Red to green gradient: red at 0, green at 100
+  if (clamped >= 90) return "bg-green-600";
+  if (clamped >= 75) return "bg-green-500";
+  if (clamped >= 60) return "bg-yellow-500";
+  if (clamped >= 40) return "bg-orange-500";
+  if (clamped >= 25) return "bg-red-400";
+  if (clamped >= 10) return "bg-red-500";
+  return "bg-red-600";
 }
 
-// Function to get rarity text
+// Function to get rarity text based on user's tier specifications
 function getRarityText(rarity: number): string {
   if (rarity >= 90) return "Ultra rare";
   if (rarity >= 75) return "Very rare";

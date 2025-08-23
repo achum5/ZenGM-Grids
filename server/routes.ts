@@ -1231,54 +1231,69 @@ app.get("/api/debug/matches", async (req, res) => {
       
 
 
-      // Calculate rarity based on Win Shares ranking among eligible players
+      // Calculate rarity using the same logic as "Other Top Answers"
       const players = await storage.getPlayers();
       const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
       const playerQuality = foundPlayer?.quality || 50;
       
       let rarityPercent = 0;
-      if (isCorrect) {
-        // Get all eligible players for this cell with their Win Shares
-        const eligiblePlayersData = players.filter(p => 
-          correctPlayers.some(cp => cp.toLowerCase() === p.name.toLowerCase())
-        );
-        
-        // Sort by Win Shares (ascending for ranking - lowest WS = most common = rank 1)
-        const sortedPlayers = eligiblePlayersData.sort((a, b) => 
-          (a.careerWinShares || 0) - (b.careerWinShares || 0)
-        );
-        
-        // Find the rank of the guessed player (1-based)
-        const playerRank = sortedPlayers.findIndex(p => 
-          p.name.toLowerCase() === player.toLowerCase()
-        ) + 1;
-        
-        const eligibleCount = sortedPlayers.length;
-        
-        if (playerRank > 0 && eligibleCount > 1) {
-          // Formula: rarity = round(100 × (rank-1) / (eligibleCount-1))
-          // rank=1 (lowest WS) = 0% rarity, rank=eligibleCount (highest WS) = 100% rarity
-          rarityPercent = Math.round(100 * (playerRank - 1) / (eligibleCount - 1));
-        } else if (eligibleCount === 1) {
-          // Only one eligible player means 100% rarity
-          rarityPercent = 100;
-        }
-      }
-
-      // Get rank and eligible count for the response
       let playerRank = 0;
       let eligibleCount = 0;
+      
       if (isCorrect) {
-        const eligiblePlayersData = players.filter(p => 
-          correctPlayers.some(cp => cp.toLowerCase() === p.name.toLowerCase())
+        // Get eligible players using the same criteria logic as top-for-cell endpoint
+        const colCriteria = game.columnCriteria[col];
+        const rowCriteria = game.rowCriteria[row];
+        let eligiblePlayers: any[] = [];
+        
+        if (colCriteria.type === "team" && rowCriteria.type === "team") {
+          // Both are teams - find players who played for both teams
+          eligiblePlayers = players.filter(p => 
+            p.teams.includes(colCriteria.value) && 
+            p.teams.includes(rowCriteria.value)
+          );
+        } else if (colCriteria.type === "team" && rowCriteria.type === "achievement") {
+          // Team x Achievement
+          eligiblePlayers = players.filter(p => 
+            p.teams.includes(colCriteria.value) && 
+            p.achievements.includes(rowCriteria.value)
+          );
+        } else if (colCriteria.type === "achievement" && rowCriteria.type === "team") {
+          // Achievement x Team
+          eligiblePlayers = players.filter(p => 
+            p.achievements.includes(colCriteria.value) && 
+            p.teams.includes(rowCriteria.value)
+          );
+        }
+        
+        // Sort by Win Shares DESCENDING (same as top-for-cell endpoint)
+        // This creates the fullList that "Other Top Answers" uses
+        const fullList = eligiblePlayers.sort((a, b) => 
+          (b.careerWinShares || 0) - (a.careerWinShares || 0)
         );
-        const sortedPlayers = eligiblePlayersData.sort((a, b) => 
-          (a.careerWinShares || 0) - (b.careerWinShares || 0)
-        );
-        playerRank = sortedPlayers.findIndex(p => 
-          p.name.toLowerCase() === player.toLowerCase()
-        ) + 1;
-        eligibleCount = sortedPlayers.length;
+        
+        const N = fullList.length;
+        const idx = fullList.findIndex(p => p.name.toLowerCase() === player.toLowerCase());
+        
+        // Debug logging
+        console.debug("fullList size", N);
+        console.debug("picked idx", idx, "player", player);
+        
+        if (idx >= 0) {
+          if (N === 1) {
+            rarityPercent = 50;
+            playerRank = 1;
+          } else {
+            // Formula: rarity = round(100 * idx / (N - 1))
+            // idx = 0 (top of list, most common) → rarity 0
+            // idx = N-1 (bottom of list, rarest) → rarity 100
+            rarityPercent = Math.round(100 * idx / (N - 1));
+            playerRank = idx + 1;
+          }
+          eligibleCount = N;
+          
+          console.debug("rank", playerRank, "rarity", rarityPercent);
+        }
       }
 
       // Update session with the answer
