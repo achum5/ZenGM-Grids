@@ -2,11 +2,11 @@
 type Sample = { cellKey: string; pid: number; rarity: number; correct: boolean };
 
 export default function RaritySummaryUnderGrid({ samples }: { samples: Sample[] }) {
-  const vals = samples.filter(s => s.correct && typeof s.rarity === "number").map(s => s.rarity as number);
+  const vals = samples.filter(s => s.correct && Number.isFinite(s.rarity)).map(s => s.rarity);
   const total = vals.reduce((a,b)=>a+b, 0);
   const avg = vals.length ? Math.round((total/vals.length)*10)/10 : 0;
-  const best = vals.length ? Math.min(...vals) : 0;  // best = lowest score
-  const worst = vals.length ? Math.max(...vals) : 0;
+  const best = vals.length ? Math.max(...vals) : 0;   // now best = HIGHEST
+  const mostCommon = vals.length ? Math.min(...vals) : 0;
 
   return (
     <div style={{
@@ -18,10 +18,10 @@ export default function RaritySummaryUnderGrid({ samples }: { samples: Sample[] 
       gridTemplateColumns: "1fr 1fr 1fr 1fr",
       gap: 8
     }}>
-      <Stat label="Rarity Score (total)" value={total} hint="Lower = better" />
-      <Stat label="Average" value={avg} hint="" />
-      <Stat label="Best pick" value={best} hint="lowest rarity" />
-      <Stat label="Most common" value={worst} hint="highest rarity" />
+      <Stat label="Rarity Score (total)" value={total} />
+      <Stat label="Average" value={avg} />
+      <Stat label="Best pick" value={best} hint="highest rarity" />
+      <Stat label="Most common" value={mostCommon} hint="lowest rarity" />
     </div>
   );
 }

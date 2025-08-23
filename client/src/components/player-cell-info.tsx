@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
-import { rarityColor, rarityBucket } from "@/utils/rarityWS";
+import { rarityColor, rarityLabel } from "@/utils/rarityWS";
 
 interface PlayerCellInfoProps {
   playerName: string;
@@ -433,7 +433,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
       {isCorrect && typeof rarity === "number" && (
         <div
           className="absolute top-1 right-1 px-2 py-1 rounded-full text-xs font-bold text-black shadow-lg border border-black border-opacity-30"
-          title={`Rarity ${rarity} (${rarityBucket(rarity)})${rarityRank ? ` • Rank ${rarityRank}` : ''}${eligibleCount ? ` of ${eligibleCount}` : ''}${careerWS ? ` • ${careerWS.toFixed(1)} WS` : ''}`}
+          title={`Rarity ${rarity} (${rarityLabel(rarity)})${rarityRank ? ` • Rank ${rarityRank}` : ''}${eligibleCount ? ` of ${eligibleCount}` : ''}${careerWS ? ` • ${careerWS.toFixed(1)} WS` : ''}`}
           style={{
             backgroundColor: rarityColor(rarity),
           }}
@@ -450,6 +450,9 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
       onOpenChange={setShowProfileModal}
       columnCriteria={columnCriteria}
       rowCriteria={rowCriteria}
+      rarity={rarity}
+      rarityRank={rarityRank}
+      eligibleCount={eligibleCount}
     />
     </>
   );

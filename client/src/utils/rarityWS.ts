@@ -14,15 +14,15 @@ export function careerWS_RS(player: LeaguePlayer): number {
 }
 
 /**
- * Build rarity maps for a cell using WS.
+ * Compute rarity maps per cell using WS.
  * Sort DESC by WS (highest first = most common).
- * rarityScore = round(100 * idx / (N - 1))  // 0 best/common, 100 rarest/deep cut
- * rank = 1-based position in DESC list (1 = most common)
+ * Now rarity = reverse percentile (100 = most rare, 0 = most common)
+ *   idx = 0..N-1 (0 = highest WS)
+ *   rarity = round(100 * (1 - idx / (N - 1)))
  */
 export function computeCellRarityByWS(eligiblePlayers: LeaguePlayer[]) {
-  const arr = eligiblePlayers.map(p => ({ pid: p.pid, ws: careerWS_RS(p) }));
-  // stable sort: by ws desc, then pid asc
-  arr.sort((a, b) => (b.ws - a.ws) || (a.pid - b.pid));
+  const arr = eligiblePlayers.map(p => ({ pid: p.pid, ws: careerWS_RS(p), player: p }));
+  arr.sort((a, b) => (b.ws - a.ws) || (a.pid - b.pid)); // DESC WS, stable
 
   const N = arr.length;
   const rarityMap = new Map<number, number>();
@@ -32,31 +32,31 @@ export function computeCellRarityByWS(eligiblePlayers: LeaguePlayer[]) {
   if (N === 0) return { rarityMap, rankMap, wsMap, eligibleCount: 0, ordered: [] };
   if (N === 1) {
     const only = arr[0];
-    rarityMap.set(only.pid, 50); // neutral when only one option
+    rarityMap.set(only.pid, 50);
     rankMap.set(only.pid, 1);
     wsMap.set(only.pid, only.ws);
     return { rarityMap, rankMap, wsMap, eligibleCount: 1, ordered: arr };
   }
 
   arr.forEach((row, idx) => {
-    const rarity = Math.round(100 * (idx / (N - 1))); // 0..100 (lower = more "common")
+    const rarity = Math.round(100 * (1 - idx / (N - 1))); // 100..0
     rarityMap.set(row.pid, rarity);
-    rankMap.set(row.pid, idx + 1); // 1..N
+    rankMap.set(row.pid, idx + 1);
     wsMap.set(row.pid, row.ws);
   });
 
   return { rarityMap, rankMap, wsMap, eligibleCount: N, ordered: arr };
 }
 
-/** Chip color based on score: lower (better/common) = green, higher (rarer) = violet/red */
+/** Chip color: 0 = red, 50 = amber, 100 = green */
 export function rarityColor(score: number) {
-  // 0 → green, 50 → amber, 100 → magenta
+  // Map 0..100 → hue 0..120 (red → green)
   const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
-  const hue = clamp(120 - score * 1.2, -40, 300); // 120≈green → down to magenta-ish
+  const hue = clamp((score / 100) * 120, 0, 120);
   return `hsl(${hue}deg 80% 45%)`;
 }
 
-export function rarityBucket(score: number): "Common"|"Uncommon"|"Notable"|"Rare"|"Ultra-rare" {
+export function rarityLabel(score: number): "Common"|"Uncommon"|"Notable"|"Rare"|"Ultra-rare" {
   if (score >= 80) return "Ultra-rare";
   if (score >= 60) return "Rare";
   if (score >= 40) return "Notable";

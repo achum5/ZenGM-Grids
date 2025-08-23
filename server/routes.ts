@@ -1115,6 +1115,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all eligible players for a cell in WS rank order (for "Other Answers" section)
+  app.get("/api/players/all-for-cell", async (req, res) => {
+    try {
+      const { columnCriteria, rowCriteria } = req.query;
+      const players = await storage.getPlayers();
+      
+      if (!columnCriteria || !rowCriteria) {
+        return res.status(400).json({ message: "Column and row criteria required" });
+      }
+
+      // Parse criteria from query strings
+      const colCriteria = JSON.parse(columnCriteria as string);
+      const rowCriteria_item = JSON.parse(rowCriteria as string);
+      
+      let eligiblePlayers: any[] = [];
+      
+      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
+        // Both are teams - find players who played for both teams
+        eligiblePlayers = players.filter(p => 
+          p.teams.includes(colCriteria.value) && 
+          p.teams.includes(rowCriteria_item.value)
+        );
+      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
+        // Team x Achievement - find players who played for team AND have achievement
+        eligiblePlayers = players.filter(p => 
+          p.teams.includes(colCriteria.value) && 
+          p.achievements.includes(rowCriteria_item.value)
+        );
+      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
+        // Achievement x Team - find players who have achievement AND played for team
+        eligiblePlayers = players.filter(p => 
+          p.achievements.includes(colCriteria.value) && 
+          p.teams.includes(rowCriteria_item.value)
+        );
+      }
+      
+      // Calculate Win Shares for each player
+      const playersWithWS = eligiblePlayers.map(player => {
+        const stats = (player.stats ?? []).filter((s: any) => !s?.playoffs);
+        let totalWS = 0;
+        for (const s of stats) {
+          totalWS += Number(s?.ows ?? 0) + Number(s?.dws ?? 0);
+        }
+        return {
+          ...player,
+          careerWinShares: Number.isFinite(totalWS) ? totalWS : 0
+        };
+      });
+      
+      // Sort by Win Shares descending (highest first = most common, rank 1)
+      playersWithWS.sort((a, b) => (b.careerWinShares - a.careerWinShares) || (a.pid - b.pid));
+      
+      res.json(playersWithWS.map(p => ({
+        name: p.name,
+        teams: p.teams,
+        careerWinShares: p.careerWinShares
+      })));
+    } catch (error) {
+      console.error("Get all players for cell error:", error);
+      res.status(500).json({ message: "Failed to get all players for cell" });
+    }
+  });
+
   // Debug endpoint to check player matches for specific criteria
   
 app.get("/api/debug/matches", async (req, res) => {
@@ -1277,10 +1340,10 @@ app.get("/api/debug/matches", async (req, res) => {
         // Sort by WS descending (highest first = most common)
         playersWithWS.sort((a, b) => (b.ws - a.ws) || (a.pid - b.pid));
         
-        // Find player's position and calculate rarity
+        // Find player's position and calculate rarity (100 = most rare)
         const playerIndex = playersWithWS.findIndex(p => p.player.name.toLowerCase() === player.toLowerCase());
         if (playerIndex !== -1 && playersWithWS.length > 1) {
-          wsRarity = Math.round(100 * (playerIndex / (playersWithWS.length - 1)));
+          wsRarity = Math.round(100 * (1 - playerIndex / (playersWithWS.length - 1))); // Flipped: 100 = most rare
           wsRank = playerIndex + 1;
           careerWS = playersWithWS[playerIndex].ws;
         } else if (playerIndex !== -1 && playersWithWS.length === 1) {
