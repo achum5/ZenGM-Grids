@@ -3,22 +3,16 @@ import { useState } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
-import { rarityColor, rarityLabel } from "@/utils/wsRarity";
 
 interface PlayerCellInfoProps {
   playerName: string;
   isCorrect: boolean;
   rarity: number;
-  rarityRank?: number;
-  careerWS?: number;
-  eligibleCount?: number;
   cellCriteria?: { row: string; column: string };
   candidateCount?: number;
   teamData?: TeamInfo[];
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
-  ordered?: Array<{name: string, teams: string[], careerWinShares: number, pid?: number}>;
-  chosenPid?: number;
 }
 
 // Team abbreviations mapping
@@ -86,7 +80,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRank, careerWS, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria, ordered, chosenPid }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -290,11 +284,6 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
         onOpenChange={setShowProfileModal}
         columnCriteria={columnCriteria}
         rowCriteria={rowCriteria}
-        rarity={rarity}
-        rarityRank={rarityRank}
-        eligibleCount={eligibleCount}
-        ordered={ordered}
-        chosenPid={chosenPid}
       />
       </>
     );
@@ -435,19 +424,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
           })()}
         </div>
       </div>
-
-      {/* Rarity chip for correct guesses only */}
-      {isCorrect && typeof rarity === "number" && (
-        <div
-          className="absolute top-1 right-1 px-2 py-1 rounded-full text-xs font-bold text-black shadow-lg border border-black border-opacity-30"
-          title={`Rarity ${rarity} (${rarityLabel(rarity)})${rarityRank ? ` • Rank ${rarityRank}` : ''}${eligibleCount ? ` of ${eligibleCount}` : ''}${careerWS ? ` • ${careerWS.toFixed(1)} WS` : ''}`}
-          style={{
-            backgroundColor: rarityColor(rarity),
-          }}
-        >
-          {rarity}
-        </div>
-      )}
+      
 
     </div>
     
@@ -457,11 +434,6 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
       onOpenChange={setShowProfileModal}
       columnCriteria={columnCriteria}
       rowCriteria={rowCriteria}
-      rarity={rarity}
-      rarityRank={rarityRank}
-      eligibleCount={eligibleCount}
-      ordered={ordered}
-      chosenPid={chosenPid}
     />
     </>
   );

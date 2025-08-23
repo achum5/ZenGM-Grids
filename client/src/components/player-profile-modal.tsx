@@ -2,7 +2,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
-import { rarityLabel, rarityBlurb } from "@/utils/wsRarity";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -10,27 +9,23 @@ interface PlayerProfileModalProps {
   onOpenChange: (open: boolean) => void;
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
-  rarity?: number;
-  rarityRank?: number;
-  eligibleCount?: number;
-  ordered?: Array<{name: string, teams: string[], careerWinShares: number, pid?: number}>;
-  chosenPid?: number;
 }
 
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rarityRank, eligibleCount, ordered, chosenPid }: PlayerProfileModalProps) {
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria }: PlayerProfileModalProps) {
   if (!player) return null;
 
-  // Fetch all eligible players for this cell in WS rank order
-  const { data: allPlayers } = useQuery<Array<{name: string, teams: string[], careerWinShares: number}>>({
-    queryKey: [`/api/players/all-for-cell`, columnCriteria, rowCriteria],
-    enabled: open && !!columnCriteria && !!rowCriteria,
+  // Fetch top players for this cell
+  const { data: topPlayers } = useQuery<Array<{name: string, teams: string[]}>>({
+    queryKey: [`/api/players/top-for-cell`, columnCriteria, rowCriteria, player?.name],
+    enabled: open && !!columnCriteria && !!rowCriteria && !!player,
     queryFn: async () => {
       const params = new URLSearchParams({
         columnCriteria: JSON.stringify(columnCriteria),
-        rowCriteria: JSON.stringify(rowCriteria)
+        rowCriteria: JSON.stringify(rowCriteria),
+        excludePlayer: player.name
       });
-      const response = await fetch(`/api/players/all-for-cell?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch all players');
+      const response = await fetch(`/api/players/top-for-cell?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch top players');
       return response.json();
     }
   });
@@ -58,23 +53,6 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
 
-          {/* Rarity Section */}
-          {typeof rarity === "number" && rarityRank && eligibleCount && (
-            <div className="bg-slate-700 rounded-lg p-4" style={{marginBottom:12}}>
-              <div style={{fontWeight:700, marginBottom:6}}>Rarity</div>
-              <div style={{fontSize:28, fontWeight:800, marginBottom:8}}>{rarityLabel(rarity)}</div>
-              <div style={{fontSize:16, marginBottom:4}}>
-                Ranked {rarityRank} of {eligibleCount} eligible
-              </div>
-              <div style={{fontSize:12, opacity:0.6, marginBottom:8}}>
-                Higher rank = rarer
-              </div>
-              <div style={{fontSize:14, opacity:0.8, fontStyle:"italic"}}>
-                {rarityBlurb(rarity)}
-              </div>
-            </div>
-          )}
-
           {/* Teams Section */}
           <div className="bg-slate-700 rounded-lg p-4">
             <h3 className="font-semibold text-blue-300 mb-2">Teams</h3>
@@ -96,41 +74,22 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             </div>
           </div>
 
-          {/* Popular Answers Section */}
+          {/* Other Top Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-yellow-300 mb-1">Popular Answers</h3>
-            <p className="text-sm text-gray-400 mb-3">Most common correct picks for this square</p>
-            <ol style={{maxHeight:240, overflowY:"auto", paddingLeft:18, margin:0}}>
-              {ordered && ordered.length > 0 ? (
-                ordered.slice(0, 10).map((answerPlayer, idx) => {
-                  const isChosen = answerPlayer.pid === chosenPid || answerPlayer.name === player?.name;
-                  return (
-                    <li key={answerPlayer.name} style={{padding:"2px 0"}}>
-                      <span style={{fontWeight: isChosen ? 800 : 500}}>
-                        {answerPlayer.name}
-                      </span>
-                    </li>
-                  );
-                })
-              ) : allPlayers && allPlayers.length > 0 ? (
-                allPlayers.slice(0, 10).map((answerPlayer, idx) => {
-                  const isChosen = answerPlayer.name === player?.name;
-                  return (
-                    <li key={answerPlayer.name} style={{padding:"2px 0"}}>
-                      <span style={{fontWeight: isChosen ? 800 : 500}}>
-                        {answerPlayer.name}
-                      </span>
-                    </li>
-                  );
-                })
-              ) : (
-                <li style={{padding:"2px 0", listStyle:"none"}}>
-                  <div className="text-sm text-gray-400">
-                    {columnCriteria && rowCriteria ? "Loading players..." : "No criteria available"}
+            <h3 className="font-semibold text-yellow-300 mb-2">Other Top Answers</h3>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {topPlayers && topPlayers.length > 0 ? (
+                topPlayers.map((topPlayer, idx) => (
+                  <div key={topPlayer.name} className="text-sm truncate">
+                    {idx + 1}. {topPlayer.name}
                   </div>
-                </li>
+                ))
+              ) : (
+                <div className="text-sm text-gray-400">
+                  {columnCriteria && rowCriteria ? "Loading top players..." : "No criteria available"}
+                </div>
               )}
-            </ol>
+            </div>
           </div>
 
         </div>

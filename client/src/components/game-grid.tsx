@@ -5,12 +5,10 @@ import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { CorrectAnswersModal } from "./correct-answers-modal";
 import PlayerCellInfo from "./player-cell-info";
-import RaritySummaryUnderGrid from "./RaritySummaryUnderGrid";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Game, GameSession, GridCell, Player, TeamInfo } from "@shared/schema";
-import { computeCellRarityByWS } from "@/utils/wsRarity";
 
 interface GameGridProps {
   gameId: string | null;
@@ -28,8 +26,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     players: string[];
     playerDetails: Player[];
     cellCriteria: { row: string; column: string };
-    ordered?: Array<{name: string, teams: string[], careerWinShares: number, pid?: number}>;
-    chosenPid?: number;
   } | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes
   const [gameStarted, setGameStarted] = useState(false);
@@ -68,90 +64,43 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       onScoreUpdate(data.session.score);
       
       if (data.isCorrect && selectedCell && game) {
-        // Calculate rarity for correct guesses using new WS-based system
+        // Show correct answers modal for correct guesses
         const cellCriteria = {
           row: game.rowCriteria[selectedCell.row].label,
           column: game.columnCriteria[selectedCell.col].label
         };
         
-        // Fetch all eligible players for this cell to compute rarity
-        const columnCriteria = { type: game.columnCriteria[selectedCell.col].type, value: game.columnCriteria[selectedCell.col].value };
-        const rowCriteria = { type: game.rowCriteria[selectedCell.row].type, value: game.rowCriteria[selectedCell.row].value };
+        // Fetch all correct players for this cell
+        const columnType = game.columnCriteria[selectedCell.col].type;
+        const rowType = game.rowCriteria[selectedCell.row].type;
+        
+        let queryParams = "";
+        if (columnType === "team" && rowType === "team") {
+          queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&team2=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
+        } else if (columnType === "team") {
+          queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&achievement=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
+        } else {
+          queryParams = `team=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}&achievement=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}`;
+        }
         
         try {
-          // Fetch all eligible players for this cell  
-          const params = new URLSearchParams({
-            columnCriteria: JSON.stringify(columnCriteria),
-            rowCriteria: JSON.stringify(rowCriteria)
+          const response = await apiRequest("GET", `/api/debug/matches?${queryParams}`);
+          const correctPlayersData = await response.json();
+          
+          setCorrectAnswersData({
+            players: correctPlayersData.players?.map((p: Player) => p.name) || [],
+            playerDetails: correctPlayersData.players || [],
+            cellCriteria
           });
-          const response = await fetch(`/api/players/all-for-cell?${params}`);
-          if (!response.ok) throw new Error('Failed to fetch eligible players');
-          const eligiblePlayersData = await response.json();
-          
-          // Find the guessed player
-          const guessedPlayer = eligiblePlayersData.find((p: any) => p.name === player);
-          
-          if (guessedPlayer && eligiblePlayersData.length > 0) {
-            // Compute rarity using the new WS-based system
-            const { ordered, rarityMap, rankMap, wsMap, eligibleCount } = computeCellRarityByWS(eligiblePlayersData);
-            
-            const rarity = rarityMap.get(guessedPlayer.pid);
-            const rarityRank = rankMap.get(guessedPlayer.pid);
-            const careerWS = wsMap.get(guessedPlayer.pid);
-            
-            // Store rarity data in session for this cell
-            const cellKey = `${selectedCell.row}_${selectedCell.col}`;
-            if (typeof rarity === "number" && typeof rarityRank === "number") {
-              // Update the session data with rarity info
-              queryClient.setQueryData(["/api/sessions", sessionId], (oldData: any) => {
-                if (!oldData) return oldData;
-                return {
-                  ...oldData,
-                  answers: {
-                    ...oldData.answers,
-                    [cellKey]: {
-                      ...oldData.answers[cellKey],
-                      rarity,
-                      rarityRank,
-                      careerWS,
-                      eligibleCount
-                    }
-                  }
-                };
-              });
-            }
-            
-            setCorrectAnswersData({
-              players: ordered.map(row => row.player.name),
-              playerDetails: ordered.map(row => row.player),
-              cellCriteria,
-              ordered: ordered.map(row => ({
-                name: row.player.name,
-                teams: row.player.teams,
-                careerWinShares: row.ws,
-                pid: row.player.pid
-              })),
-              chosenPid: guessedPlayer.pid
-            });
-            setShowCorrectAnswersModal(true);
-            
-            toast({
-              title: "Correct!",
-              description: `Rarity: ${rarity} (${rarityRank}/${eligibleCount})`,
-            });
-          } else {
-            toast({
-              title: "Correct!",
-              description: "Great pick!",
-            });
-          }
+          setShowCorrectAnswersModal(true);
         } catch (error) {
-          console.error("Failed to compute rarity:", error);
-          toast({
-            title: "Correct!",
-            description: "Great pick!",
-          });
+          console.error("Failed to fetch correct players:", error);
         }
+        
+        toast({
+          title: "Correct!",
+          description: "Great pick!",
+        });
       } else if (data.isCorrect === false) {
         // Get top 5 players based on career win shares for this cell
         const cellKey = `${selectedCell.row}_${selectedCell.col}`;
@@ -397,9 +346,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                         playerName={answer.player}
                         isCorrect={!!isCorrect}
                         rarity={answer.rarity || 47}
-                        rarityRank={answer.rarityRank}
-                        careerWS={answer.careerWS}
-                        eligibleCount={answer.eligibleCount}
                         cellCriteria={game ? {
                           row: game.rowCriteria[rowIndex].label,
                           column: game.columnCriteria[colIndex].label
@@ -424,18 +370,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           </div>
         ))}
       </div>
-
-      {/* Rarity Score Summary */}
-      {session && (
-        <RaritySummaryUnderGrid 
-          samples={Object.entries(session.answers).map(([cellKey, answer]) => ({
-            cellKey,
-            pid: 0, // Not needed for display
-            rarity: answer.rarity || 0,
-            correct: answer.correct
-          })).filter(sample => sample.correct && typeof sample.rarity === 'number')}
-        />
-      )}
 
       <PlayerSearchModal
         open={showPlayerModal}
