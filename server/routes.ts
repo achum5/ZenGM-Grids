@@ -1,6 +1,7 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { eligibleForCell, rsCareerTotals } from "./eligibility";
 import multer from "multer";
 
 import { z } from "zod";
@@ -25,26 +26,15 @@ function buildCorrectAnswers(
       const colCriteria = columnCriteria[c];
       const rowCriteria_item = rowCriteria[r];
       
-      let names: string[] = [];
+      // Use proper eligibility check
+      const eligible = eligibleForCell(players, rowCriteria_item, colCriteria);
+      const names = eligible.map(p => p.name);
       
-      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
-        // Both are teams - find players who played for both teams
-        names = players
-          .filter(p => p.teams.includes(colCriteria.value) && p.teams.includes(rowCriteria_item.value))
-          .map(p => p.name);
-      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
-        // Team x Achievement - find players who played for team AND have achievement
-        names = players
-          .filter(p => p.teams.includes(colCriteria.value) && p.achievements.includes(rowCriteria_item.value))
-          .map(p => p.name);
-      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
-        // Achievement x Team - find players who have achievement AND played for team
-        names = players
-          .filter(p => p.achievements.includes(colCriteria.value) && p.teams.includes(rowCriteria_item.value))
-          .map(p => p.name);
-      }
+      const cellKey = `${r}_${c}`;
+      out[cellKey] = names;
       
-      out[`${r}_${c}`] = names; // keep underscore key format
+      // Debug log for troubleshooting
+      console.debug(`[cell ${cellKey}] row=${rowCriteria_item.value} col=${colCriteria.value} eligible=${names.length}`);
     }
   }
   return out;
@@ -1079,27 +1069,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      let eligiblePlayers: any[] = [];
-      
-      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
-        // Both are teams - find players who played for both teams
-        eligiblePlayers = players.filter(p => 
-          p.teams.includes(colCriteria.value) && 
-          p.teams.includes(rowCriteria_item.value)
-        );
-      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
-        // Team x Achievement - find players who played for team AND have achievement
-        eligiblePlayers = players.filter(p => 
-          p.teams.includes(colCriteria.value) && 
-          p.achievements.includes(rowCriteria_item.value)
-        );
-      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
-        // Achievement x Team - find players who have achievement AND played for team
-        eligiblePlayers = players.filter(p => 
-          p.achievements.includes(colCriteria.value) && 
-          p.teams.includes(rowCriteria_item.value)
-        );
-      }
+      // Use proper eligibility check
+      const eligiblePlayers = eligibleForCell(players, rowCriteria_item, colCriteria);
       
       // Sort by career win shares descending and exclude the current player
       const topPlayers = eligiblePlayers
@@ -1129,38 +1100,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      let eligiblePlayers: any[] = [];
+      // Use proper eligibility check
+      const eligiblePlayers = eligibleForCell(players, rowCriteria_item, colCriteria);
       
-      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
-        // Both are teams - find players who played for both teams
-        eligiblePlayers = players.filter(p => 
-          p.teams.includes(colCriteria.value) && 
-          p.teams.includes(rowCriteria_item.value)
-        );
-      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
-        // Team x Achievement - find players who played for team AND have achievement
-        eligiblePlayers = players.filter(p => 
-          p.teams.includes(colCriteria.value) && 
-          p.achievements.includes(rowCriteria_item.value)
-        );
-      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
-        // Achievement x Team - find players who have achievement AND played for team
-        eligiblePlayers = players.filter(p => 
-          p.achievements.includes(colCriteria.value) && 
-          p.teams.includes(rowCriteria_item.value)
-        );
-      }
-      
-      // Calculate Win Shares for each player
+      // Calculate Win Shares for each player using proper helper
       const playersWithWS = eligiblePlayers.map(player => {
-        const stats = (player.stats ?? []).filter((s: any) => !s?.playoffs);
-        let totalWS = 0;
-        for (const s of stats) {
-          totalWS += Number(s?.ows ?? 0) + Number(s?.dws ?? 0);
+        const rows = (player.stats ?? []).filter((s: any) => s && !s.playoffs);
+        let ws = 0;
+        for (const s of rows) {
+          const ows = Number(s.ows ?? 0);
+          const dws = Number(s.dws ?? 0);
+          const wsRow = (ows + dws) || Number(s.ws ?? 0); // fallback if ws provided
+          ws += wsRow;
         }
         return {
           ...player,
-          careerWinShares: Number.isFinite(totalWS) ? totalWS : 0
+          careerWinShares: Number.isFinite(ws) ? ws : 0
         };
       });
       

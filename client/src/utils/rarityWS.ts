@@ -1,45 +1,39 @@
 // src/utils/rarityWS.ts
 export type LeaguePlayer = any; // your player shape from league JSON
 
-/** Regular-season career Win Shares = sum(ows + dws) */
+/** Career Win Shares (RS only): sum( (ows ?? 0) + (dws ?? 0) OR (ws ?? 0) ) */
 export function careerWS_RS(player: LeaguePlayer): number {
-  const stats = (player.stats ?? []).filter((s: any) => !s?.playoffs); // treats 0/false/undefined as RS
-  let ows = 0, dws = 0;
-  for (const s of stats) {
-    ows += Number(s?.ows ?? 0);
-    dws += Number(s?.dws ?? 0);
+  const rows = (player.stats ?? []).filter((s: any) => s && !s.playoffs);
+  let ws = 0;
+  for (const s of rows) {
+    const ows = Number(s.ows ?? 0);
+    const dws = Number(s.dws ?? 0);
+    const wsRow = (ows + dws) || Number(s.ws ?? 0); // fallback if ws provided
+    ws += wsRow;
   }
-  const ws = ows + dws;
   return Number.isFinite(ws) ? ws : 0;
 }
 
-/**
- * Compute rarity maps per cell using WS.
- * Sort DESC by WS (highest first = most common).
- * Now rarity = reverse percentile (100 = most rare, 0 = most common)
- *   idx = 0..N-1 (0 = highest WS)
- *   rarity = round(100 * (1 - idx / (N - 1)))
- */
+/** Build rarity maps from the **eligible set only** (not the whole league) */
 export function computeCellRarityByWS(eligiblePlayers: LeaguePlayer[]) {
-  const arr = eligiblePlayers.map(p => ({ pid: p.pid, ws: careerWS_RS(p), player: p }));
-  arr.sort((a, b) => (b.ws - a.ws) || (a.pid - b.pid)); // DESC WS, stable
+  const arr = eligiblePlayers.map(p => ({ pid: p.pid, player: p, ws: careerWS_RS(p) }));
+  // DESC by WS; stable by pid
+  arr.sort((a, b) => (b.ws - a.ws) || (a.pid - b.pid));
 
   const N = arr.length;
   const rarityMap = new Map<number, number>();
-  const rankMap = new Map<number, number>();
-  const wsMap = new Map<number, number>();
+  const rankMap   = new Map<number, number>();
+  const wsMap     = new Map<number, number>();
 
   if (N === 0) return { rarityMap, rankMap, wsMap, eligibleCount: 0, ordered: [] };
   if (N === 1) {
-    const only = arr[0];
-    rarityMap.set(only.pid, 50);
-    rankMap.set(only.pid, 1);
-    wsMap.set(only.pid, only.ws);
+    rarityMap.set(arr[0].pid, 50); rankMap.set(arr[0].pid, 1); wsMap.set(arr[0].pid, arr[0].ws);
     return { rarityMap, rankMap, wsMap, eligibleCount: 1, ordered: arr };
   }
 
   arr.forEach((row, idx) => {
-    const rarity = Math.round(100 * (1 - idx / (N - 1))); // 100..0
+    // 100 = most rare (lowest WS), 0 = most common (highest WS)
+    const rarity = Math.round(100 * (1 - idx / (N - 1)));
     rarityMap.set(row.pid, rarity);
     rankMap.set(row.pid, idx + 1);
     wsMap.set(row.pid, row.ws);
