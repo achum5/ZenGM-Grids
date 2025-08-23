@@ -103,55 +103,63 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         });
       } else if (data.isCorrect === false) {
         // Get top 5 players based on career win shares for this cell
-        const cellKey = `${selectedCell.row}_${selectedCell.col}`;
-        const correctPlayersForCell = game.correctAnswers[cellKey] || [];
+        if (selectedCell && game) {
+          const cellKey = `${selectedCell.row}_${selectedCell.col}`;
+          const correctPlayersForCell = game.correctAnswers[cellKey] || [];
         
-        if (correctPlayersForCell.length > 0) {
-          // Fetch player details to sort by career win shares
-          const fetchTopPlayers = async () => {
-            try {
-              const columnType = game.columnCriteria[selectedCell.col].type;
-              const rowType = game.rowCriteria[selectedCell.row].type;
-              
-              let queryParams = "";
-              if (columnType === "team" && rowType === "team") {
-                queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&team2=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
-              } else if (columnType === "team") {
-                queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&achievement=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
-              } else {
-                queryParams = `team=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}&achievement=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}`;
+          if (correctPlayersForCell.length > 0) {
+            // Fetch player details to sort by career win shares
+            const fetchTopPlayers = async () => {
+              try {
+                const columnType = game.columnCriteria[selectedCell.col].type;
+                const rowType = game.rowCriteria[selectedCell.row].type;
+                
+                let queryParams = "";
+                if (columnType === "team" && rowType === "team") {
+                  queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&team2=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
+                } else if (columnType === "team") {
+                  queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&achievement=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
+                } else {
+                  queryParams = `team=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}&achievement=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}`;
+                }
+                
+                const response = await apiRequest("GET", `/api/debug/matches?${queryParams}`);
+                const correctPlayersData = await response.json();
+                
+                // Sort by career win shares and get top 5
+                const sortedPlayers = correctPlayersData.players
+                  ?.sort((a: any, b: any) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
+                  .slice(0, 5)
+                  .map((p: any) => p.name) || [];
+                
+                toast({
+                  title: "Incorrect",
+                  description: sortedPlayers.length > 0 ? 
+                    `Top answers: ${sortedPlayers.join(", ")}` :
+                    "No valid answers found for this combination",
+                  variant: "destructive",
+                });
+              } catch (error) {
+                toast({
+                  title: "Incorrect",
+                  description: "No valid answers found for this combination",
+                  variant: "destructive",
+                });
               }
-              
-              const response = await apiRequest("GET", `/api/debug/matches?${queryParams}`);
-              const correctPlayersData = await response.json();
-              
-              // Sort by career win shares and get top 5
-              const sortedPlayers = correctPlayersData.players
-                ?.sort((a: any, b: any) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
-                .slice(0, 5)
-                .map((p: any) => p.name) || [];
-              
-              toast({
-                title: "Incorrect",
-                description: sortedPlayers.length > 0 ? 
-                  `Top answers: ${sortedPlayers.join(", ")}` :
-                  "No valid answers found for this combination",
-                variant: "destructive",
-              });
-            } catch (error) {
-              toast({
-                title: "Incorrect",
-                description: "No valid answers found for this combination",
-                variant: "destructive",
-              });
-            }
-          };
-          
-          fetchTopPlayers();
+            };
+            
+            fetchTopPlayers();
+          } else {
+            toast({
+              title: "Incorrect",
+              description: "No valid answers found for this combination",
+              variant: "destructive",
+            });
+          }
         } else {
           toast({
             title: "Incorrect",
-            description: "No valid answers found for this combination",
+            description: "Unable to fetch answer details",
             variant: "destructive",
           });
         }

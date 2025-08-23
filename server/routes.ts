@@ -1230,19 +1230,19 @@ app.get("/api/debug/matches", async (req, res) => {
         console.debug("picked idx", idx, "player", player);
         
         if (idx >= 0) {
-          if (N === 1) {
-            rarityPercent = 50;
-            playerRank = 1;
-          } else {
-            // Formula: rarity = round(100 * (N - 1 - idx) / (N - 1))
-            // idx = 0 (top of list, most common) → rarity 0
-            // idx = N-1 (bottom of list, rarest) → rarity 100
-            rarityPercent = Math.round(100 * (N - 1 - idx) / (N - 1));
-            playerRank = idx + 1;
-          }
+          playerRank = idx + 1; // rank starts from 1
           eligibleCount = N;
           
-          console.debug("rank", playerRank, "rarity", rarityPercent);
+          if (N === 1) {
+            rarityPercent = 50;
+          } else {
+            // Fixed formula: rarity = round(100 * (rank - 1) / (eligibleCount - 1))
+            // rank = 1 (highest WS, most common) → rarity = 0
+            // rank = N (lowest WS, rarest) → rarity = 100
+            rarityPercent = Math.round(100 * (playerRank - 1) / (eligibleCount - 1));
+          }
+          
+          console.debug("rank", playerRank, "rarity", rarityPercent, "out of", eligibleCount);
         }
       }
 
