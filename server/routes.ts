@@ -7,6 +7,7 @@ import { z } from "zod";
 import { gunzip } from "zlib";
 import { promisify } from "util";
 import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria } from "@shared/schema";
+import { EligibilityChecker } from "./eligibility";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -19,30 +20,17 @@ function buildCorrectAnswers(
   columnCriteria: { value: string; type: string }[],
   rowCriteria: { value: string; type: string }[]
 ) {
+  const eligibilityChecker = new EligibilityChecker(players);
   const out: Record<string, string[]> = {};
+  
   for (let r = 0; r < rowCriteria.length; r++) {
     for (let c = 0; c < columnCriteria.length; c++) {
       const colCriteria = columnCriteria[c];
       const rowCriteria_item = rowCriteria[r];
       
-      let names: string[] = [];
-      
-      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
-        // Both are teams - find players who played for both teams
-        names = players
-          .filter(p => p.teams.includes(colCriteria.value) && p.teams.includes(rowCriteria_item.value))
-          .map(p => p.name);
-      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
-        // Team x Achievement - find players who played for team AND have achievement
-        names = players
-          .filter(p => p.teams.includes(colCriteria.value) && p.achievements.includes(rowCriteria_item.value))
-          .map(p => p.name);
-      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
-        // Achievement x Team - find players who have achievement AND played for team
-        names = players
-          .filter(p => p.achievements.includes(colCriteria.value) && p.teams.includes(rowCriteria_item.value))
-          .map(p => p.name);
-      }
+      // Use new eligibility system - decoupled team/achievement logic
+      const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
+      const names = eligiblePlayers.map(p => p.name);
       
       out[`${r}_${c}`] = names; // keep underscore key format
     }
@@ -1079,33 +1067,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      let eligiblePlayers: any[] = [];
+      // Use new eligibility system
+      const eligibilityChecker = new EligibilityChecker(players);
+      const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
       
-      if (colCriteria.type === "team" && rowCriteria_item.type === "team") {
-        // Both are teams - find players who played for both teams
-        eligiblePlayers = players.filter(p => 
-          p.teams.includes(colCriteria.value) && 
-          p.teams.includes(rowCriteria_item.value)
-        );
-      } else if (colCriteria.type === "team" && rowCriteria_item.type === "achievement") {
-        // Team x Achievement - find players who played for team AND have achievement
-        eligiblePlayers = players.filter(p => 
-          p.teams.includes(colCriteria.value) && 
-          p.achievements.includes(rowCriteria_item.value)
-        );
-      } else if (colCriteria.type === "achievement" && rowCriteria_item.type === "team") {
-        // Achievement x Team - find players who have achievement AND played for team
-        eligiblePlayers = players.filter(p => 
-          p.achievements.includes(colCriteria.value) && 
-          p.teams.includes(rowCriteria_item.value)
-        );
-      }
-      
-      // Sort by career win shares descending and exclude the current player
-      const topPlayers = eligiblePlayers
+      // Sort by Win Shares and exclude the current player
+      const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
+      const topPlayers = sortedPlayers
         .filter(p => p.name !== excludePlayer)
-        .sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
-        .slice(0, 10)
+        .slice(0, 10) // Display only top 10, but keep full list for rarity
         .map(p => ({ name: p.name, teams: p.teams }));
       
       res.json(topPlayers);
@@ -1124,24 +1094,25 @@ app.get("/api/debug/matches", async (req, res) => {
       const players = await storage.getPlayers();
       let matches;
       
+      // Use new eligibility system
+      const eligibilityChecker = new EligibilityChecker(players);
+      
       if (team && team2) {
         // Team-to-team criteria
-        matches = players.filter(player =>
-          player.teams.includes(team as string) &&
-          player.teams.includes(team2 as string)
-        );
+        const colCriteria = { type: "team", value: team as string };
+        const rowCriteria = { type: "team", value: team2 as string };
+        matches = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria);
       } else if (team && achievement) {
         // Team-to-achievement criteria
-        matches = players.filter(player =>
-          player.teams.includes(team as string) &&
-          player.achievements.includes(achievement as string)
-        );
+        const colCriteria = { type: "team", value: team as string };
+        const rowCriteria = { type: "achievement", value: achievement as string };
+        matches = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria);
       } else {
         return res.status(400).json({ message: "Need either team+achievement or team+team2 parameters" });
       }
       
-      // Sort by career win shares descending
-      matches.sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0));
+      // Sort by Win Shares using new system
+      matches = eligibilityChecker.sortByWinShares(matches);
       
       res.json({ players: matches });
     } catch (error) {
@@ -1241,36 +1212,15 @@ app.get("/api/debug/matches", async (req, res) => {
       let eligibleCount = 0;
       
       if (isCorrect) {
-        // Get eligible players using the same criteria logic as top-for-cell endpoint
+        // Use new eligibility system to get the same unsliced WS-sorted list as "Other Top Answers"
         const colCriteria = game.columnCriteria[col];
         const rowCriteria = game.rowCriteria[row];
-        let eligiblePlayers: any[] = [];
         
-        if (colCriteria.type === "team" && rowCriteria.type === "team") {
-          // Both are teams - find players who played for both teams
-          eligiblePlayers = players.filter(p => 
-            p.teams.includes(colCriteria.value) && 
-            p.teams.includes(rowCriteria.value)
-          );
-        } else if (colCriteria.type === "team" && rowCriteria.type === "achievement") {
-          // Team x Achievement
-          eligiblePlayers = players.filter(p => 
-            p.teams.includes(colCriteria.value) && 
-            p.achievements.includes(rowCriteria.value)
-          );
-        } else if (colCriteria.type === "achievement" && rowCriteria.type === "team") {
-          // Achievement x Team
-          eligiblePlayers = players.filter(p => 
-            p.achievements.includes(colCriteria.value) && 
-            p.teams.includes(rowCriteria.value)
-          );
-        }
+        const eligibilityChecker = new EligibilityChecker(players);
+        const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria);
         
-        // Sort by Win Shares DESCENDING (same as top-for-cell endpoint)
-        // This creates the fullList that "Other Top Answers" uses
-        const fullList = eligiblePlayers.sort((a, b) => 
-          (b.careerWinShares || 0) - (a.careerWinShares || 0)
-        );
+        // Sort by Win Shares DESCENDING - this creates the fullList that "Other Top Answers" uses
+        const fullList = eligibilityChecker.sortByWinShares(eligiblePlayers);
         
         const N = fullList.length;
         const idx = fullList.findIndex(p => p.name.toLowerCase() === player.toLowerCase());

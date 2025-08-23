@@ -1,0 +1,110 @@
+Awesome—here’s a clean copy-paste brief you can give the Replit AI agent. It fixes eligibility by decoupling team + stat/award (player just needs to have ever played for the team, and independently satisfied the stat/award at any time in their career). It also gives exact rules for every criterion and patches the first-round pick bug.
+
+⸻
+
+COPY/PASTE FOR REPLIT AI
+
+We are fixing how eligibility is computed from BBGM league JSONs.
+Key rule change: When a cell is “Team × Stat/Award,” the player does not need to have done the stat/award with that team. They only need to (a) have ever played for the team (≥1 regular-season game) and (b) have met the stat/award condition at any time in their career.
+
+0) Build one index per uploaded league
+	•	Load league.players[] with regular-season rows only (!playoffs) from each player’s stats. Keep season, tid, and counting stats (gp, min, pts, ast, stl, blk, orb, drb, tov, tp, tpa, fg, fga, ft, fta).
+	•	Group league.playerFeats[] by pid (regular-season feats only).
+	•	Index league.awards[] by season for MVP/DPOY/ROY/SMOY/MIP/Finals MVP/Conference Finals MVP (sfmvp)/All-League/All-Defensive/All-Rookie.
+	•	Also read per-player players[i].awards[] for All-Star entries.
+	•	Keep players[i].draft for draft status.
+	•	(Optional) derive champions per season from league.playoffSeries.
+
+1) Helpers (regular season only)
+	•	Career totals: sum across all regular-season rows.
+	•	TRB = sum(orb + drb).
+	•	Per-season rates:
+ppg = pts/gp, apg = ast/gp, rpg = (orb+drb)/gp, bpg = blk/gp, spg = stl/gp.
+fg% = fg/fga, 3p% = tp/tpa, ft% = ft/fta (guard against 0 denom).
+	•	Played for team ever: any stat row with tid === teamTid and gp > 0.
+	•	Experience: number of distinct regular seasons with gp > 0.
+	•	Age in season: season - player.born.year.
+
+2) Global interpretation rule
+
+For any “Team × X” cell:
+	•	Team side: player must have ever played for that team (≥1 RS game).
+	•	X side (stat/award/feat/draft/etc.): player must meet X at any time in career, not necessarily with that team and not necessarily same season.
+
+3) Exact logic for every criterion
+
+Career thresholds (any time; team only needs “ever played”)
+	•	20,000+ points: careerPts ≥ 20000
+	•	10,000+ rebounds: careerTRB ≥ 10000
+	•	5,000+ assists: careerAST ≥ 5000
+	•	2,000+ steals: careerSTL ≥ 2000
+	•	1,500+ blocks: careerBLK ≥ 1500
+	•	2,000+ made threes: career3PM ≥ 2000
+
+Season averages (any team/season)
+	•	30+ PPG: exists season with ppg ≥ 30
+	•	10+ APG: exists season with apg ≥ 10
+	•	15+ RPG: exists season with rpg ≥ 15
+	•	3+ BPG: exists season with bpg ≥ 3
+	•	2.5+ SPG: exists season with spg ≥ 2.5
+	•	50/40/90: exists season with fg% ≥ .500 AND 3p% ≥ .400 AND ft% ≥ .900
+(No minute/attempt minimums—just avoid division by zero.)
+
+Led league in (any season)
+	•	For each RS season, compute leaders for ppg, rpg, apg, spg, bpg.
+Mark all tied players as leaders for that category for that season.
+A player qualifies if they led in any season.
+
+Single-game feats (any team/season; regular season only)
+	•	50+ points: any feat row with pts ≥ 50
+	•	20+ rebounds: (orb + drb) ≥ 20
+	•	20+ assists: ast ≥ 20
+	•	10+ made threes: tp ≥ 10
+	•	Triple-double: td ≥ 1 (or compute ≥3 categories ≥10)
+
+Awards (any season; not tied to the team)
+	•	MVP / DPOY / ROY / SMOY / MIP / Finals MVP / Conference Finals MVP (sfmvp): appears as winner in league.awards[season].
+	•	All-League / All-Defensive / All-Rookie: player appears in any of the 1st/2nd/3rd team arrays in league.awards[season].
+	•	All-Star selection: player has an entry with type === "All-Star" in players[i].awards for any season (or in awards index if present).
+	•	All-Star at age 35+: has an All-Star season where (season - born.year) ≥ 35.
+	•	NBA Champion: optional—if you indexed champions per season, player qualifies if the season champion tid matches a tid the player appeared for in that season (RS or playoffs, whichever you used to build champions). This is the only case where a same-season link is logical; still does not need to be with the row team.
+
+Experience
+	•	15+ seasons: count distinct RS seasons where gp > 0 ≥ 15.
+
+Draft status (fix the “first-round pick” bug)
+	•	#1 overall: draft.pick === 1.
+	•	First-round pick: draft.round === 1.
+(Do not check pick <= 30; leagues may have different round sizes. Round “1” is authoritative.)
+	•	Undrafted: draft.round === 0 or draft.tid === -1 or (draft.pick === 0 and draft.round === 0).
+Use whichever combination BBGM sets for undrafted; treat any of the above as undrafted.
+
+4) Cell eligibility function
+
+To build the eligible list for any cell:
+	1.	For each player, check team side (if present): playedForTeamEver(player, teamTid)
+	2.	Separately check the X side using the rules above.
+	3.	A player is eligible iff both sides pass (independently in time).
+	4.	Do not stop at 10—collect all eligible players.
+
+5) Sorting for “Other Answers” and (later) rarity
+	•	Sort the full eligible list by career Win Shares (regular-season only).
+	•	If season rows include ws, sum ws.
+	•	Else, if they include ows + dws, sum those.
+	•	If neither exists, use a stable fallback proxy (e.g., pts + 1.2*ast + 1.1*trb + 1.5*stl + 1.6*blk) until WS is available.
+	•	Display only the top 10 names in “Other Answers,” but keep the full list in memory so rarity can be computed from it.
+
+6) Acceptance tests to add (fast checks)
+	•	Team × 30+ PPG example: allow a player who hit 30 PPG with Team A while having ever played for Team B.
+	•	Team × MVP example: allow a player who won MVP on Team A and later played for Team B.
+	•	First-round pick: create a unit test that passes when draft.round === 1 regardless of pick size; do not treat pick > 30 as not first round.
+	•	Undrafted: verify any of (round===0, tid===-1, pick===0 with round===0) is accepted.
+	•	For each career threshold, assert every eligible’s career total meets the bar.
+	•	For each season-avg threshold, assert there exists some season row meeting the bar (no team filter).
+	•	For awards and feats, assert membership against the indexed structures.
+
+The only team/season linkage we apply is for “Team × Team” cells (player must have played for both teams) and optionally for Champion if you’re requiring player to be on the roster the year that team won. Everything else is decoupled by design (team ever + stat/award anywhere).
+
+⸻
+
+End brief.
