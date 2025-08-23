@@ -39,7 +39,7 @@ export function computeCellRarityByWS(eligiblePlayers: LeaguePlayer[]) {
   }
 
   arr.forEach((row, idx) => {
-    const rarity = Math.round(100 * ((N - 1 - idx) / (N - 1))); // 100..0 (higher = more rare)
+    const rarity = Math.round(100 * (idx / (N - 1))); // 0..100 (lower = more "common")
     rarityMap.set(row.pid, rarity);
     rankMap.set(row.pid, idx + 1); // 1..N
     wsMap.set(row.pid, row.ws);
