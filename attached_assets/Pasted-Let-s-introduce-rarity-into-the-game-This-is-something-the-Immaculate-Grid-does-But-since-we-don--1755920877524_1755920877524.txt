@@ -1,0 +1,37 @@
+Let's introduce rarity into the game
+
+
+This is something the Immaculate Grid does
+
+But since we don't have thousands of people playing the same grid on the same day to calculate rarity, we're going to do it based on career WS that we are already pulling for our other top answers section
+
+Here's how I want it to work
+When a player is guessed, you should total up how many eligible players there are for the grid. Now, when a player is guessed, you should rank that player among all of the other eligible players. You should then have a percentile for how good of a guess it was. If there were 120 eligible players to be guessed and the lowest win shares player was chosen, that should be a score of 100 because it was the 100th percentile of player to be chosen
+If the player that was guessed was ranked 60th out of the 120 eligible for that particular grid square, the score should be 60
+
+Formula: rarity = round(100 × (rank-1) / (eligibleCount-1)), where rank=1 is most common (lowest WS) and rank=eligibleCount is rarest (lowest WS).
+
+I want there to be a small tile in the top right of each grid square once guessed that will give the percentile of how good the guess was. This will be the “rarity score” for that particular guess
+
+This tile should be color coded. Green = ultra rare. Red = ultra common. 
+
+•	0–9 = Ultra common
+	•	10–24 = Very common
+	•	25–39 = Common
+	•	40–59 = Notable
+	•	60–74 = Rare
+	•	75–89 = Very rare
+	•	90–100 = Ultra rare
+
+Please apply other appropriate colors for the others ranks
+
+I also want there to be a “scoreboard” of sorts right above the grid there with the correct, incorrect, guessed left section 
+
+This should now also show the total rarity score, the average rarity per pick so far, the best guess so far for rarity, and the worst guess so far for rarity (a wrong answer = 0 rarity points)
+
+We should also in the player page pop up insert a section ABOVE the “teams” section that will be the “rarity” section
+
+It will give a message like “Very rare!” Or something else based on how good the guess was
+It will also show the exact rank the guess was among the total amount of eligible players for that specific square 
+
+We will keep “teams” and “other top answers” exactly how they currently are

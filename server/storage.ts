@@ -152,6 +152,8 @@ export class MemStorage implements IStorage {
             correct: existing.correct,
             rarity: typeof existing.rarity === 'number' ? existing.rarity : 0,
             quality: typeof existing.quality === 'number' ? existing.quality : 0,
+            rank: typeof existing.rank === 'number' ? existing.rank : 0,
+            eligibleCount: typeof existing.eligibleCount === 'number' ? existing.eligibleCount : 0,
           }
         ])
       );

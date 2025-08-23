@@ -9,9 +9,34 @@ interface PlayerProfileModalProps {
   onOpenChange: (open: boolean) => void;
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
+  rarity?: number;
+  rank?: number;
+  eligibleCount?: number;
 }
 
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria }: PlayerProfileModalProps) {
+// Function to get rarity text based on percentile  
+function getRarityText(rarity: number): string {
+  if (rarity >= 90) return "Ultra rare!";
+  if (rarity >= 75) return "Very rare!";
+  if (rarity >= 60) return "Rare!";
+  if (rarity >= 40) return "Notable pick!";
+  if (rarity >= 25) return "Common pick";
+  if (rarity >= 10) return "Very common";
+  return "Ultra common";
+}
+
+// Function to get rarity color based on percentile
+function getRarityColor(rarity: number): string {
+  if (rarity >= 90) return "text-green-400";
+  if (rarity >= 75) return "text-green-300"; 
+  if (rarity >= 60) return "text-blue-400";
+  if (rarity >= 40) return "text-yellow-400";
+  if (rarity >= 25) return "text-orange-400";
+  if (rarity >= 10) return "text-red-400";
+  return "text-red-500";
+}
+
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount }: PlayerProfileModalProps) {
   if (!player) return null;
 
   // Fetch top players for this cell
@@ -52,6 +77,24 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             />
             <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
+
+          {/* Rarity Section */}
+          {(rarity !== undefined && rank !== undefined && eligibleCount !== undefined) && (
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
+              <div className="space-y-2">
+                <div className={`text-lg font-bold ${getRarityColor(rarity || 0)}`}>
+                  {getRarityText(rarity || 0)}
+                </div>
+                <div className="text-sm text-gray-300">
+                  Ranked {rank} out of {eligibleCount} eligible players for this cell
+                </div>
+                <div className="text-sm text-gray-400">
+                  Rarity Score: {rarity}%
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Teams Section */}
           <div className="bg-slate-700 rounded-lg p-4">

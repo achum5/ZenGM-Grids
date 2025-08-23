@@ -8,6 +8,8 @@ interface PlayerCellInfoProps {
   playerName: string;
   isCorrect: boolean;
   rarity: number;
+  rank?: number;
+  eligibleCount?: number;
   cellCriteria?: { row: string; column: string };
   candidateCount?: number;
   teamData?: TeamInfo[];
@@ -80,7 +82,29 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
+// Function to get rarity color based on percentile
+function getRarityColor(rarity: number): string {
+  if (rarity >= 90) return "bg-green-500"; // Ultra rare
+  if (rarity >= 75) return "bg-green-400"; // Very rare  
+  if (rarity >= 60) return "bg-blue-500"; // Rare
+  if (rarity >= 40) return "bg-yellow-500"; // Notable
+  if (rarity >= 25) return "bg-orange-500"; // Common
+  if (rarity >= 10) return "bg-red-400"; // Very common
+  return "bg-red-500"; // Ultra common
+}
+
+// Function to get rarity text
+function getRarityText(rarity: number): string {
+  if (rarity >= 90) return "Ultra rare";
+  if (rarity >= 75) return "Very rare";
+  if (rarity >= 60) return "Rare";
+  if (rarity >= 40) return "Notable";
+  if (rarity >= 25) return "Common";
+  if (rarity >= 10) return "Very common";
+  return "Ultra common";
+}
+
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -182,7 +206,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
     return (
       <>
         <div 
-          className="w-full h-full flex flex-col items-center justify-between text-center p-0.5 cursor-pointer overflow-visible"
+          className="w-full h-full flex flex-col items-center justify-between text-center p-0.5 cursor-pointer overflow-visible relative"
           onClick={(e) => {
             console.log('Wrong tile clicked for player:', playerName);
             e.preventDefault();
@@ -190,6 +214,12 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
             setShowProfileModal(true);
           }}
         >
+        {/* Rarity indicator for incorrect answers (always 0) */}
+        <div className="absolute top-1 right-1 z-10">
+          <div className="bg-red-500 text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center">
+            0
+          </div>
+        </div>
         {/* Player Face */}
         <div className="flex items-center justify-center mb-1 flex-shrink-0 w-full h-full">
           <div className="flex items-center justify-center">
@@ -284,6 +314,9 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
         onOpenChange={setShowProfileModal}
         columnCriteria={columnCriteria}
         rowCriteria={rowCriteria}
+        rarity={rarity}
+        rank={rank}
+        eligibleCount={eligibleCount}
       />
       </>
     );
@@ -375,7 +408,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
   return (
     <>
       <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center p-0.5 cursor-pointer overflow-visible"
+        className="w-full h-full flex flex-col items-center justify-center text-center p-0.5 cursor-pointer overflow-visible relative"
         onClick={(e) => {
           console.log('Correct tile clicked for player:', playerName);
           e.preventDefault();
@@ -383,6 +416,12 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
           setShowProfileModal(true);
         }}
       >
+      {/* Rarity indicator for correct answers */}
+      <div className="absolute top-1 right-1 z-10">
+        <div className={`${getRarityColor(rarity)} text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center`}>
+          {rarity}
+        </div>
+      </div>
       {/* Player Face */}
       <div className="flex items-center justify-center mb-2 flex-shrink-0 w-full h-full">
         <div className="flex items-center justify-center">
@@ -409,7 +448,15 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
             const nameParts = playerName.split(' ');
             if (nameParts.length >= 2) {
               const firstInitial = nameParts[0][0] + '.';
-              const lastName = nameParts[nameParts.length - 1];
+              // Handle suffixes like Jr., Sr., III, etc.
+              const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
+              let lastName = nameParts[nameParts.length - 1];
+              
+              // If the last part is a suffix, use the second-to-last part as the last name
+              if (suffixes.includes(lastName) && nameParts.length >= 3) {
+                lastName = nameParts[nameParts.length - 2];
+              }
+              
               const truncatedName = firstInitial + ' ' + lastName;
               
               if (truncatedName.length <= maxLength) {
@@ -434,6 +481,9 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, cellCrit
       onOpenChange={setShowProfileModal}
       columnCriteria={columnCriteria}
       rowCriteria={rowCriteria}
+      rarity={rarity}
+      rank={rank}
+      eligibleCount={eligibleCount}
     />
     </>
   );
