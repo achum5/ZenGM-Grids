@@ -1,0 +1,48 @@
+Got it — thanks for showing me these screenshots, they’re super helpful. The problem is that Replit is still ranking these players as if higher WS = rarer, when it should be the opposite (higher WS = more common, lower WS = rarer). That’s why stars like KAT, Embiid, and Edwards are all getting “Ultra rare!” when they’re actually some of the most obvious/common picks.
+
+Here’s exactly how you should phrase it to the Replit AI bot so it fixes rarity once and for all:
+
+⸻
+
+Copy-paste for Replit AI:
+
+We need to fix the rarity calculation. Right now, high-win-share superstars are being ranked as “Ultra rare,” which is backwards.
+
+Here’s what should happen:
+	•	The game already fetches the list of all eligible players for a cell (this is how we populate “Other Top Answers”).
+	•	Use that same list and sort it by career Win Shares, descending (highest WS = most common, lowest WS = rarest).
+	•	A player’s rank in that sorted list should be used to calculate their rarity percentile.
+
+Formula (most common = 0, rarest = 100):
+
+rarity = round(100 * (eligibleCount - rank) / (eligibleCount - 1))
+
+	•	rank = 1 means the most common pick (highest WS).
+	•	rank = eligibleCount means the rarest pick (lowest WS).
+
+Examples:
+	•	If there are 200 eligible players and LeBron (highest WS) is guessed, his rarity should be 0.
+	•	If the player ranked 100th is guessed, their rarity should be 50.
+	•	If the lowest WS scrub (rank 200) is guessed, their rarity should be 100.
+
+What to update in the UI:
+	•	On the grid tile, the rarity score should show this correct percentile.
+	•	On the player modal, under the “Rarity” section, display the descriptive tier:
+	•	0–9: Ultra common
+	•	10–24: Very common
+	•	25–39: Common
+	•	40–59: Notable
+	•	60–74: Rare
+	•	75–89: Very rare
+	•	90–100: Ultra rare
+	•	Also show:
+
+Ranked X out of Y eligible players for this cell
+
+
+
+Important: Please make sure the rarity calculation is using all eligible players from the existing list, not just the top 10 shown in the modal.
+
+⸻
+
+Would you like me to also rewrite this with an additional debugging instruction so you can see the sorted list + WS values in console logs and confirm Replit is using the full eligible list before computing rarity? That could guarantee no more hidden bugs.
