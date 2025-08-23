@@ -28,6 +28,8 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     players: string[];
     playerDetails: Player[];
     cellCriteria: { row: string; column: string };
+    ordered?: Array<{name: string, teams: string[], careerWinShares: number, pid?: number}>;
+    chosenPid?: number;
   } | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes
   const [gameStarted, setGameStarted] = useState(false);
@@ -122,7 +124,14 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
             setCorrectAnswersData({
               players: ordered.map(row => row.player.name),
               playerDetails: ordered.map(row => row.player),
-              cellCriteria
+              cellCriteria,
+              ordered: ordered.map(row => ({
+                name: row.player.name,
+                teams: row.player.teams,
+                careerWinShares: row.ws,
+                pid: row.player.pid
+              })),
+              chosenPid: guessedPlayer.pid
             });
             setShowCorrectAnswersModal(true);
             

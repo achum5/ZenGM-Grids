@@ -17,6 +17,8 @@ interface PlayerCellInfoProps {
   teamData?: TeamInfo[];
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
+  ordered?: Array<{name: string, teams: string[], careerWinShares: number, pid?: number}>;
+  chosenPid?: number;
 }
 
 // Team abbreviations mapping
@@ -84,7 +86,7 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRank, careerWS, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRank, careerWS, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria, ordered, chosenPid }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -288,6 +290,11 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
         onOpenChange={setShowProfileModal}
         columnCriteria={columnCriteria}
         rowCriteria={rowCriteria}
+        rarity={rarity}
+        rarityRank={rarityRank}
+        eligibleCount={eligibleCount}
+        ordered={ordered}
+        chosenPid={chosenPid}
       />
       </>
     );
@@ -453,6 +460,8 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rarityRa
       rarity={rarity}
       rarityRank={rarityRank}
       eligibleCount={eligibleCount}
+      ordered={ordered}
+      chosenPid={chosenPid}
     />
     </>
   );

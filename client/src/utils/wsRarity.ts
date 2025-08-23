@@ -67,10 +67,22 @@ export function rarityColor(score: number) {
   return `hsl(${hue}deg 80% 45%)`;
 }
 
-export function rarityLabel(score: number): "Common"|"Uncommon"|"Notable"|"Rare"|"Ultra-rare" {
-  if (score >= 80) return "Ultra-rare";
+export function rarityLabel(score: number): "Ultra rare"|"Very rare"|"Rare"|"Notable"|"Common"|"Very common"|"Ultra common" {
+  if (score >= 90) return "Ultra rare";
+  if (score >= 75) return "Very rare";
   if (score >= 60) return "Rare";
   if (score >= 40) return "Notable";
-  if (score >= 20) return "Uncommon";
-  return "Common";
+  if (score >= 25) return "Common";
+  if (score >= 10) return "Very common";
+  return "Ultra common";
+}
+
+export function rarityBlurb(score: number): string {
+  if (score >= 90) return "needle-in-a-haystack pick";
+  if (score >= 75) return "extremely obscure choice";
+  if (score >= 60) return "deep cut selection";
+  if (score >= 40) return "nice off-beat pick";
+  if (score >= 25) return "solid standard choice";
+  if (score >= 10) return "popular mainstream pick";
+  return "obvious crowd favorite";
 }

@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
-import { rarityLabel } from "@/utils/wsRarity";
+import { rarityLabel, rarityBlurb } from "@/utils/wsRarity";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -13,9 +13,11 @@ interface PlayerProfileModalProps {
   rarity?: number;
   rarityRank?: number;
   eligibleCount?: number;
+  ordered?: Array<{name: string, teams: string[], careerWinShares: number, pid?: number}>;
+  chosenPid?: number;
 }
 
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rarityRank, eligibleCount }: PlayerProfileModalProps) {
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rarityRank, eligibleCount, ordered, chosenPid }: PlayerProfileModalProps) {
   if (!player) return null;
 
   // Fetch all eligible players for this cell in WS rank order
@@ -60,9 +62,15 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
           {typeof rarity === "number" && rarityRank && eligibleCount && (
             <div className="bg-slate-700 rounded-lg p-4" style={{marginBottom:12}}>
               <div style={{fontWeight:700, marginBottom:6}}>Rarity</div>
-              <div style={{fontSize:28, fontWeight:800}}>{rarity}</div>
-              <div style={{opacity:.8, marginTop:4}}>
-                Rank {rarityRank} of {eligibleCount} eligible • {rarityLabel(rarity)}
+              <div style={{fontSize:28, fontWeight:800, marginBottom:8}}>{rarityLabel(rarity)}</div>
+              <div style={{fontSize:16, marginBottom:4}}>
+                Ranked {rarityRank} of {eligibleCount} eligible
+              </div>
+              <div style={{fontSize:12, opacity:0.6, marginBottom:8}}>
+                Higher rank = rarer
+              </div>
+              <div style={{fontSize:14, opacity:0.8, fontStyle:"italic"}}>
+                {rarityBlurb(rarity)}
               </div>
             </div>
           )}
@@ -88,19 +96,30 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             </div>
           </div>
 
-          {/* Other Answers Section */}
+          {/* Popular Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-yellow-300 mb-2">Other Answers</h3>
+            <h3 className="font-semibold text-yellow-300 mb-1">Popular Answers</h3>
+            <p className="text-sm text-gray-400 mb-3">Most common correct picks for this square</p>
             <ol style={{maxHeight:240, overflowY:"auto", paddingLeft:18, margin:0}}>
-              {allPlayers && allPlayers.length > 0 ? (
-                allPlayers.map((answerPlayer, idx) => {
-                  const isChosen = answerPlayer.name === player.name;
+              {ordered && ordered.length > 0 ? (
+                ordered.slice(0, 10).map((answerPlayer, idx) => {
+                  const isChosen = answerPlayer.pid === chosenPid || answerPlayer.name === player?.name;
                   return (
                     <li key={answerPlayer.name} style={{padding:"2px 0"}}>
                       <span style={{fontWeight: isChosen ? 800 : 500}}>
                         {answerPlayer.name}
                       </span>
-                      <span style={{opacity:.7}}> — WS {answerPlayer.careerWinShares?.toFixed(1) || '0.0'}</span>
+                    </li>
+                  );
+                })
+              ) : allPlayers && allPlayers.length > 0 ? (
+                allPlayers.slice(0, 10).map((answerPlayer, idx) => {
+                  const isChosen = answerPlayer.name === player?.name;
+                  return (
+                    <li key={answerPlayer.name} style={{padding:"2px 0"}}>
+                      <span style={{fontWeight: isChosen ? 800 : 500}}>
+                        {answerPlayer.name}
+                      </span>
                     </li>
                   );
                 })
