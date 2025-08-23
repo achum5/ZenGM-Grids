@@ -18,10 +18,10 @@ export default function RaritySummaryUnderGrid({ samples }: { samples: Sample[] 
       gridTemplateColumns: "1fr 1fr 1fr 1fr",
       gap: 8
     }}>
-      <Stat label="Rarity Score (total)" value={total} hint="Lower = better" />
+      <Stat label="Rarity Score (total)" value={total} hint="" />
       <Stat label="Average" value={avg} hint="" />
       <Stat label="Best pick" value={best} hint="lowest rarity" />
-      <Stat label="Most common" value={worst} hint="highest rarity" />
+      <Stat label="Rarest pick" value={worst} hint="highest rarity" />
     </div>
   );
 }

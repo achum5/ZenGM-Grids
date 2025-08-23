@@ -1280,7 +1280,7 @@ app.get("/api/debug/matches", async (req, res) => {
         // Find player's position and calculate rarity
         const playerIndex = playersWithWS.findIndex(p => p.player.name.toLowerCase() === player.toLowerCase());
         if (playerIndex !== -1 && playersWithWS.length > 1) {
-          wsRarity = Math.round(100 * (playerIndex / (playersWithWS.length - 1)));
+          wsRarity = Math.round(100 * ((playersWithWS.length - 1 - playerIndex) / (playersWithWS.length - 1)));
           wsRank = playerIndex + 1;
           careerWS = playersWithWS[playerIndex].ws;
         } else if (playerIndex !== -1 && playersWithWS.length === 1) {
