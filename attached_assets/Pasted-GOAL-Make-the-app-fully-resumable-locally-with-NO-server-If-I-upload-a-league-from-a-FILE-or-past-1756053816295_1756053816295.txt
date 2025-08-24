@@ -1,0 +1,258 @@
+GOAL
+Make the app fully resumable locally with NO server:
+- If I upload a league from a FILE or paste a URL, it’s saved locally (Blob in IndexedDB).
+- If I start a grid and make guesses, I can refresh / background Safari / come back hours later and resume exactly where I left off.
+- Clearing site data/cookies wipes everything (expected).
+
+DEPENDENCIES
+- idb-keyval (IndexedDB helper)
+- pako (for gzipped JSON)
+
+Run:
+npm i idb-keyval pako
+
+CREATE: src/storage/localStore.ts
+--------------------------------
+import { set as idbSet, get as idbGet, del as idbDel } from "idb-keyval";
+import { ungzip } from "pako";
+
+export type GridGuess = { cell: string; pid: number; correct: boolean; rarity?: number };
+
+export type GridState = {
+  id: string;
+  createdAt: number;
+  leagueId: string;  // FK to LeagueMeta.id
+  gridSpec: any;     // your 3×3 criteria object
+  guesses: GridGuess[];
+  stats: {
+    correct: number;
+    incorrect: number;
+    guessesLeft: number;
+    rarityTotal: number;
+    rarityAvg: number;
+    rarityBest: number;
+    rarityWorst: number;
+  };
+  version: number;   // start at 1
+};
+
+export type LeagueMeta = {
+  id: string;
+  name: string;
+  size: number;
+  type: "json" | "gz";
+  savedAt: number;
+  hash: string;      // simple content hash for dedupe
+  version: number;   // start at 1
+};
+
+const LS = {
+  lastLeagueId: "zgm:lastLeagueId",
+  lastGridId: "zgm:lastGridId",
+  hasResume: "zgm:hasResume",
+} as const;
+
+/** Save a league Blob (file OR fetched from URL) into IDB and pointers in localStorage. */
+export async function saveLeagueBlob(blob: Blob, name: string, type: "json" | "gz"): Promise<LeagueMeta> {
+  const id = crypto.randomUUID();
+  const meta: LeagueMeta = {
+    id,
+    name,
+    size: blob.size,
+    type,
+    savedAt: Date.now(),
+    hash: await quickHash(blob),
+    version: 1,
+  };
+  await idbSet(`zgm:league:${id}:blob`, blob);
+  await idbSet(`zgm:league:${id}:meta`, meta);
+  localStorage.setItem(LS.lastLeagueId, id);
+  localStorage.setItem(LS.hasResume, "1");
+  return meta;
+}
+
+/** Load the saved league Blob+meta from IDB by id. */
+export async function loadLeagueBlob(id: string): Promise<{ blob: Blob; meta: LeagueMeta } | null> {
+  const [blob, meta] = await Promise.all([
+    idbGet(`zgm:league:${id}:blob`),
+    idbGet(`zgm:league:${id}:meta`),
+  ]);
+  if (!blob || !meta) return null;
+  return { blob: blob as Blob, meta: meta as LeagueMeta };
+}
+
+/** Delete the saved league by id. */
+export async function deleteLeague(id: string) {
+  await idbDel(`zgm:league:${id}:blob`);
+  await idbDel(`zgm:league:${id}:meta`);
+  if (localStorage.getItem(LS.lastLeagueId) === id) {
+    localStorage.removeItem(LS.lastLeagueId);
+  }
+}
+
+/** Save grid state to IDB and pointers in localStorage. */
+export async function saveGridState(state: GridState) {
+  await idbSet(`zgm:grid:${state.id}`, state);
+  localStorage.setItem(LS.lastGridId, state.id);
+  localStorage.setItem(LS.hasResume, "1");
+}
+
+/** Load grid state from IDB by id. */
+export async function loadGridState(id: string): Promise<GridState | null> {
+  return ((await idbGet(`zgm:grid:${id}`)) as GridState) ?? null;
+}
+
+export async function deleteGridState(id: string) {
+  await idbDel(`zgm:grid:${id}`);
+  if (localStorage.getItem(LS.lastGridId) === id) {
+    localStorage.removeItem(LS.lastGridId);
+  }
+}
+
+export function getLastLeagueId() { return localStorage.getItem(LS.lastLeagueId); }
+export function getLastGridId()   { return localStorage.getItem(LS.lastGridId); }
+export function hasResumeData()   { return localStorage.getItem(LS.hasResume) === "1"; }
+
+/** Parse a saved Blob back into JSON (supports gz and json). */
+export async function parseLeagueBlobToJson(blob: Blob, type: "json" | "gz"): Promise<any> {
+  if (type === "json") {
+    const text = await blob.text();
+    return JSON.parse(text);
+  } else {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const unz = ungzip(buf, { to: "string" }) as string;
+    return JSON.parse(unz);
+  }
+}
+
+/** Quick content hash (FNV-1a) to detect same upload */
+async function quickHash(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  let h = 2166136261 >>> 0;
+  const v = new Uint8Array(buf);
+  for (let i = 0; i < v.length; i++) { h ^= v[i]; h = (h * 16777619) >>> 0; }
+  return ("00000000" + h.toString(16)).slice(-8);
+}
+
+/** Small helper to debounce any async saver. */
+export function debounce<T extends (...args: any[]) => any>(fn: T, ms = 300) {
+  let t: number | undefined;
+  const wrapper = (...args: Parameters<T>) => {
+    if (t) window.clearTimeout(t);
+    t = window.setTimeout(() => fn(...args), ms);
+  };
+  (wrapper as any).flush = () => {
+    if (t) { window.clearTimeout(t); t = undefined; }
+    fn();
+  };
+  return wrapper as T & { flush?: () => void };
+}
+
+CREATE: unified league loaders (FILE + URL)
+-------------------------------------------
+Create src/storage/leagueLoader.ts (unify file/URL → Blob → save → parse):
+
+import { saveLeagueBlob, parseLeagueBlobToJson, LeagueMeta } from "./localStore";
+
+/** Detect by filename or URL suffix. Defaults to 'json'. */
+function detectTypeFromName(name: string): "json" | "gz" {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".gz") ? "gz" : "json";
+}
+
+/** Handle a FILE upload -> Blob -> save -> parse */
+export async function loadLeagueFromFile(file: File): Promise<{ meta: LeagueMeta; json: any }> {
+  const name = file.name || "league.json";
+  const type = detectTypeFromName(name);
+  const meta = await saveLeagueBlob(file, name, type);
+  const json = await parseLeagueBlobToJson(file, type);
+  return { meta, json };
+}
+
+/** Handle a URL upload -> fetch -> Blob -> save -> parse */
+export async function loadLeagueFromUrl(url: string): Promise<{ meta: LeagueMeta; json: any }> {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("Failed to fetch league file from URL");
+  const blob = await resp.blob();
+  // Try to infer a name from the URL; fallback to 'league'
+  const urlTail = url.split("?")[0].split("#")[0];
+  const name = urlTail.split("/").pop() || "league";
+  const type = detectTypeFromName(name);
+  const meta = await saveLeagueBlob(blob, name, type);
+  const json = await parseLeagueBlobToJson(blob, type);
+  return { meta, json };
+}
+
+INTEGRATE: app wiring
+---------------------
+1) On league upload (FILE):
+   - Call: const { meta, json } = await loadLeagueFromFile(file);
+   - Store meta.id as currentLeagueId in app state.
+   - Use `json` to initialize your in-memory BBGM structures.
+
+2) On league upload (URL, e.g., Dropbox .dl):
+   - Call: const { meta, json } = await loadLeagueFromUrl(url);
+   - Same handling: currentLeagueId = meta.id; use json in memory.
+
+3) On grid generate:
+   - const gridId = crypto.randomUUID();
+   - const gridState: GridState = {
+       id: gridId, createdAt: Date.now(), version: 1,
+       leagueId: currentLeagueId, gridSpec, guesses: [],
+       stats: { correct:0, incorrect:0, guessesLeft:9, rarityTotal:0, rarityAvg:0, rarityBest:0, rarityWorst:0 }
+     };
+   - await saveGridState(gridState);
+   - Keep gridState in memory.
+
+4) On each guess (persist debounced):
+   - Update in-memory gridState.guesses & gridState.stats.
+   - Use a single debounced saver created at component init:
+       const debouncedSave = debounce(() => saveGridState(gridState), 300);
+     After handling a guess: debouncedSave();
+   - Also attach:
+       document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible") debouncedSave(); });
+       window.addEventListener("beforeunload", () => { (debouncedSave as any).flush?.(); });
+
+5) On app startup (hydrate / resume automatically):
+   - const leagueId = getLastLeagueId(); const gridId = getLastGridId();
+   - If leagueId:
+       const loaded = await loadLeagueBlob(leagueId);
+       if (loaded) {
+         const { blob, meta } = loaded;
+         const json = await parseLeagueBlobToJson(blob, meta.type);
+         setCurrentLeague(meta.id, meta, json); // your app setter
+       }
+   - If gridId:
+       const saved = await loadGridState(gridId);
+       if (saved) {
+         // Rebuild UI exactly:
+         setGridFromState(saved.gridSpec);
+         paintGuesses(saved.guesses);
+         setScoreboard(saved.stats);
+         setCurrentGridId(saved.id);
+       }
+
+6) Add a small “Resume session?” banner (optional):
+   - If both lastLeagueId & lastGridId load, show a banner with:
+     [Resume] (do nothing, you already hydrated)  [Start new grid] (create a new GridState with same leagueId)
+   - Provide “Remove league” button to fully clear saved league + grid:
+       await deleteLeague(currentLeagueId); await deleteGridState(currentGridId);
+
+ACCEPTANCE (must pass)
+----------------------
+- Upload via FILE -> make 3–4 guesses -> refresh page -> EXPECT: same league, same grid, same guesses/rarity; no upload prompt.
+- Upload via URL (.dl) -> same as above; after refresh you’re resumed from IDB, NOT re-fetched URL.
+- Background Safari for minutes/hours -> return -> EXPECT: state intact.
+- Close tab, reopen -> EXPECT: state intact.
+- Click “Remove league” -> EXPECT: no resume next load.
+- Clear site data/cookies -> EXPECT: everything gone (by design).
+
+NOTES / PITFALLS
+----------------
+- Always store the **Blob** in IndexedDB (not localStorage). localStorage only holds tiny pointers (ids/flags).
+- Parsing happens from the saved Blob on resume, so URL availability later is irrelevant.
+- For gz, we use pako’s ungzip (already included).
+- If you change the shape of GridState later, bump `version` and migrate on load.
+- Handle IDB unavailable (very rare) by showing a banner “Local save unavailable; progress may be lost on refresh.”
+
+This guarantees the grid + league are saved & restored identically whether the user uploaded a local file or pasted a URL.

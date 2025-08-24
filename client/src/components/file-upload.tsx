@@ -8,18 +8,22 @@ import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { loadLeagueFromFile, loadLeagueFromUrl } from "@/storage/leagueLoader";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
+import type { LeagueMeta } from "@/storage/localStore";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
+  onLeagueLoaded?: (leagueId: string, meta: LeagueMeta, json: any) => void;
 }
 
-export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
+export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [urlInput, setUrlInput] = useState('');
+  const [leagueMeta, setLeagueMeta] = useState<LeagueMeta | null>(null);
   const { toast } = useToast();
 
 
@@ -27,30 +31,31 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
       if (typeof fileOrUrl === 'string') {
-        // URL upload
-        const response = await fetch("/api/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: fileOrUrl }),
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "URL upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+        // URL upload - use local storage system
+        const { meta, json } = await loadLeagueFromUrl(fileOrUrl);
+        setLeagueMeta(meta);
+        onLeagueLoaded?.(meta.id, meta, json);
+        
+        // Convert to expected format for existing code
+        const players = json.players || json;
+        return {
+          players: players,
+          teams: json.teams || [],
+          achievements: []
+        };
       } else {
-        // File upload
-        const formData = new FormData();
-        formData.append("file", fileOrUrl);
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+        // File upload - use local storage system  
+        const { meta, json } = await loadLeagueFromFile(fileOrUrl);
+        setLeagueMeta(meta);
+        onLeagueLoaded?.(meta.id, meta, json);
+        
+        // Convert to expected format for existing code
+        const players = json.players || json;
+        return {
+          players: players,
+          teams: json.teams || [],
+          achievements: []
+        };
       }
     },
     onSuccess: (data) => {
