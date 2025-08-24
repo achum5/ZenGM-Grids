@@ -8,6 +8,7 @@ export type GridState = {
   createdAt: number;
   leagueId: string;  // FK to LeagueMeta.id
   gridSpec: any;     // your 3×3 criteria object
+  game?: any;        // Store local game data for offline mode
   guesses: GridGuess[];
   stats: {
     correct: number;

@@ -38,10 +38,19 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         
         // Convert to expected format for existing code
         const players = json.players || json;
+        
+        // Extract achievements from player data
+        const achievements = new Set<string>();
+        players.forEach((player: any) => {
+          if (player.achievements && Array.isArray(player.achievements)) {
+            player.achievements.forEach((achievement: string) => achievements.add(achievement));
+          }
+        });
+        
         return {
           players: players,
           teams: json.teams || [],
-          achievements: [],
+          achievements: Array.from(achievements),
           meta, // Include meta for immediate use
           json  // Include json for immediate use
         };
@@ -53,10 +62,19 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         
         // Convert to expected format for existing code
         const players = json.players || json;
+        
+        // Extract achievements from player data
+        const achievements = new Set<string>();
+        players.forEach((player: any) => {
+          if (player.achievements && Array.isArray(player.achievements)) {
+            player.achievements.forEach((achievement: string) => achievements.add(achievement));
+          }
+        });
+        
         return {
           players: players,
           teams: json.teams || [],
-          achievements: [],
+          achievements: Array.from(achievements),
           meta, // Include meta for immediate use
           json  // Include json for immediate use
         };
@@ -70,7 +88,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
       // Automatically generate a new grid after successful upload using the data directly
-      generateGameMutation.mutate(data);
+      setTimeout(() => generateGameMutation.mutate(data), 100);
     },
     onError: (error) => {
       toast({
@@ -170,7 +188,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
   };
 
   const generateGrid = () => {
-    generateGameMutation.mutate();
+    generateGameMutation.mutate(undefined);
   };
 
   return (

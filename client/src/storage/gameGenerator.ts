@@ -32,18 +32,15 @@ export function generateLocalGame(leagueJson: any): GeneratedGame {
   
   const teamArray = Array.from(teamNames);
   
-  // Common achievement types to look for
-  const achievements = [
-    "All-Star",
-    "MVP", 
-    "DPOY",
-    "ROY",
-    "Finals MVP",
-    "6MOY",
-    "MIP",
-    "First Round Pick",
-    "Champion"
-  ];
+  // Extract actual achievements from player data
+  const achievements = new Set<string>();
+  players.forEach((player: any) => {
+    if (player.achievements && Array.isArray(player.achievements)) {
+      player.achievements.forEach((achievement: string) => achievements.add(achievement));
+    }
+  });
+  
+  const achievementArray = Array.from(achievements);
   
   // Generate random criteria
   const gameId = crypto.randomUUID();

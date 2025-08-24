@@ -99,6 +99,7 @@ export default function Home() {
         id: game.id,
         createdAt: Date.now(),
         leagueId: currentLeagueId,
+        game: game, // Store the game data locally
         gridSpec: {
           columnCriteria: game.columnCriteria,
           rowCriteria: game.rowCriteria,

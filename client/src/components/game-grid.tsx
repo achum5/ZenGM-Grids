@@ -78,10 +78,13 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     }
   }, [gridState]);
 
-  const { data: game } = useQuery<Game>({
+  const { data: serverGame } = useQuery<Game>({
     queryKey: ["/api/games", gameId],
-    enabled: !!gameId,
+    enabled: !!gameId && !localGridState?.game, // Only fetch if we don't have local game data
   });
+  
+  // Use local game data if available, otherwise use server data
+  const game = localGridState?.game || serverGame;
 
   const { data: session } = useQuery<GameSession>({
     queryKey: ["/api/sessions", sessionId],
@@ -380,7 +383,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         <div className="aspect-square"></div>
         
         {/* Column headers */}
-        {game.columnCriteria.map((criteria, index) => (
+        {game.columnCriteria.map((criteria: any, index: number) => (
           <div
             key={`col-${index}`}
             className="aspect-square bg-gray-200 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm"
@@ -391,7 +394,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         ))}
 
         {/* Grid rows */}
-        {game.rowCriteria.map((rowCriteria, rowIndex) => (
+        {game.rowCriteria.map((rowCriteria: any, rowIndex: number) => (
           <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
@@ -402,7 +405,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
             </div>
             
             {/* Grid cells */}
-            {game.columnCriteria.map((_, colIndex) => {
+            {game.columnCriteria.map((_: any, colIndex: number) => {
               const cellKey = `${rowIndex}_${colIndex}`;
               const answer = session?.answers?.[cellKey];
               const isAnswered = !!answer;
