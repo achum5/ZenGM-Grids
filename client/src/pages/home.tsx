@@ -5,9 +5,11 @@ import { GameStats } from "@/components/game-stats";
 import { Stats } from "@/components/stats";
 import { RulesModal } from "@/components/rules-modal";
 import { Button } from "@/components/ui/button";
-import { HelpCircle, RotateCcw, Play } from "lucide-react";
+import { HelpCircle, RotateCcw, Play, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import type { Game, SessionStats, TeamInfo, GameSession } from "@shared/schema";
 
 export default function Home() {
@@ -16,9 +18,33 @@ export default function Home() {
   const [currentScore, setCurrentScore] = useState(0);
   const [showRules, setShowRules] = useState(false);
   const [teamData, setTeamData] = useState<TeamInfo[] | null>(null);
+  const { toast } = useToast();
 
   const { data: stats } = useQuery<SessionStats>({
     queryKey: ["/api/sessions/stats"],
+  });
+
+  // Generate new grid mutation
+  const generateGameMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/games/generate");
+      return response.json() as Promise<Game>;
+    },
+    onSuccess: (game) => {
+      handleGameGenerated(game);
+      toast({
+        title: "New grid generated",
+        description: "Ready to play!",
+        duration: 1000,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to generate grid",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const handleGameGenerated = (game?: Game) => {
@@ -134,6 +160,28 @@ export default function Home() {
                 worst={statsData.worst}
                 rarityScore={statsData.rarityScore}
               />
+              
+              {/* Generate New Grid Button */}
+              <div className="flex justify-center">
+                <Button 
+                  onClick={() => generateGameMutation.mutate()}
+                  disabled={generateGameMutation.isPending}
+                  className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold"
+                  data-testid="button-generate-grid"
+                >
+                  {generateGameMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="mr-2 h-5 w-5" />
+                      Generate New Grid
+                    </>
+                  )}
+                </Button>
+              </div>
               
               <div className="bg-white dark:bg-slate-800 rounded-lg">
                 <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
