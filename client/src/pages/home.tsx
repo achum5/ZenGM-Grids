@@ -142,14 +142,6 @@ export default function Home() {
           
           {hasLeague && (
             <>
-              <GameGrid 
-                gameId={currentGameId}
-                sessionId={currentSessionId}
-                onSessionCreated={handleSessionCreated}
-                onScoreUpdate={handleScoreUpdate}
-                teamData={teamData || undefined}
-              />
-              
               <Stats
                 correct={statsData.correct}
                 incorrect={statsData.incorrect}
@@ -159,6 +151,14 @@ export default function Home() {
                 best={statsData.best}
                 worst={statsData.worst}
                 rarityScore={statsData.rarityScore}
+              />
+              
+              <GameGrid 
+                gameId={currentGameId}
+                sessionId={currentSessionId}
+                onSessionCreated={handleSessionCreated}
+                onScoreUpdate={handleScoreUpdate}
+                teamData={teamData || undefined}
               />
               
               {/* Generate New Grid Button */}
