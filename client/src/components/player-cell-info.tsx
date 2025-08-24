@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
+import { evaluatePlayerAnswer, type EvaluationResult } from "@shared/evaluation";
 
 interface PlayerCellInfoProps {
   playerName: string;
@@ -218,12 +219,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
             setShowProfileModal(true);
           }}
         >
-        {/* Rarity indicator for incorrect answers (always 0) */}
-        <div className="absolute top-1 right-1 z-10">
-          <div className="bg-red-500 text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center">
-            0
-          </div>
-        </div>
+        {/* Rarity chip hidden for incorrect answers */}
         {/* Player Face */}
         <div className="flex items-center justify-center mb-1 flex-shrink-0 w-full h-full">
           <div className="flex items-center justify-center">
@@ -312,27 +308,21 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
 
       </div>
       
-      {isCorrect ? (
-        <PlayerProfileModal 
-          player={player}
-          open={showProfileModal}
-          onOpenChange={setShowProfileModal}
-          columnCriteria={columnCriteria}
-          rowCriteria={rowCriteria}
-          rarity={rarity}
-          rank={rank}
-          eligibleCount={eligibleCount}
-        />
-      ) : (
-        <PlayerProfileModal 
-          player={player}
-          open={showProfileModal}
-          onOpenChange={setShowProfileModal}
-          columnCriteria={undefined}
-          rowCriteria={undefined}
-          // No rarity data for incorrect answers
-        />
-      )}
+      <PlayerProfileModal 
+        player={player}
+        open={showProfileModal}
+        onOpenChange={setShowProfileModal}
+        columnCriteria={columnCriteria}
+        rowCriteria={rowCriteria}
+        rarity={rarity}
+        rank={rank}
+        eligibleCount={eligibleCount}
+        isCorrect={isCorrect}
+        evaluation={!isCorrect && columnCriteria && rowCriteria ? 
+          evaluatePlayerAnswer(player, columnCriteria, rowCriteria) : 
+          undefined
+        }
+      />
       </>
     );
   }

@@ -2,6 +2,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
+import type { EvaluationResult } from "@shared/evaluation";
+import { buildIncorrectMessage } from "@shared/evaluation";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -12,6 +14,8 @@ interface PlayerProfileModalProps {
   rarity?: number;
   rank?: number;
   eligibleCount?: number;
+  isCorrect?: boolean;
+  evaluation?: EvaluationResult;
 }
 
 // Function to get rarity text based on user's tier specifications
@@ -36,10 +40,10 @@ function getRarityColor(rarity: number): string {
   return "text-red-500";
 }
 
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount }: PlayerProfileModalProps) {
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount, isCorrect = true, evaluation }: PlayerProfileModalProps) {
   if (!player) return null;
 
-  // Fetch top players for this cell - include guessed player if in top 10
+  // Fetch top players for this cell - show for both correct and incorrect
   const { data: topPlayers } = useQuery<Array<{name: string, teams: string[], __isGuessed?: boolean}>>({
     queryKey: [`/api/players/top-for-cell`, columnCriteria, rowCriteria, player?.name],
     enabled: open && !!columnCriteria && !!rowCriteria && !!player,
@@ -84,22 +88,41 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
 
-          {/* Rarity Section */}
-          {(rarity !== undefined && rank !== undefined && eligibleCount !== undefined) && (
-            <div className="bg-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
-              <div className="space-y-2">
-                <div className={`text-lg font-bold ${getRarityColor(rarity || 0)}`}>
-                  {getRarityText(rarity || 0)}
-                </div>
-                <div className="text-sm text-gray-300">
-                  Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
-                </div>
-                <div className="text-xs text-gray-400">
-                  1 = rarest · {eligibleCount} = most common
+          {/* Rarity Section for correct answers OR Why this was incorrect for wrong answers */}
+          {isCorrect ? (
+            (rarity !== undefined && rank !== undefined && eligibleCount !== undefined) && (
+              <div className="bg-slate-700 rounded-lg p-4">
+                <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
+                <div className="space-y-2">
+                  <div className={`text-lg font-bold ${getRarityColor(rarity || 0)}`}>
+                    {getRarityText(rarity || 0)}
+                  </div>
+                  <div className="text-sm text-gray-300">
+                    Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    1 = rarest · {eligibleCount} = most common
+                  </div>
                 </div>
               </div>
-            </div>
+            )
+          ) : (
+            evaluation && (
+              <div className="bg-slate-700 rounded-lg p-4">
+                <h3 className="font-semibold text-red-300 mb-2">Why this was incorrect</h3>
+                <p className="explain font-semibold mb-2 text-sm text-gray-200">
+                  {buildIncorrectMessage(player.name, evaluation)}
+                </p>
+                <ul className="bullets space-y-1">
+                  <li className="text-sm">
+                    {evaluation.teamPass ? "✅" : "❌"} Team: {evaluation.teamLabel}
+                  </li>
+                  <li className="text-sm">
+                    {evaluation.critPass ? "✅" : "❌"} Criterion: {evaluation.critLabel}
+                  </li>
+                </ul>
+              </div>
+            )
           )}
 
           {/* Teams Section */}

@@ -1,0 +1,144 @@
+Locked in. Here’s a single updated brief you can paste into Replit AI with the corrected #2 and an explicit “incorrect-only” scope.
+
+—
+
+COPY/PASTE FOR REPLIT AI — Incorrect-Answer UX (do not change correct-answer behavior)
+
+Scope: **Apply ALL changes only when `result.correct === false`.** Correct answers must remain completely unchanged (visuals and behavior).
+
+1. Hide rarity chip on incorrect tiles
+
+* Do not render a rarity score for incorrect guesses.
+* CSS guard (in addition to conditional render):
+  `.tile.incorrect .rarityChip { display: none !important; }`
+* In the Tile/Cell component, render the chip only when correct:
+
+  ```jsx
+  {result?.correct && <div className="rarityChip">{result.rarity}</div>}
+  ```
+
+2. Fix duplicate name plate bug on incorrect tiles (KEEP the normal name plate)
+
+* **Do NOT remove or move the normal name plate.** It should render in its usual position/appearance for incorrect tiles.
+* The current bug renders a **second/duplicate** name plate at the **very bottom** of the incorrect tile. Remove/suppress that duplicate ONLY.
+* Implementation guidance:
+
+  * Ensure the tile renders **exactly one** name element (e.g., `.namePlate` or `.playerName`) regardless of correctness.
+  * If a legacy/extra element is responsible for the bottom duplicate (e.g., `.namePlate` in a footer container), delete that extra render path for incorrect tiles.
+  * Optional DOM guard:
+
+    * Add a single source of truth for the name element; avoid separate conditional blocks that both render the name.
+  * Optional CSS safety net (while fixing render path):
+
+    ```css
+    .tile.incorrect .namePlate--duplicate,
+    .tile.incorrect .nameFooter,
+    .tile.incorrect .shadowBarBottom {
+      display: none !important;
+    }
+    ```
+  * Example structure for **incorrect** (normal name plate kept, no duplicate at bottom):
+
+    ```jsx
+    <div className={clsx("tile", result?.correct ? "filled" : "incorrect")}>
+      <div className="avatarWrap">{/* face canvas/img */}</div>
+      {/* normal, single name plate in its standard spot */}
+      <div className="namePlate">{playerName}</div>
+      {/* no duplicate footer name/shadow element */}
+    </div>
+    ```
+
+3. Suppress the generic “Unable to fetch answer details” error on normal incorrect guesses
+
+* Do NOT show that toast for a normal wrong guess.
+* Only toast on true network/exception failures:
+
+  ```ts
+  try {
+    const result = await submitGuess(payload);
+    // if result.correct === false, render incorrect state + modal (see #4) with NO toast
+  } catch (e) {
+    showToast("Something went wrong. Please try again.");
+  }
+  ```
+
+4. Player modal (incorrect): replace the Rarity section with “Why this was incorrect”
+
+* **Placement:** This explanation section must appear in the **same layout position where the Rarity section appears for correct answers**. For correct answers, keep the Rarity section unchanged.
+* Content:
+
+  ```tsx
+  type Eval = {
+    correct: boolean;
+    teamPass: boolean;
+    critPass: boolean;
+    teamLabel: string;  // e.g., "San Antonio Spurs"
+    critLabel: string;  // e.g., "First Round Pick" or "15+ RPG season"
+  };
+
+  function buildIncorrectMessage(pName: string, e: Eval) {
+    const ok = (b:boolean)=> b ? "✅" : "❌";
+    if (!e.teamPass && e.critPass) {
+      return `${pName} meets “${e.critLabel}” (${ok(true)}) but never played for the ${e.teamLabel} (${ok(false)}).`;
+    }
+    if (e.teamPass && !e.critPass) {
+      return `${pName} played for the ${e.teamLabel} (${ok(true)}) but does not meet “${e.critLabel}” (${ok(false)}).`;
+    }
+    return `${pName} never played for the ${e.teamLabel} (${ok(false)}) and does not meet “${e.critLabel}” (${ok(false)}).`;
+  }
+  ```
+* Modal layout (incorrect):
+
+  ```jsx
+  <Card title="Why this was incorrect">
+    <p className="explain">{message}</p>
+    <ul className="bullets">
+      <li>{e.teamPass ? "✅" : "❌"} Team: {e.teamLabel}</li>
+      <li>{e.critPass ? "✅" : "❌"} Criterion: {e.critLabel}</li>
+    </ul>
+  </Card>
+  ```
+* Styles (small):
+
+  ```css
+  .modal .explain { font-weight: 600; margin-bottom: 8px; }
+  .modal .bullets li { margin: 4px 0; }
+  ```
+* Rule clarity:
+
+  * Team–X cells: “played for team” = **≥1 game at any time** (regular season or playoffs).
+  * Stat/award criterion: career-wide; **not tied** to the listed team.
+
+5. Keep Teams section and “Other Top Answers” for incorrect guesses
+
+* Keep the Teams section unchanged.
+* **Show “Other Top Answers” (top 10)** on incorrect guesses exactly as on correct guesses.
+* Fix the current incorrect behavior showing “No criteria available.” Reuse the same data/selector used for correct answers.
+
+6. Evaluation helpers (reuse existing eligibility logic)
+
+```ts
+const teamPass = didPlayForTeam(player, teamId);      // ≥1 game; RS or playoffs; include partial seasons & mid-season trades
+const critPass = meetsCriterion(player, criterionId); // career-wide check
+const correct  = teamPass && critPass;
+return { correct, teamPass, critPass, teamLabel, critLabel };
+```
+
+Acceptance criteria (all must pass)
+
+* Scope is **incorrect-only**; correct-answer visuals/behavior unchanged.
+* Rarity chip never appears on incorrect tiles.
+* **Normal name plate remains**; **no duplicate** bottom name/shadow bar on incorrect tiles; exactly one name element.
+* No generic “Unable to fetch answer details” toast for normal wrong guesses (only real exceptions).
+* Modal for incorrect replaces Rarity with **Why this was incorrect**, includes concise sentence + ✅/❌ bullets.
+* “Other Top Answers” shows top 10 on incorrect guesses (no “No criteria available” when data exists).
+
+Test cases
+
+1. Incorrect: team ❌, criterion ✅ (e.g., LeBron | Spurs + “First Round Pick”): normal name plate, no duplicate; rarity hidden; modal explains; top-10 others shown.
+2. Incorrect: team ✅, criterion ❌ (e.g., Drummond | Cavs + “15+ RPG season”): same as above.
+3. Incorrect: both ❌: same as above.
+4. Correct guess regression: rarity chip present; Rarity section present; name plate unchanged; Other Top Answers unchanged.
+5. Network failure: toast shows only on thrown exception.
+
+— End brief —

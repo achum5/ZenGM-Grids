@@ -78,6 +78,27 @@
   background: var(--tile-win-bg, #22c55e); 
 }
 
+/* Hide rarity chip on incorrect tiles */
+.tile.incorrect .rarityChip { 
+  display: none !important; 
+}
+
+/* Prevent duplicate name plates on incorrect tiles */
+.tile.incorrect .namePlate--duplicate,
+.tile.incorrect .nameFooter,
+.tile.incorrect .shadowBarBottom {
+  display: none !important;
+}
+
+/* Modal styles for incorrect explanations */
+.modal .explain { 
+  font-weight: 600; 
+  margin-bottom: 8px; 
+}
+.modal .bullets li { 
+  margin: 4px 0; 
+}
+
 .avatarWrap { 
   position: absolute; 
   inset: 0; 
