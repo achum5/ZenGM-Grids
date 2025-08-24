@@ -5,6 +5,7 @@ import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { CorrectAnswersModal } from "./correct-answers-modal";
 import PlayerCellInfo from "./player-cell-info";
+import { NameBar } from "./name-bar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -269,67 +270,48 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     );
   };
 
+  // Helper to get rarity color
+  const getRarityColor = (rarity: number) => {
+    const hue = 120 * (rarity / 100); // 0 = red (0°), 100 = green (120°)
+    return `hsl(${hue} 85% 45%)`;
+  };
+
   return (
-    <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-4 sm:p-8 rounded-xl shadow-sm">
-      {/* Header with stats */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
-        <div className="text-gray-900 dark:text-white">
-          <h2 className="text-xl sm:text-2xl font-bold">Immaculate Grid</h2>
+    <div className="no-scroll-x" style={{ background: 'var(--panel)', padding: 'clamp(16px, 3vmin, 24px)' }}>
+      {/* Responsive Scoreboard */}
+      <div className="scoreboard">
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" style={{ color: 'hsl(120 85% 45%)' }} data-testid="text-correct-answers">{correctAnswers}</div>
+          <div className="scoreboard-label">Correct</div>
         </div>
-        
-        {/* Stats display */}
-        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-gray-900 dark:text-white">
-          <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-green-400" data-testid="text-correct-answers">
-              {correctAnswers}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">CORRECT</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
-              {incorrectAnswers}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">INCORRECT</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-remaining-cells">
-              {remainingCells}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">GUESSES LEFT</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg sm:text-xl font-bold text-blue-400" data-testid="text-total-rarity">
-              {totalRarity}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">TOTAL RARITY</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg sm:text-xl font-bold text-purple-400" data-testid="text-average-rarity">
-              {averageRarity}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">AVG RARITY</div>
-          </div>
-          {correctRarities.length > 0 && (
-            <>
-              <div className="text-center">
-                <div className="text-lg sm:text-xl font-bold text-green-300" data-testid="text-best-rarity">
-                  {bestRarity}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-300">BEST</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg sm:text-xl font-bold text-orange-400" data-testid="text-worst-rarity">
-                  {worstRarity}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-300">WORST</div>
-              </div>
-            </>
-          )}
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" style={{ color: 'hsl(0 85% 45%)' }} data-testid="text-incorrect-answers">{incorrectAnswers}</div>
+          <div className="scoreboard-label">Incorrect</div>
+        </div>
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" data-testid="text-remaining-cells">{remainingCells}</div>
+          <div className="scoreboard-label">Guesses Left</div>
+        </div>
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" data-testid="text-total-rarity">{totalRarity}</div>
+          <div className="scoreboard-label">Total Rarity</div>
+        </div>
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" data-testid="text-average-rarity">{averageRarity}</div>
+          <div className="scoreboard-label">Avg Rarity</div>
+        </div>
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" style={{ color: 'hsl(120 85% 45%)' }} data-testid="text-best-rarity">{bestRarity}</div>
+          <div className="scoreboard-label">Best</div>
+        </div>
+        <div className="scoreboard-card">
+          <div className="scoreboard-value" style={{ color: 'hsl(0 85% 45%)' }} data-testid="text-worst-rarity">{worstRarity}</div>
+          <div className="scoreboard-label">Worst</div>
         </div>
       </div>
 
       {/* Game Grid */}
-      <div className="grid grid-cols-4 gap-1 sm:gap-2 max-w-sm sm:max-w-2xl mx-auto">
+      <div className="game-grid" style={{ gridTemplateColumns: 'auto repeat(3, 1fr)' }}>
         {/* Top-left empty cell */}
         <div className="aspect-square"></div>
         
@@ -363,53 +345,59 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
               const isCorrect = answer?.correct;
               
               return (
-                <div key={cellKey} className="relative aspect-square">
-                  <Button
-                    variant="ghost"
-                    className={`w-full h-full border-0 transition-all duration-200 relative overflow-hidden group rounded-sm ${
-                      isAnswered
-                        ? isCorrect
-                          ? "bg-green-500 hover:bg-green-600"
-                          : "bg-red-500 hover:bg-red-600"
-                        : "bg-gray-300 dark:bg-slate-600 hover:bg-gray-400 dark:hover:bg-slate-500 border border-gray-400 dark:border-slate-500"
-                    }`}
-                    onClick={(e) => {
-                      // Don't handle click if cell is answered (let PlayerCellInfo handle it)
-                      if (isAnswered) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return;
-                      }
-                      handleCellClick(rowIndex, colIndex);
-                    }}
-                    disabled={submitAnswerMutation.isPending}
-                    data-testid={`cell-${rowIndex}-${colIndex}`}
-                  >
-                    {isAnswered && (
-                      <PlayerCellInfo 
-                        playerName={answer.player}
-                        isCorrect={!!isCorrect}
-                        rarity={answer.rarity || 0}
-                        rank={answer.rank || 0}
-                        eligibleCount={answer.eligibleCount || 0}
-                        cellCriteria={game ? {
-                          row: game.rowCriteria[rowIndex].label,
-                          column: game.columnCriteria[colIndex].label
-                        } : undefined}
-                        candidateCount={game?.correctAnswers[cellKey]?.length || 0}
-                        teamData={teamData}
-                        columnCriteria={game?.columnCriteria[colIndex]}
-                        rowCriteria={game?.rowCriteria[rowIndex]}
-                      />
-                    )}
-                    {!isAnswered && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="text-xs font-medium text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                          Select Player
-                        </div>
-                      </div>
-                    )}
-                  </Button>
+                <div 
+                  key={cellKey} 
+                  className={`game-tile ${isAnswered ? 'filled' : ''}`}
+                  onClick={(e) => {
+                    if (isAnswered) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    handleCellClick(rowIndex, colIndex);
+                  }}
+                  data-testid={`cell-${rowIndex}-${colIndex}`}
+                >
+                  {/* Rarity chip */}
+                  {isAnswered && isCorrect && (
+                    <div 
+                      className="rarity-chip-tile rarity-chip"
+                      style={{ '--rarity': answer.rarity || 0 } as React.CSSProperties}
+                    >
+                      {answer.rarity || 0}
+                    </div>
+                  )}
+                  
+                  {/* Player content */}
+                  {isAnswered && (
+                    <PlayerCellInfo 
+                      playerName={answer.player}
+                      isCorrect={!!isCorrect}
+                      rarity={answer.rarity || 0}
+                      rank={answer.rank || 0}
+                      eligibleCount={answer.eligibleCount || 0}
+                      cellCriteria={game ? {
+                        row: game.rowCriteria[rowIndex].label,
+                        column: game.columnCriteria[colIndex].label
+                      } : undefined}
+                      candidateCount={game?.correctAnswers[cellKey]?.length || 0}
+                      teamData={teamData}
+                      columnCriteria={game?.columnCriteria[colIndex]}
+                      rowCriteria={game?.rowCriteria[rowIndex]}
+                    />
+                  )}
+                  
+                  {/* NameBar for answered cells */}
+                  {isAnswered && (
+                    <NameBar name={answer.player} />
+                  )}
+                  
+                  {/* Empty cell hover text */}
+                  {!isAnswered && (
+                    <div className="fluid-text-sm" style={{ color: 'var(--muted-foreground)', opacity: 0.6 }}>
+                      Select Player
+                    </div>
+                  )}
                 </div>
               );
             })}
