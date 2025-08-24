@@ -41,7 +41,9 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         return {
           players: players,
           teams: json.teams || [],
-          achievements: []
+          achievements: [],
+          meta, // Include meta for immediate use
+          json  // Include json for immediate use
         };
       } else {
         // File upload - use local storage system  
@@ -54,7 +56,9 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         return {
           players: players,
           teams: json.teams || [],
-          achievements: []
+          achievements: [],
+          meta, // Include meta for immediate use
+          json  // Include json for immediate use
         };
       }
     },
@@ -65,8 +69,8 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
-      // Automatically generate a new grid after successful upload
-      generateGameMutation.mutate();
+      // Automatically generate a new grid after successful upload using the data directly
+      generateGameMutation.mutate(data);
     },
     onError: (error) => {
       toast({
@@ -79,23 +83,29 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
   });
 
   const generateGameMutation = useMutation({
-    mutationFn: async () => {
-      if (!leagueMeta) {
+    mutationFn: async (uploadData?: any) => {
+      let meta, json;
+      
+      if (uploadData && uploadData.meta && uploadData.json) {
+        // Use data directly from upload (immediate generation)
+        meta = uploadData.meta;
+        json = uploadData.json;
+      } else if (leagueMeta) {
+        // Use stored data (manual generation)
+        const { loadLeagueBlob, parseLeagueBlobToJson } = await import("@/storage/localStore");
+        const loaded = await loadLeagueBlob(leagueMeta.id);
+        if (!loaded) {
+          throw new Error("League data not found in local storage");
+        }
+        const { blob, meta: storedMeta } = loaded;
+        meta = storedMeta;
+        json = await parseLeagueBlobToJson(blob, meta.type);
+      } else {
         throw new Error("No league loaded. Please upload a league file first.");
       }
       
-      // Generate game locally instead of calling server
+      // Generate game locally
       const { generateLocalGame } = await import("@/storage/gameGenerator");
-      const { loadLeagueBlob, parseLeagueBlobToJson } = await import("@/storage/localStore");
-      
-      // Get league data from local storage
-      const loaded = await loadLeagueBlob(leagueMeta.id);
-      if (!loaded) {
-        throw new Error("League data not found in local storage");
-      }
-      
-      const { blob, meta } = loaded;
-      const json = await parseLeagueBlobToJson(blob, meta.type);
       const localGame = generateLocalGame(json);
       
       return {
