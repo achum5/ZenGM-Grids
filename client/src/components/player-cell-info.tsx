@@ -312,16 +312,27 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
 
       </div>
       
-      <PlayerProfileModal 
-        player={player}
-        open={showProfileModal}
-        onOpenChange={setShowProfileModal}
-        columnCriteria={columnCriteria}
-        rowCriteria={rowCriteria}
-        rarity={rarity}
-        rank={rank}
-        eligibleCount={eligibleCount}
-      />
+      {isCorrect ? (
+        <PlayerProfileModal 
+          player={player}
+          open={showProfileModal}
+          onOpenChange={setShowProfileModal}
+          columnCriteria={columnCriteria}
+          rowCriteria={rowCriteria}
+          rarity={rarity}
+          rank={rank}
+          eligibleCount={eligibleCount}
+        />
+      ) : (
+        <PlayerProfileModal 
+          player={player}
+          open={showProfileModal}
+          onOpenChange={setShowProfileModal}
+          columnCriteria={undefined}
+          rowCriteria={undefined}
+          // No rarity data for incorrect answers
+        />
+      )}
       </>
     );
   }

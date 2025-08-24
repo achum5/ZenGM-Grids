@@ -8,11 +8,13 @@ import { gunzip } from "zlib";
 import { promisify } from "util";
 import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria } from "@shared/schema";
 import { EligibilityChecker } from "./eligibility";
+import { sampleUniform } from "@shared/utils/rng";
 
 const gunzipAsync = promisify(gunzip);
 
+// Use uniform sampling for fairness
 function sample<T>(arr: T[], n: number): T[] {
-  return [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+  return sampleUniform(arr, n);
 }
 
 function buildCorrectAnswers(
@@ -1056,7 +1058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get top players for a cell (for "Other Top Answers" section)
   app.get("/api/players/top-for-cell", async (req, res) => {
     try {
-      const { columnCriteria, rowCriteria, excludePlayer } = req.query;
+      const { columnCriteria, rowCriteria, excludePlayer, includeGuessed } = req.query;
       const players = await storage.getPlayers();
       
       if (!columnCriteria || !rowCriteria) {
@@ -1071,12 +1073,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const eligibilityChecker = new EligibilityChecker(players);
       const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
       
-      // Sort by Win Shares and exclude the current player
+      // Sort by Win Shares 
       const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
-      const topPlayers = sortedPlayers
-        .filter(p => p.name !== excludePlayer)
-        .slice(0, 10) // Display only top 10, but keep full list for rarity
-        .map(p => ({ name: p.name, teams: p.teams }));
+      
+      let topPlayers;
+      if (includeGuessed === 'true') {
+        // Include guessed player if they're in top 10
+        topPlayers = sortedPlayers
+          .slice(0, 10)
+          .map(p => ({ name: p.name, teams: p.teams }));
+      } else {
+        // Exclude the current player (legacy behavior)
+        topPlayers = sortedPlayers
+          .filter(p => p.name !== excludePlayer)
+          .slice(0, 10)
+          .map(p => ({ name: p.name, teams: p.teams }));
+      }
       
       res.json(topPlayers);
     } catch (error) {

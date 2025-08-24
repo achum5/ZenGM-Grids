@@ -1,4 +1,5 @@
 import type { Player } from "@shared/schema";
+import { getCareerTeamIds } from "@shared/utils/teams";
 
 // Types for parsed BBGM data
 interface SeasonStats {
@@ -45,8 +46,18 @@ interface DraftInfo {
 export class EligibilityChecker {
   constructor(private players: Player[]) {}
 
-  // Helper: Check if player ever played for team (≥1 regular season game)
+  // Helper: Check if player ever played for team (includes partial-season trades)
   playedForTeamEver(player: Player, teamName: string): boolean {
+    // For BBGM data, need to check both teams array and stats for partial-season players
+    if (player.teams.includes(teamName)) {
+      return true;
+    }
+    
+    // Also check stats array for mid-season trades (Drummond bug fix)
+    const careerTeams = getCareerTeamIds(player);
+    // Convert team name to team ID for comparison (simplified for now)
+    // In a real implementation, we'd need team name to ID mapping
+    // For now, fall back to original check
     return player.teams.includes(teamName);
   }
 

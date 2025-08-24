@@ -39,19 +39,25 @@ function getRarityColor(rarity: number): string {
 export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount }: PlayerProfileModalProps) {
   if (!player) return null;
 
-  // Fetch top players for this cell
-  const { data: topPlayers } = useQuery<Array<{name: string, teams: string[]}>>({
+  // Fetch top players for this cell - include guessed player if in top 10
+  const { data: topPlayers } = useQuery<Array<{name: string, teams: string[], __isGuessed?: boolean}>>({
     queryKey: [`/api/players/top-for-cell`, columnCriteria, rowCriteria, player?.name],
     enabled: open && !!columnCriteria && !!rowCriteria && !!player,
     queryFn: async () => {
       const params = new URLSearchParams({
         columnCriteria: JSON.stringify(columnCriteria),
         rowCriteria: JSON.stringify(rowCriteria),
-        excludePlayer: player.name
+        includeGuessed: 'true' // Don't exclude the guessed player
       });
       const response = await fetch(`/api/players/top-for-cell?${params}`);
       if (!response.ok) throw new Error('Failed to fetch top players');
-      return response.json();
+      const result = await response.json();
+      
+      // Mark the guessed player if they're in the list
+      return result.map((p: any, idx: number) => ({
+        ...p,
+        __isGuessed: p.name === player.name
+      }));
     }
   });
 
@@ -87,10 +93,10 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
                   {getRarityText(rarity || 0)}
                 </div>
                 <div className="text-sm text-gray-300">
-                  Ranked {rank} out of {eligibleCount} eligible players for this cell
+                  Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
                 </div>
                 <div className="text-xs text-gray-400">
-                  Lower Win Shares = rarer pick
+                  1 = rarest · {eligibleCount} = most common
                 </div>
               </div>
             </div>
@@ -123,7 +129,10 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {topPlayers && topPlayers.length > 0 ? (
                 topPlayers.map((topPlayer, idx) => (
-                  <div key={topPlayer.name} className="text-sm truncate">
+                  <div 
+                    key={topPlayer.name} 
+                    className={`text-sm truncate ${topPlayer.__isGuessed ? 'font-bold text-yellow-300' : ''}`}
+                  >
                     {idx + 1}. {topPlayer.name}
                   </div>
                 ))

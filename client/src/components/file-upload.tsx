@@ -195,7 +195,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <div className="flex gap-2">
                 <Input
                   type="url"
-                  placeholder=""
+                  placeholder="Paste league file URL"
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -203,7 +203,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                       handleUrlUpload();
                     }
                   }}
-                  className="flex-1"
+                  className="flex-1 url-upload-input"
                   disabled={uploadMutation.isPending}
                 />
                 <Button

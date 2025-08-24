@@ -55,6 +55,81 @@
   --basketball: hsl(20 95% 54%);
 }
 
+/* Light theme URL input visibility fix */
+[data-theme="light"] .url-upload-input,
+[data-theme="light"] input[type="url"].url-upload-input{
+  background:#fff;
+  border:1px solid #cbd5e1; /* slate-300 */
+  border-radius:10px;
+  color:#0f172a;            /* slate-900 */
+}
+[data-theme="light"] .url-upload-input:focus{
+  outline:3px solid #93c5fd55;
+  border-color:#60a5fa;
+}
+
+/* Tile UI responsive fit */
+.tile { 
+  position: relative; 
+  border-radius: 14px; 
+  overflow: hidden; 
+}
+.tile.filled { 
+  background: var(--tile-win-bg, #22c55e); 
+}
+
+.avatarWrap { 
+  position: absolute; 
+  inset: 0; 
+  display: grid; 
+  place-items: center; 
+  padding: 10%; 
+}
+.avatarWrap canvas, 
+.avatarWrap img { 
+  width: 70%; 
+  height: auto; 
+}
+
+.rarityChip {
+  position: absolute; 
+  top: clamp(6px, 1.2vmin, 10px); 
+  right: clamp(6px, 1.2vmin, 10px);
+  z-index: 3; 
+  min-width: 26px; 
+  height: 26px; 
+  padding: 0 8px;
+  display: grid; 
+  place-items: center; 
+  border-radius: 999px;
+  background: #000; 
+  color: #fff; 
+  font-weight: 800; 
+  line-height: 1;
+  font-size: clamp(12px, 2.4vmin, 14px);
+}
+
+.playerName {
+  position: absolute; 
+  left: clamp(8px, 2vmin, 12px); 
+  right: clamp(8px, 2vmin, 12px);
+  bottom: clamp(8px, 1.6vmin, 12px); 
+  z-index: 2;
+  color: #fff; 
+  font-weight: 800; 
+  text-shadow: 0 1px 1px rgba(0,0,0,.45),
+    0 -1px 1px rgba(0,0,0,.45), 1px 0 1px rgba(0,0,0,.45), -1px 0 1px rgba(0,0,0,.45);
+  display: -webkit-box; 
+  -webkit-box-orient: vertical; 
+  -webkit-line-clamp: 2;
+  overflow: hidden; 
+  white-space: normal; 
+  word-break: break-word; 
+  hyphens: auto;
+  font-size: var(--name-font, 16px);
+  padding-right: 40px; /* clear space for chip */
+}
+
 .dark {
   --background: hsl(222.2 84% 4.9%);
   --foreground: hsl(210 40% 98%);

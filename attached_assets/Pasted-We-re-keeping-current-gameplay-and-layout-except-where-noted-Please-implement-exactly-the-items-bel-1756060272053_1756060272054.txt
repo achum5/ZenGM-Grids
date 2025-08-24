@@ -1,0 +1,239 @@
+We’re keeping current gameplay and layout except where noted. Please implement exactly the items below.
+
+A) LOGIC FIX — Count partial-season teams (Drummond bug)
+
+Problem: Players traded mid-season are not counted as having played for the team (e.g., Andre Drummond must count for Cavaliers + 15+ RPG).
+
+Rule (our game): For a team + stat/award cell, the player only needs to have ever played for the team (any game, regular season or playoffs) and ever achieved the stat/award; they do not need to coincide.
+
+Fix: Build the “career teams” set from both player.teams history and every player.stats row (all seasons, regular and playoffs).
+
+// utils/teams.ts
+export function getCareerTeamIds(p: any): Set<number> {
+  const s = new Set<number>();
+
+  if (Array.isArray(p.teams)) {
+    for (const t of p.teams) if (typeof t?.tid === "number") s.add(t.tid);
+  }
+  if (Array.isArray(p.stats)) {
+    for (const r of p.stats) if (r && typeof r.tid === "number" && r.tid >= 0) s.add(r.tid);
+  }
+  return s;
+}
+
+
+Use this everywhere we evaluate “played for team”:
+
+const careerTeams = getCareerTeamIds(player);
+const playedForTeam = careerTeams.has(targetTid);
+
+
+Acceptance:
+
+Cavaliers + 15+ RPG → Andre Drummond = correct.
+
+Any traded mid-season player now counts for every team they had appearances with.
+
+B) UI (Light Mode) — Make URL upload input visible
+
+Light theme only; dark stays as-is.
+
+/* Light theme only */
+[data-theme="light"] .url-upload-input,
+[data-theme="light"] input[type="url"].url-upload-input{
+  background:#fff;
+  border:1px solid #cbd5e1; /* slate-300 */
+  border-radius:10px;
+  color:#0f172a;            /* slate-900 */
+}
+[data-theme="light"] .url-upload-input:focus{
+  outline:3px solid #93c5fd55;
+  border-color:#60a5fa;
+}
+
+
+Ensure the input has the class:
+
+<input type="url" className="url-upload-input" placeholder="Paste league file URL" />
+
+C) Grid generation fairness — Uniform sampling
+
+Ensure teams and achievements are chosen uniformly (no hidden weights). If we re-roll for solvability, re-sample uniformly again.
+
+import { shuffle } from "./rng";
+
+function sampleUniform<T>(arr: T[], n: number): T[] {
+  return shuffle([...arr]).slice(0, n); // Fisher–Yates
+}
+
+export function generateGrid() {
+  const TEAM_POOL = getAllTeamsUniform();
+  const ACH_POOL  = getAllAchievementsUniform();
+
+  const rows = sampleUniform(TEAM_POOL, 3);
+  const cols = sampleUniform(ACH_POOL, 3);
+
+  // If we enforce solvability, re-sample uniformly until solvable (no weighting).
+  return { rows, cols };
+}
+
+D) Incorrect answers — No “Ultra common 0/0”
+
+If the guess is incorrect (or eligible list fails), do not render a rarity card. Show a simple incorrect state.
+
+if (!guess?.isCorrect) {
+  return (
+    <Modal title="Incorrect">
+      <div className="card error">
+        <p>That player doesn’t match this cell.</p>
+      </div>
+    </Modal>
+  );
+}
+
+
+Guard rarity rendering on eligibleList?.length > 0.
+
+E) In-tile name, rarity chip, and responsive fit
+
+Goals
+
+Player name readable at default mobile zoom (like our “good 50%” look) without a bulky name plate.
+
+Face art a bit larger (since plate is gone).
+
+Name never collides with the top-right rarity chip.
+
+Works on all window sizes.
+
+Markup (tile internals)
+
+<div className="tile filled" ref={tileRef}>
+  <div className="avatarWrap">{/* faces.js canvas / <img> */}</div>
+  <div className="rarityChip">{rarityScore}</div>
+  <div className="playerName" ref={nameRef} title={fullName} aria-label={fullName}>
+    {fullName}
+  </div>
+</div>
+
+
+CSS
+
+.tile { position: relative; border-radius: 14px; overflow: hidden; }
+.tile.filled { background: var(--tile-win-bg, #22c55e); }
+
+.avatarWrap { position:absolute; inset:0; display:grid; place-items:center; padding:10%; }
+.avatarWrap canvas, .avatarWrap img { width:70%; height:auto; } /* bigger face */
+
+.rarityChip{
+  position:absolute; top:clamp(6px,1.2vmin,10px); right:clamp(6px,1.2vmin,10px);
+  z-index:3; min-width:26px; height:26px; padding:0 8px;
+  display:grid; place-items:center; border-radius:999px;
+  background:#000; color:#fff; font-weight:800; line-height:1;
+  font-size:clamp(12px,2.4vmin,14px);
+}
+
+.playerName{
+  position:absolute; left:clamp(8px,2vmin,12px); right:clamp(8px,2vmin,12px);
+  bottom:clamp(8px,1.6vmin,12px); z-index:2;
+  color:#fff; font-weight:800; text-shadow:0 1px 1px rgba(0,0,0,.45),
+    0 -1px 1px rgba(0,0,0,.45), 1px 0 1px rgba(0,0,0,.45), -1px 0 1px rgba(0,0,0,.45);
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+  overflow:hidden; white-space:normal; word-break:break-word; hyphens:auto;
+  font-size:var(--name-font,16px);
+  padding-right:40px; /* clear space for chip */
+}
+
+
+Auto-fit name (2 lines → fallback to F. Last…)
+
+function fitPlayerName(el: HTMLElement, fullName: string){
+  if (!el) return;
+  el.style.setProperty("-webkit-line-clamp","2");
+  el.textContent = fullName;
+
+  const overflows = () => el.scrollHeight > el.clientHeight + 1;
+
+  if (overflows()){
+    const parts = fullName.trim().split(/\s+/);
+    const suffixes = new Set(["Jr.","Sr.","II","III","IV","V"]);
+    const first = parts.shift() ?? "";
+    let last = parts.join(" ");
+    let suf = "";
+
+    const tokens = last.split(" ");
+    if (tokens.length && suffixes.has(tokens[tokens.length-1])){
+      suf = " " + tokens.pop();
+      last = tokens.join(" ");
+    }
+    el.style.setProperty("-webkit-line-clamp","1");
+    el.textContent = `${first[0] || ""}. ${last}${suf}`;
+  }
+
+  el.setAttribute("title", fullName);
+  el.setAttribute("aria-label", fullName);
+}
+
+
+ResizeObserver to scale with tile
+
+useLayoutEffect(() => {
+  if (!tileRef.current || !nameRef.current) return;
+  const tile = tileRef.current, nameEl = nameRef.current;
+
+  const ro = new ResizeObserver(([entry]) => {
+    const w = entry.contentRect.width;
+    const size = Math.max(12, Math.min(18, Math.round(w * 0.08)));
+    tile.style.setProperty('--name-font', `${size}px`);
+    fitPlayerName(nameEl, fullName);
+  });
+  ro.observe(tile);
+  return () => ro.disconnect();
+}, [fullName]);
+
+
+Result: Name is always clean and readable at normal mobile zoom, face is larger, chip stays perfectly tucked in the top-right.
+
+F) Rank sentence (modal) — flip for display only
+
+Display rule: 1 / N = rarest, N / N = most common. Only flip the text, not the stored percentile/score.
+
+// rank: 1 = most common, N = rarest (internal)
+const displayRank = eligibleCount - rank + 1; // flip for UI only
+const rankText  = `Ranked ${displayRank} out of ${eligibleCount} eligible players`;
+const rankHint  = `1 = rarest · ${eligibleCount} = most common`;
+
+
+(In your Zion example that currently shows “3 of 11”, after flipping it should show 9 of 11 if his internal rank is 3rd most common.)
+
+G) “Other Answers” should include the guessed player if they’re in the top 10
+
+Sort eligible by Win Shares (desc) to build the list; if the guessed player’s index < 10, include and highlight them.
+
+const list = allEligibleSortedByWS.slice(0, 10);
+const ix = allEligibleSortedByWS.findIndex(p => p.pid === guessedPid);
+if (ix > -1 && ix < 10) list[ix].__isGuessed = true;
+
+<li className={p.__isGuessed ? "isGuessed" : ""}>
+  {i+1}. {p.name}
+</li>
+
+.isGuessed{ font-weight:800; color:var(--brand, #ffd54a); }
+
+Acceptance Checklist
+
+Partial-season team fix: Drummond counts for Cavaliers + 15+ RPG. Any traded mid-season player now counts for teams they appeared with (regular season or playoffs).
+
+Light mode URL input: Visible border and focus ring; dark mode unchanged.
+
+Uniform grid generation: Teams and achievements sampled uniformly; solvability re-rolls remain uniform.
+
+Incorrect guesses: Modal shows “Incorrect”; no “Ultra common 0/0”.
+
+Tile UI: No name plate; larger face; name auto-fits (2 lines → F. Last…), never overlaps chip; chip locked top-right.
+
+Rank sentence: Displays flipped rank, “1 = rarest · N = most common.”
+
+Other Answers: Includes the guessed player if they’re in the top 10 and highlights them.
+
+Please implement exactly these changes and leave all other behavior as-is.
