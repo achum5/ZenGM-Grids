@@ -80,8 +80,31 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
 
   const generateGameMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
+      if (!leagueMeta) {
+        throw new Error("No league loaded. Please upload a league file first.");
+      }
+      
+      // Generate game locally instead of calling server
+      const { generateLocalGame } = await import("@/storage/gameGenerator");
+      const { loadLeagueBlob, parseLeagueBlobToJson } = await import("@/storage/localStore");
+      
+      // Get league data from local storage
+      const loaded = await loadLeagueBlob(leagueMeta.id);
+      if (!loaded) {
+        throw new Error("League data not found in local storage");
+      }
+      
+      const { blob, meta } = loaded;
+      const json = await parseLeagueBlobToJson(blob, meta.type);
+      const localGame = generateLocalGame(json);
+      
+      return {
+        id: localGame.id,
+        columnCriteria: localGame.columnCriteria,
+        rowCriteria: localGame.rowCriteria,
+        correctAnswers: localGame.correctAnswers,
+        createdAt: new Date().toISOString()
+      } as Game;
     },
     onSuccess: (game) => {
       onGameGenerated(game);
