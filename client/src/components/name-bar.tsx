@@ -45,21 +45,19 @@ export function NameBar({ name, className = "" }: NameBarProps) {
   };
 
   return (
-    <div className={`name-bar ${className}`} title={name} aria-label={name}>
+    <div 
+      className={`nameBar ${displayMode === "abbreviated" ? "one-line" : ""} ${className}`} 
+      title={name} 
+      aria-label={name}
+    >
       {displayMode === "full" ? (
-        <div 
-          ref={fullNameRef}
-          className="name-bar two-line"
-        >
+        <span ref={fullNameRef}>
           {name}
-        </div>
+        </span>
       ) : (
-        <div 
-          ref={abbreviatedRef}
-          className="name-bar one-line"
-        >
+        <span ref={abbreviatedRef}>
           {getAbbreviatedName(name)}
-        </div>
+        </span>
       )}
     </div>
   );

@@ -278,42 +278,43 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
 
   return (
     <div className="no-scroll-x" style={{ background: 'var(--panel)', padding: 'clamp(16px, 3vmin, 24px)' }}>
-      {/* Responsive Scoreboard */}
-      <div className="scoreboard">
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" style={{ color: 'hsl(120 85% 45%)' }} data-testid="text-correct-answers">{correctAnswers}</div>
-          <div className="scoreboard-label">Correct</div>
+      {/* Compact Stats Strip */}
+      <div className="statsStrip" role="region" aria-label="Session stats">
+        <div className="stat">
+          <span className="val" style={{ color: 'hsl(120 85% 45%)' }} data-testid="text-correct-answers">{correctAnswers}</span>
+          <span className="lbl">Correct</span>
         </div>
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" style={{ color: 'hsl(0 85% 45%)' }} data-testid="text-incorrect-answers">{incorrectAnswers}</div>
-          <div className="scoreboard-label">Incorrect</div>
+        <div className="stat">
+          <span className="val" style={{ color: 'hsl(0 85% 45%)' }} data-testid="text-incorrect-answers">{incorrectAnswers}</span>
+          <span className="lbl">Incorrect</span>
         </div>
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" data-testid="text-remaining-cells">{remainingCells}</div>
-          <div className="scoreboard-label">Guesses Left</div>
+        <div className="stat">
+          <span className="val" data-testid="text-remaining-cells">{remainingCells}</span>
+          <span className="lbl">Guesses Left</span>
         </div>
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" data-testid="text-total-rarity">{totalRarity}</div>
-          <div className="scoreboard-label">Total Rarity</div>
+        <div className="stat">
+          <span className="val" data-testid="text-total-rarity">{totalRarity}</span>
+          <span className="lbl">Total Rarity</span>
         </div>
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" data-testid="text-average-rarity">{averageRarity}</div>
-          <div className="scoreboard-label">Avg Rarity</div>
+        <div className="stat">
+          <span className="val" data-testid="text-average-rarity">{averageRarity}</span>
+          <span className="lbl">Avg Rarity</span>
         </div>
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" style={{ color: 'hsl(120 85% 45%)' }} data-testid="text-best-rarity">{bestRarity}</div>
-          <div className="scoreboard-label">Best</div>
+        <div className="stat">
+          <span className="val" style={{ color: 'hsl(120 85% 45%)' }} data-testid="text-best-rarity">{bestRarity}</span>
+          <span className="lbl">Best</span>
         </div>
-        <div className="scoreboard-card">
-          <div className="scoreboard-value" style={{ color: 'hsl(0 85% 45%)' }} data-testid="text-worst-rarity">{worstRarity}</div>
-          <div className="scoreboard-label">Worst</div>
+        <div className="stat">
+          <span className="val" style={{ color: 'hsl(0 85% 45%)' }} data-testid="text-worst-rarity">{worstRarity}</span>
+          <span className="lbl">Worst</span>
         </div>
       </div>
 
       {/* Game Grid */}
-      <div className="game-grid" style={{ gridTemplateColumns: 'auto repeat(3, 1fr)' }}>
-        {/* Top-left empty cell */}
-        <div className="aspect-square"></div>
+      <div className="gridWrap">
+        <div className="grid" style={{ gridTemplateColumns: 'auto repeat(3, 1fr)' }}>
+          {/* Top-left empty cell */}
+          <div className="aspect-square"></div>
         
         {/* Column headers */}
         {game.columnCriteria.map((criteria, index) => (
@@ -361,7 +362,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                   {/* Rarity chip */}
                   {isAnswered && isCorrect && (
                     <div 
-                      className="rarity-chip-tile rarity-chip"
+                      className="rarityChip rarity-chip"
                       style={{ '--rarity': answer.rarity || 0 } as React.CSSProperties}
                     >
                       {answer.rarity || 0}
@@ -403,6 +404,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
             })}
           </div>
         ))}
+        </div>
       </div>
 
       <PlayerSearchModal
