@@ -8,22 +8,18 @@ import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { loadLeagueFromFile, loadLeagueFromUrl } from "@/storage/leagueLoader";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
-import type { LeagueMeta } from "@/storage/localStore";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
-  onLeagueLoaded?: (leagueId: string, meta: LeagueMeta, json: any) => void;
 }
 
-export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }: FileUploadProps) {
+export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [urlInput, setUrlInput] = useState('');
-  const [leagueMeta, setLeagueMeta] = useState<LeagueMeta | null>(null);
   const { toast } = useToast();
 
 
@@ -31,53 +27,30 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
       if (typeof fileOrUrl === 'string') {
-        // URL upload - use local storage system
-        const { meta, json } = await loadLeagueFromUrl(fileOrUrl);
-        setLeagueMeta(meta);
-        onLeagueLoaded?.(meta.id, meta, json);
-        
-        // Convert to expected format for existing code
-        const players = json.players || json;
-        
-        // Extract achievements from player data
-        const achievements = new Set<string>();
-        players.forEach((player: any) => {
-          if (player.achievements && Array.isArray(player.achievements)) {
-            player.achievements.forEach((achievement: string) => achievements.add(achievement));
-          }
+        // URL upload
+        const response = await fetch("/api/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: fileOrUrl }),
         });
-        
-        return {
-          players: players,
-          teams: json.teams || [],
-          achievements: Array.from(achievements),
-          meta, // Include meta for immediate use
-          json  // Include json for immediate use
-        };
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "URL upload failed");
+        }
+        return response.json() as Promise<FileUploadData>;
       } else {
-        // File upload - use local storage system  
-        const { meta, json } = await loadLeagueFromFile(fileOrUrl);
-        setLeagueMeta(meta);
-        onLeagueLoaded?.(meta.id, meta, json);
-        
-        // Convert to expected format for existing code
-        const players = json.players || json;
-        
-        // Extract achievements from player data
-        const achievements = new Set<string>();
-        players.forEach((player: any) => {
-          if (player.achievements && Array.isArray(player.achievements)) {
-            player.achievements.forEach((achievement: string) => achievements.add(achievement));
-          }
+        // File upload
+        const formData = new FormData();
+        formData.append("file", fileOrUrl);
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
         });
-        
-        return {
-          players: players,
-          teams: json.teams || [],
-          achievements: Array.from(achievements),
-          meta, // Include meta for immediate use
-          json  // Include json for immediate use
-        };
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Upload failed");
+        }
+        return response.json() as Promise<FileUploadData>;
       }
     },
     onSuccess: (data) => {
@@ -87,8 +60,8 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
         title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
-      // Automatically generate a new grid after successful upload using the data directly
-      setTimeout(() => generateGameMutation.mutate(data), 100);
+      // Automatically generate a new grid after successful upload
+      generateGameMutation.mutate();
     },
     onError: (error) => {
       toast({
@@ -101,38 +74,9 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
   });
 
   const generateGameMutation = useMutation({
-    mutationFn: async (uploadData?: any) => {
-      let meta, json;
-      
-      if (uploadData && uploadData.meta && uploadData.json) {
-        // Use data directly from upload (immediate generation)
-        meta = uploadData.meta;
-        json = uploadData.json;
-      } else if (leagueMeta) {
-        // Use stored data (manual generation)
-        const { loadLeagueBlob, parseLeagueBlobToJson } = await import("@/storage/localStore");
-        const loaded = await loadLeagueBlob(leagueMeta.id);
-        if (!loaded) {
-          throw new Error("League data not found in local storage");
-        }
-        const { blob, meta: storedMeta } = loaded;
-        meta = storedMeta;
-        json = await parseLeagueBlobToJson(blob, meta.type);
-      } else {
-        throw new Error("No league loaded. Please upload a league file first.");
-      }
-      
-      // Generate game locally
-      const { generateLocalGame } = await import("@/storage/gameGenerator");
-      const localGame = generateLocalGame(json);
-      
-      return {
-        id: localGame.id,
-        columnCriteria: localGame.columnCriteria,
-        rowCriteria: localGame.rowCriteria,
-        correctAnswers: localGame.correctAnswers,
-        createdAt: new Date().toISOString()
-      } as Game;
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/games/generate");
+      return response.json() as Promise<Game>;
     },
     onSuccess: (game) => {
       onGameGenerated(game);
@@ -188,7 +132,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onLeagueLoaded }
   };
 
   const generateGrid = () => {
-    generateGameMutation.mutate(undefined);
+    generateGameMutation.mutate();
   };
 
   return (

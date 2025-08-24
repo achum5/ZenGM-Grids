@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Clock, RotateCcw, Play } from "lucide-react";
 import React from "react";
@@ -8,9 +8,7 @@ import PlayerCellInfo from "./player-cell-info";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { saveGridState, debounce } from "@/storage/localStore";
 import type { Game, GameSession, GridCell, Player, TeamInfo } from "@shared/schema";
-import type { GridState } from "@/storage/localStore";
 
 interface GameGridProps {
   gameId: string | null;
@@ -18,11 +16,9 @@ interface GameGridProps {
   onSessionCreated: (sessionId: string) => void;
   onScoreUpdate: (score: number) => void;
   teamData?: TeamInfo[];
-  gridState?: GridState | null;
-  onGridStateUpdate?: (gridState: GridState) => void;
 }
 
-export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, teamData, gridState, onGridStateUpdate }: GameGridProps) {
+export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, teamData }: GameGridProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [showPlayerModal, setShowPlayerModal] = useState(false);
   const [showCorrectAnswersModal, setShowCorrectAnswersModal] = useState(false);
@@ -33,58 +29,13 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
   } | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(300); // 5 minutes
   const [gameStarted, setGameStarted] = useState(false);
-  const [localGridState, setLocalGridState] = useState<GridState | null>(gridState || null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  // Create debounced save function that persists across renders
-  const debouncedSaveRef = useRef<((state: GridState) => void) & { flush?: () => void }>();
-  
-  useEffect(() => {
-    if (!debouncedSaveRef.current && localGridState) {
-      debouncedSaveRef.current = debounce(async (state: GridState) => {
-        await saveGridState(state);
-        onGridStateUpdate?.(state);
-      }, 300);
-      
-      // Save on visibility change and beforeunload
-      const handleVisibilityChange = () => {
-        if (document.visibilityState !== "visible" && debouncedSaveRef.current) {
-          debouncedSaveRef.current.flush?.();
-        }
-      };
-      
-      const handleBeforeUnload = () => {
-        if (debouncedSaveRef.current) {
-          debouncedSaveRef.current.flush?.();
-        }
-      };
-      
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-      window.addEventListener("beforeunload", handleBeforeUnload);
-      
-      return () => {
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-        window.removeEventListener("beforeunload", handleBeforeUnload);
-        debouncedSaveRef.current?.flush?.();
-      };
-    }
-  }, [localGridState, onGridStateUpdate]);
-  
-  // Sync external gridState updates
-  useEffect(() => {
-    if (gridState) {
-      setLocalGridState(gridState);
-    }
-  }, [gridState]);
 
-  const { data: serverGame } = useQuery<Game>({
+  const { data: game } = useQuery<Game>({
     queryKey: ["/api/games", gameId],
-    enabled: !!gameId && !localGridState?.game, // Only fetch if we don't have local game data
+    enabled: !!gameId,
   });
-  
-  // Use local game data if available, otherwise use server data
-  const game = localGridState?.game || serverGame;
 
   const { data: session } = useQuery<GameSession>({
     queryKey: ["/api/sessions", sessionId],
@@ -383,7 +334,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         <div className="aspect-square"></div>
         
         {/* Column headers */}
-        {game.columnCriteria.map((criteria: any, index: number) => (
+        {game.columnCriteria.map((criteria, index) => (
           <div
             key={`col-${index}`}
             className="aspect-square bg-gray-200 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm"
@@ -394,7 +345,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         ))}
 
         {/* Grid rows */}
-        {game.rowCriteria.map((rowCriteria: any, rowIndex: number) => (
+        {game.rowCriteria.map((rowCriteria, rowIndex) => (
           <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
@@ -405,7 +356,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
             </div>
             
             {/* Grid cells */}
-            {game.columnCriteria.map((_: any, colIndex: number) => {
+            {game.columnCriteria.map((_, colIndex) => {
               const cellKey = `${rowIndex}_${colIndex}`;
               const answer = session?.answers?.[cellKey];
               const isAnswered = !!answer;
