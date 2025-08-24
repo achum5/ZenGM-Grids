@@ -420,16 +420,60 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
           setShowProfileModal(true);
         }}
       >
+      {/* Rarity indicator for correct answers */}
+      <div className="absolute top-1 right-1 z-10">
+        <div className={`${getRarityColor(rarity)} text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center`}>
+          {rarity}
+        </div>
+      </div>
       {/* Player Face */}
-      <div className="flex items-center justify-center w-full h-full">
-        <PlayerFace 
-          face={player.face}
-          imageUrl={player.imageUrl}
-          size={70} 
-          className="player-avatar"
-          teams={player.teams}
-          currentTeam={player.years?.[player.years.length - 1]?.team}
-        />
+      <div className="flex items-center justify-center mb-2 flex-shrink-0 w-full h-full">
+        <div className="flex items-center justify-center">
+          <PlayerFace 
+            face={player.face}
+            imageUrl={player.imageUrl}
+            size={70} 
+            className="rounded-full overflow-hidden"
+            teams={player.teams}
+            currentTeam={player.years?.[player.years.length - 1]?.team}
+          />
+        </div>
+      </div>
+      
+      {/* Player name for correct squares - ALWAYS VISIBLE */}
+      <div className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-75 text-white text-center py-1 px-1 rounded shadow-lg border border-gray-600">
+        <div className="text-xs sm:text-sm font-bold leading-tight" title={playerName}>
+          {(() => {
+            const maxLength = 16; // Adjust for correct squares
+            if (playerName.length <= maxLength) {
+              return playerName;
+            }
+            
+            const nameParts = playerName.split(' ');
+            if (nameParts.length >= 2) {
+              const firstInitial = nameParts[0][0] + '.';
+              // Handle suffixes like Jr., Sr., III, etc.
+              const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
+              let lastName = nameParts[nameParts.length - 1];
+              
+              // If the last part is a suffix, use the second-to-last part as the last name
+              if (suffixes.includes(lastName) && nameParts.length >= 3) {
+                lastName = nameParts[nameParts.length - 2];
+              }
+              
+              const truncatedName = firstInitial + ' ' + lastName;
+              
+              if (truncatedName.length <= maxLength) {
+                return truncatedName;
+              } else {
+                const availableSpace = maxLength - firstInitial.length - 4;
+                return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
+              }
+            }
+            
+            return playerName.substring(0, maxLength - 3) + '...';
+          })()}
+        </div>
       </div>
       
 

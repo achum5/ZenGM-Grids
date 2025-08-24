@@ -58,81 +58,77 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="player-modal no-scroll-x"
-        style={{ background: 'var(--panel)', border: '1px solid var(--tile-border)' }}
+        className="max-w-md bg-slate-800 border-slate-700 max-h-[80vh] overflow-y-auto"
       >
-        <DialogHeader className="modal-header close-button">
-          <DialogTitle className="fluid-text-lg" style={{ color: 'var(--text)' }}>Player Information</DialogTitle>
+        <DialogHeader className="sr-only">
+          <DialogTitle>Player Information</DialogTitle>
         </DialogHeader>
         
-        <div className="modal-body scrollable-y">
+        <div className="space-y-4 text-white">
           {/* Player Face and Name */}
-          <div className="flex flex-col items-center modal-section">
+          <div className="flex flex-col items-center">
             <PlayerFace 
               face={player.face}
               imageUrl={player.imageUrl}
               size={80} 
-              className="player-avatar"
+              className="rounded-full mb-3"
               teams={player.teams}
               currentTeam={player.years?.[player.years.length - 1]?.team}
             />
-            <h2 className="fluid-text-xl font-bold text-center" style={{ color: 'var(--text)' }}>{player.name}</h2>
+            <h2 className="text-lg font-bold text-center">{player.name}</h2>
           </div>
 
           {/* Rarity Section */}
           {(rarity !== undefined && rank !== undefined && eligibleCount !== undefined) && (
-            <div className="modal-section">
-              <h3 className="fluid-text-base font-semibold mb-2" style={{ color: 'var(--brand)' }}>Rarity</h3>
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
               <div className="space-y-2">
-                <div 
-                  className="fluid-text-lg font-bold"
-                  style={{ color: `hsl(${120 * (rarity / 100)} 85% 45%)` }}
-                >
+                <div className={`text-lg font-bold ${getRarityColor(rarity || 0)}`}>
                   {getRarityText(rarity || 0)}
                 </div>
-                <div className="fluid-text-sm" style={{ color: 'var(--text)' }}>
-                  Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players
+                <div className="text-sm text-gray-300">
+                  Ranked {rank} out of {eligibleCount} eligible players for this cell
                 </div>
-                <div className="fluid-text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  1 = rarest · {eligibleCount} = most common
+                <div className="text-xs text-gray-400">
+                  Lower Win Shares = rarer pick
                 </div>
               </div>
             </div>
           )}
 
           {/* Teams Section */}
-          <div className="modal-section">
-            <h3 className="fluid-text-base font-semibold mb-2" style={{ color: 'hsl(210 85% 45%)' }}>Teams</h3>
+          <div className="bg-slate-700 rounded-lg p-4">
+            <h3 className="font-semibold text-blue-300 mb-2">Teams</h3>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {player.years && player.years.length > 0 ? (
                 // Sort teams chronologically by start year
                 [...player.years]
                   .sort((a, b) => a.start - b.start)
                   .map((teamYear, idx) => (
-                    <div key={`${teamYear.team}-${teamYear.start}-${idx}`} className="fluid-text-sm truncate" style={{ color: 'var(--text)' }}>
+                    <div key={`${teamYear.team}-${teamYear.start}-${idx}`} className="text-sm truncate">
                       {teamYear.team} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                     </div>
                   ))
               ) : (
                 player.teams.map((team, idx) => (
-                  <div key={team} className="fluid-text-sm truncate" style={{ color: 'var(--text)' }}>{team}</div>
+                  <div key={team} className="text-sm truncate">{team}</div>
                 ))
               )}
             </div>
           </div>
 
           {/* Other Top Answers Section */}
-          <div className="modal-section">
-            <h3 className="fluid-text-base font-semibold mb-2" style={{ color: 'hsl(45 85% 45%)' }}>Other Top Answers</h3>
-            <div className="space-y-1 max-h-32 scrollable-y">
+          <div className="bg-slate-700 rounded-lg p-4">
+            <h3 className="font-semibold text-yellow-300 mb-2">Other Top Answers</h3>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
               {topPlayers && topPlayers.length > 0 ? (
                 topPlayers.map((topPlayer, idx) => (
-                  <div key={topPlayer.name} className="fluid-text-sm truncate" style={{ color: 'var(--text)' }}>
+                  <div key={topPlayer.name} className="text-sm truncate">
                     {idx + 1}. {topPlayer.name}
                   </div>
                 ))
               ) : (
-                <div className="fluid-text-sm" style={{ color: 'var(--muted-foreground)' }}>
+                <div className="text-sm text-gray-400">
                   {columnCriteria && rowCriteria ? "Loading top players..." : "No criteria available"}
                 </div>
               )}
