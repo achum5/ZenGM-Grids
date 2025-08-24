@@ -2,12 +2,13 @@ import { useState } from "react";
 import { FileUpload } from "@/components/file-upload";
 import { GameGrid } from "@/components/game-grid";
 import { GameStats } from "@/components/game-stats";
+import { Stats } from "@/components/stats";
 import { RulesModal } from "@/components/rules-modal";
 import { Button } from "@/components/ui/button";
 import { HelpCircle, RotateCcw, Play } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useQuery } from "@tanstack/react-query";
-import type { Game, SessionStats, TeamInfo } from "@shared/schema";
+import type { Game, SessionStats, TeamInfo, GameSession } from "@shared/schema";
 
 export default function Home() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
@@ -43,6 +44,47 @@ export default function Home() {
     setCurrentScore(0);
   };
 
+  // Get session query for stats calculation
+  const { data: session } = useQuery<GameSession>({
+    queryKey: ['/api/sessions', currentSessionId],
+    enabled: !!currentSessionId,
+  });
+
+  // Calculate stats for Stats component
+  const calculateStats = () => {
+    if (!session?.answers) {
+      return {
+        correct: 0,
+        incorrect: 0,
+        guessesLeft: 9,
+        totalRarity: 0,
+        avgRarity: 0,
+        best: 0,
+        worst: 0,
+        rarityScore: 0
+      };
+    }
+
+    const answers = Object.values(session.answers);
+    const correct = answers.filter(a => a.correct).length;
+    const incorrect = answers.filter(a => !a.correct).length;
+    const correctRarities = answers.filter(a => a.correct).map(a => a.rarity || 0);
+    
+    return {
+      correct,
+      incorrect,
+      guessesLeft: 9 - answers.length,
+      totalRarity: correctRarities.reduce((sum, rarity) => sum + rarity, 0),
+      avgRarity: correctRarities.length > 0 ? Math.round(correctRarities.reduce((sum, rarity) => sum + rarity, 0) / correctRarities.length) : 0,
+      best: correctRarities.length > 0 ? Math.max(...correctRarities) : 0,
+      worst: correctRarities.length > 0 ? Math.min(...correctRarities) : 0,
+      rarityScore: session.score || 0
+    };
+  };
+
+  const statsData = calculateStats();
+  const hasLeague = Boolean(teamData);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans">
       {/* Header */}
@@ -64,12 +106,16 @@ export default function Home() {
           </div>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-8">
+          {!hasLeague && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg">
+              <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
+            </div>
+          )}
           
-          {/* Mobile: Game Area first when game exists */}
-          {currentGameId && (
-            <div className="lg:hidden lg:col-span-2 order-1">
+          {hasLeague && (
+            <>
               <GameGrid 
                 gameId={currentGameId}
                 sessionId={currentSessionId}
@@ -78,29 +124,25 @@ export default function Home() {
                 teamData={teamData || undefined}
               />
               
-
-            </div>
+              <Stats
+                correct={statsData.correct}
+                incorrect={statsData.incorrect}
+                guessesLeft={statsData.guessesLeft}
+                totalRarity={statsData.totalRarity}
+                avgRarity={statsData.avgRarity}
+                best={statsData.best}
+                worst={statsData.worst}
+                rarityScore={statsData.rarityScore}
+              />
+              
+              <div className="bg-white dark:bg-slate-800 rounded-lg">
+                <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
+              </div>
+            </>
           )}
           
-          {/* Sidebar - shows first on mobile when no game, after game when game exists */}
-          <div className={`lg:col-span-1 space-y-6 ${currentGameId ? 'order-2' : 'order-1'}`}>
-            <div className="bg-white dark:bg-slate-800 rounded-lg">
-              <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
-            </div>
-            <div className="bg-white dark:bg-slate-800 rounded-lg">
-              <GameStats stats={stats} />
-            </div>
-          </div>
-
-          {/* Desktop Game Area */}
-          <div className="hidden lg:block lg:col-span-2">
-            <GameGrid 
-              gameId={currentGameId}
-              sessionId={currentSessionId}
-              onSessionCreated={handleSessionCreated}
-              onScoreUpdate={handleScoreUpdate}
-              teamData={teamData || undefined}
-            />
+          <div className="bg-white dark:bg-slate-800 rounded-lg">
+            <GameStats stats={stats} />
           </div>
         </div>
       </main>

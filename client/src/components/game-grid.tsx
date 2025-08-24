@@ -177,17 +177,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     );
   }
 
-  const correctAnswers = session && session.answers ? Object.values(session.answers).filter(a => a.correct).length : 0;
-  const incorrectAnswers = session && session.answers ? Object.values(session.answers).filter(a => !a.correct).length : 0;
-  const remainingCells = 9 - (session && session.answers ? Object.keys(session.answers).length : 0);
-
-  // Calculate rarity statistics
-  const answers = session?.answers ? Object.values(session.answers) : [];
-  const correctRarities = answers.filter(a => a.correct).map(a => a.rarity || 0);
-  const totalRarity = correctRarities.reduce((sum, rarity) => sum + rarity, 0);
-  const averageRarity = correctRarities.length > 0 ? Math.round(totalRarity / correctRarities.length) : 0;
-  const bestRarity = correctRarities.length > 0 ? Math.max(...correctRarities) : 0;
-  const worstRarity = correctRarities.length > 0 ? Math.min(...correctRarities) : 0;
 
   // Helper function to render team logo or name for headers
   const renderTeamHeader = (criteria: any) => {
@@ -212,60 +201,10 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
 
   return (
     <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-4 sm:p-8 rounded-xl shadow-sm">
-      {/* Header with stats */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
         <div className="text-gray-900 dark:text-white">
           <h2 className="text-xl sm:text-2xl font-bold">Immaculate Grid</h2>
-        </div>
-        
-        {/* Stats display */}
-        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-gray-900 dark:text-white">
-          <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-green-400" data-testid="text-correct-answers">
-              {correctAnswers}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">CORRECT</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
-              {incorrectAnswers}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">INCORRECT</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-remaining-cells">
-              {remainingCells}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">GUESSES LEFT</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg sm:text-xl font-bold text-blue-400" data-testid="text-total-rarity">
-              {totalRarity}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">TOTAL RARITY</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg sm:text-xl font-bold text-purple-400" data-testid="text-average-rarity">
-              {averageRarity}
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-300">AVG RARITY</div>
-          </div>
-          {correctRarities.length > 0 && (
-            <>
-              <div className="text-center">
-                <div className="text-lg sm:text-xl font-bold text-green-300" data-testid="text-best-rarity">
-                  {bestRarity}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-300">BEST</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg sm:text-xl font-bold text-orange-400" data-testid="text-worst-rarity">
-                  {worstRarity}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-300">WORST</div>
-              </div>
-            </>
-          )}
         </div>
       </div>
 

@@ -1,0 +1,177 @@
+Perfect. Here’s a single, clean copy-paste brief for Replit AI that captures exactly what you just specified.
+
+---
+
+COPY/PASTE FOR REPLIT AI — Targeted Updates (keep correct-answer visuals unless explicitly stated)
+
+## A) Logic Bug Fix — “First Overall Pick”
+
+**Problem:** The “first overall pick” achievement currently counts the first pick of *any* round.
+**Fix:** Only pass if **Round 1, Overall Pick #1**.
+
+```ts
+function isFirstOverallPick(player: Player): boolean {
+  return player?.draft?.roundNumber === 1 && player?.draft?.overallPick === 1;
+}
+```
+
+**Acceptance:**
+
+* Round 2 Pick 1 ➜ **false**
+* Round 1 Pick 1 ➜ **true**
+
+---
+
+## B) Incorrect-Only Modal — “Why this was incorrect” (natural-language overhaul)
+
+**Scope:** Applies **only when `result.correct === false`**. Correct answers keep the Rarity section unchanged.
+
+**Change:** Remove the bullet list (e.g., “Team: … / Criterion: …”).
+**Show only one concise sentence** with ✅/❌ that reads naturally for any combo:
+
+* team/team
+* team/stat (achievement)
+* stat/team
+* stat/stat
+
+**IMPORTANT:** Implement natural-language phrasing for **every single achievement/criterion in the game**, not just the examples. Each one must have a correct “did / did not” (or equivalent) template so the sentence always sounds right.
+
+```ts
+type AxisType = "team" | "stat";
+
+type Eval = {
+  correct: boolean;
+  leftPass: boolean;
+  rightPass: boolean;
+  leftType: AxisType;    // "team" | "stat"
+  rightType: AxisType;   // "team" | "stat"
+  leftLabel: string;     // e.g., "Toronto Raptors" or "First Overall Pick"
+  rightLabel: string;    // e.g., "Oklahoma City Thunder" or "20,000+ Points"
+};
+
+function describeAxis(type: AxisType, label: string, passed: boolean): string {
+  // Teams
+  if (type === "team") {
+    return passed ? `played for the ${label}` : `didn't play for the ${label}`;
+  }
+
+  // Stats/Achievements — add templates for EVERY supported criterion:
+  // Examples (extend list in codebase):
+  if (/first\s+overall\s+pick/i.test(label)) {
+    return passed ? "was a first overall pick" : "was not a first overall pick";
+  }
+  if (/first\s+round\s+pick/i.test(label)) {
+    return passed ? "was a first-round pick" : "was not a first-round pick";
+  }
+  if (/20,000\+?\s*points/i.test(label)) {
+    return passed ? "had 20,000+ points" : "did not have 20,000+ points";
+  }
+  if (/15\+?\s*rpg/i.test(label)) {
+    return passed ? "averaged 15+ RPG in a season" : "did not average 15+ RPG in a season";
+  }
+  if (/mvp/i.test(label)) {
+    return passed ? "won MVP" : "did not win MVP";
+  }
+  if (/all[-\s]?star/i.test(label)) {
+    return passed ? "made an All-Star team" : "did not make an All-Star team";
+  }
+
+  // Fallback (ensure it still reads correctly if no explicit template):
+  return passed ? `met “${label}”` : `did not meet “${label}”`;
+}
+
+function buildIncorrectSentence(pName: string, e: Eval): string {
+  const ok = (b:boolean)=> (b ? "✅" : "❌");
+  const L = describeAxis(e.leftType, e.leftLabel, e.leftPass);
+  const R = describeAxis(e.rightType, e.rightLabel, e.rightPass);
+
+  if (!e.leftPass && e.rightPass) return `${pName} ${R} (${ok(true)}) but ${L} (${ok(false)}).`;
+  if (e.leftPass && !e.rightPass) return `${pName} ${L} (${ok(true)}) but ${R} (${ok(false)}).`;
+  if (!e.leftPass && !e.rightPass) return `${pName} ${L} (${ok(false)}) and ${R} (${ok(false)}).`;
+  // Safety
+  return `${pName} did not meet all requirements.`;
+}
+```
+
+**Example (team/team):**
+“Kawhi Leonard **played for the Toronto Raptors** (✅) but **didn't play for the Oklahoma City Thunder** (❌).”
+
+**Rule clarity (unchanged):**
+
+* “Played for team” = **≥1 game** at any time (regular season or playoffs, including partial seasons & mid-season trades).
+* Stat/award criteria are **career-wide** (not tied to the listed team).
+
+---
+
+## C) “Session Stats” ➜ **Stats** (relocate, rename, gate by league upload)
+
+**Goal:** Move all session stats out of the grid box into a dedicated **Stats** section that appears **between** the Grid and the Upload component — but only **after** a league file has been uploaded.
+
+**Rename:** “Session Stats” ➜ **“Stats”**.
+
+**Content to include in the Stats section (move these out of the grid box):**
+
+* **Correct**
+* **Incorrect**
+* **Guesses Left**
+* **Total Rarity**
+* **Avg Rarity**
+* **Best**
+* **Worst**
+* **Rarity Score** (for the current/last guess or as your app defines — same value you currently show inside the grid)
+
+**Visibility & layout rules:**
+
+* **Initial load (no league file uploaded yet):**
+  Show **only** the **Upload League File** component. (Grid hidden. Stats hidden.)
+* **After a league file is uploaded (same session):**
+  Show in this exact order:
+
+  1. **Grid**
+  2. **Stats** (new section, outside/under the grid)
+  3. **Upload League File**
+
+**Implementation sketch:**
+
+```tsx
+const hasLeague = Boolean(session?.leagueLoaded);
+
+return (
+  <>
+    {!hasLeague && <UploadLeagueFile />}
+    {hasLeague && (
+      <>
+        <Grid />
+        <Stats
+          correct={stats.correct}
+          incorrect={stats.incorrect}
+          guessesLeft={stats.guessesLeft}
+          totalRarity={stats.totalRarity}
+          avgRarity={stats.avgRarity}
+          best={stats.best}
+          worst={stats.worst}
+          rarityScore={stats.rarityScore}
+        />
+        <UploadLeagueFile />
+      </>
+    )}
+  </>
+);
+```
+
+**Acceptance:**
+
+* On first visit (pre-upload): **only** the Upload component is visible.
+* Post-upload: the order is **Grid → Stats → Upload**, and none of those stat values render inside the grid box anymore.
+
+---
+
+## Acceptance Checklist
+
+* “First Overall Pick” only passes for **Round 1, Pick 1**.
+* Incorrect-only modal shows **one sentence** (no bullets) with natural phrasing for **every** achievement/criterion.
+* “Stats” section is **hidden until** a league file is uploaded; after upload, it appears **between** Grid and Upload.
+* The following items are in **Stats** (not in the grid): Correct, Incorrect, Guesses Left, Total Rarity, Avg Rarity, Best, Worst, Rarity Score.
+* Correct-answer visuals remain unchanged except where explicitly noted above.
+
+— End brief —

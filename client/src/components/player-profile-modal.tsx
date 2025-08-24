@@ -110,17 +110,9 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             evaluation && (
               <div className="bg-slate-700 rounded-lg p-4">
                 <h3 className="font-semibold text-red-300 mb-2">Why this was incorrect</h3>
-                <p className="explain font-semibold mb-2 text-sm text-gray-200">
+                <p className="explain font-semibold text-sm text-gray-200">
                   {buildIncorrectMessage(player.name, evaluation)}
                 </p>
-                <ul className="bullets space-y-1">
-                  <li className="text-sm">
-                    {evaluation.teamPass ? "✅" : "❌"} Team: {evaluation.teamLabel}
-                  </li>
-                  <li className="text-sm">
-                    {evaluation.critPass ? "✅" : "❌"} Criterion: {evaluation.critLabel}
-                  </li>
-                </ul>
               </div>
             )
           )}

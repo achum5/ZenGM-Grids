@@ -399,9 +399,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Add draft-based achievements
           if (player.draft && player.draft.round) {
-            if (player.draft.pick === 1) {
+            // Fix: First overall pick must be Round 1, Overall Pick #1
+            if (player.draft.round === 1 && player.draft.pick === 1) {
               achievements.push("#1 Overall Draft Pick");
-            } else if (player.draft.round === 1) {
+            }
+            
+            if (player.draft.round === 1) {
               achievements.push("First Round Pick");
             } else if (player.draft.round === 2) {
               achievements.push("2nd Round Pick");
