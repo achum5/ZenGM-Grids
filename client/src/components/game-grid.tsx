@@ -277,7 +277,8 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
   };
 
   return (
-    <div className="no-scroll-x" style={{ background: 'var(--panel)', padding: 'clamp(16px, 3vmin, 24px)' }}>
+    <div className="no-scroll-x"
+      style={{ background: 'var(--panel)', padding: 'clamp(16px, 3vmin, 24px)', borderRadius: '0.5rem' }}>
       {/* Compact Stats Strip */}
       <div className="statsStrip" role="region" aria-label="Session stats">
         <div className="stat">

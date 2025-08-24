@@ -44,7 +44,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans">
+    <div className="page min-h-screen bg-gray-50 dark:bg-gray-900 font-sans">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -64,45 +64,25 @@ export default function Home() {
           </div>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Mobile: Game Area first when game exists */}
-          {currentGameId && (
-            <div className="lg:hidden lg:col-span-2 order-1">
-              <GameGrid 
-                gameId={currentGameId}
-                sessionId={currentSessionId}
-                onSessionCreated={handleSessionCreated}
-                onScoreUpdate={handleScoreUpdate}
-                teamData={teamData || undefined}
-              />
-              
-
-            </div>
-          )}
-          
-          {/* Sidebar - shows first on mobile when no game, after game when game exists */}
-          <div className={`lg:col-span-1 space-y-6 ${currentGameId ? 'order-2' : 'order-1'}`}>
-            <div className="bg-white dark:bg-slate-800 rounded-lg">
-              <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
-            </div>
-            <div className="bg-white dark:bg-slate-800 rounded-lg">
-              <GameStats stats={stats} />
-            </div>
+      <main className="main">
+        <section className="gridWrap">
+          <GameGrid 
+            gameId={currentGameId}
+            sessionId={currentSessionId}
+            onSessionCreated={handleSessionCreated}
+            onScoreUpdate={handleScoreUpdate}
+            teamData={teamData || undefined}
+          />
+        </section>
+        
+        <aside className="sidebar space-y-6">
+          <div className="bg-white dark:bg-slate-800 rounded-lg">
+            <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
           </div>
-
-          {/* Desktop Game Area */}
-          <div className="hidden lg:block lg:col-span-2">
-            <GameGrid 
-              gameId={currentGameId}
-              sessionId={currentSessionId}
-              onSessionCreated={handleSessionCreated}
-              onScoreUpdate={handleScoreUpdate}
-              teamData={teamData || undefined}
-            />
+          <div className="bg-white dark:bg-slate-800 rounded-lg">
+            <GameStats stats={stats} />
           </div>
-        </div>
+        </aside>
       </main>
       <RulesModal open={showRules} onOpenChange={setShowRules} />
     </div>

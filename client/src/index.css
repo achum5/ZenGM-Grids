@@ -3,6 +3,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global guard rails */
+*, *::before, *::after { 
+  box-sizing: border-box; 
+}
+
+html, body, #root { 
+  height: 100%; 
+  width: 100%; 
+}
+
+.flex, .grid, .main, .page, .gridWrap, .sidebar { 
+  min-width: 0; 
+}
+
+.container, .page, .main { 
+  width: 100%; 
+}
+
+[class*="wrap"], [class*="container"], [class*="panel"] {
+  max-width: 100%;
+}
+
 :root {
   --background: hsl(0 0% 100%);
   --foreground: hsl(210 25% 7.8431%);
@@ -243,7 +265,7 @@
 .fluid-text-xl { font-size: clamp(18px, 3.2vmin, 28px); }
 .fluid-text-2xl { font-size: clamp(20px, 3.6vmin, 32px); }
 
-/* Universal name bar component */
+/* Name bar visibility */
 .nameBar {
   position: absolute;
   left: clamp(8px, 2vmin, 12px);
@@ -251,7 +273,7 @@
   bottom: clamp(8px, 1.6vmin, 12px);
   padding: clamp(6px, 1vmin, 10px) clamp(10px, 1.4vmin, 12px);
   border-radius: clamp(10px, 1.3vmin, 14px);
-  background: rgba(0, 0, 0, 0.45); /* solid translucent – no backdrop-filter */
+  background: rgba(0, 0, 0, 0.45); /* NOT backdrop-filter */
   color: #fff; /* force readable text */
   z-index: 2;
   display: -webkit-box;
@@ -273,25 +295,38 @@
   -webkit-box-orient: unset;
 }
 
-/* Main layout structure */
+/* Page shell */
+.page {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding: clamp(12px, 2.5vmin, 24px);
+}
+
+/* Main 2-col layout */
 .main {
   display: grid;
-  grid-template-columns: 1fr minmax(0, 380px);
-  gap: clamp(12px, 2vmin, 20px);
+  grid-template-columns: 1fr minmax(320px, 380px);
+  gap: clamp(12px, 2vmin, 24px);
+  align-items: start;
 }
 
 @media (max-width: 900px) {
-  .main {
-    grid-template-columns: 1fr;
+  .main { 
+    grid-template-columns: 1fr; 
+  }
+  .sidebar { 
+    order: 2; 
+  }
+  .gridWrap { 
+    order: 1; 
   }
 }
 
 /* Grid wrapper and layout */
-.gridWrap {
-  width: 100%;
-  max-width: 1100px;
-  margin-inline: auto;
-  overflow-x: hidden;
+.gridWrap { 
+  width: 100%; 
+  overflow-x: hidden; 
 }
 
 .grid {
@@ -300,10 +335,12 @@
   gap: clamp(10px, 1.8vmin, 16px);
 }
 
-.grid .tile {
+.tile {
+  position: relative;
   aspect-ratio: 1 / 1;
   min-width: 0;
-  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .game-tile {
@@ -330,15 +367,24 @@
 }
 
 /* Rarity chip */
-.tile .rarityChip {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 3;
+.tile .rarityChip { 
+  position: absolute; 
+  top: 8px; 
+  right: 8px; 
+  z-index: 3; 
   padding: clamp(4px, 0.8vmin, 6px) clamp(6px, 1.2vmin, 8px);
   border-radius: clamp(8px, 1vmin, 12px);
   font-size: clamp(10px, 1.8vmin, 14px);
   font-weight: 600;
+}
+
+/* Sidebar constraints */
+.sidebar { 
+  min-width: 0; 
+}
+
+.sidebar * { 
+  max-width: 100%; 
 }
 
 /* Compact stats strip */
