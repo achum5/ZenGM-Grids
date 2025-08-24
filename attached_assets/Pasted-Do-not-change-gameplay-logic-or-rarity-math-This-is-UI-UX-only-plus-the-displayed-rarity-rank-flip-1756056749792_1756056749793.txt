@@ -1,0 +1,137 @@
+Do not change gameplay logic or rarity math. This is UI/UX only (plus the displayed rarity rank flip).
+
+0) Global responsive rules (apply everywhere)
+	•	No fixed pixel sizes for layout. Use fluid units: clamp(), min(), max(), %, vmin/vw, and rem.
+	•	Typography: use a fluid scale (e.g., clamp(12px, 2.2vmin, 18px) for tile text; clamp(18px, 3.2vmin, 22px) for scoreboard values).
+	•	Spacing: use clamp() for gaps, paddings, and border radii (e.g., gap: clamp(10px, 1.8vmin, 16px)).
+	•	Images/avatars: max-width: 100%, height: auto. No hard-coded widths.
+	•	Overflow: Any scrollable region must hide horizontal overflow and avoid double scrollbars. Use overscroll-behavior: contain for modals.
+	•	Breakpoints: Prefer content-driven CSS (grid auto-fit/auto-fill, minmax()) over many media queries. Use the few listed below only where needed.
+	•	Safe areas: include viewport-fit=cover and env(safe-area-inset-*) padding on the app shell.
+
+⸻
+
+1) Grid layout & tiles
+	•	3 columns, equal widths; tiles are perfect squares via aspect-ratio: 1/1.
+	•	Gap: clamp(10px, 1.8vmin, 16px).
+	•	Tile visuals: 14px radius (use clamp(12px, 1.5vmin, 16px)), subtle inset border.
+	•	Layers inside tile:
+	•	Top-right rarity chip (fixed pill, never overlaps).
+	•	Centered avatar (scales but never exceeds tile).
+	•	Bottom NameBar (see §3).
+	•	Hover/tap: slight lift transition ≤160ms.
+
+Responsive acceptance
+	•	At 320px, 375px, 414px, 768px, 1024px, 1280px, 1440px widths, tiles remain square, spacing uniform, chip and name never collide.
+
+⸻
+
+2) Scoreboard above the grid
+	•	Items: CORRECT | INCORRECT | GUESSES LEFT | TOTAL RARITY | AVG RARITY | BEST | WORST.
+	•	Layout grid:
+	•	≥ 821px: 4 columns
+	•	521–820px: 3 columns
+	•	≤ 520px: 2 columns
+	•	Each card shows big value + small label; values use fluid type.
+
+Responsive acceptance
+	•	No wrapping or overflow in any width; consistent gutters; all 7 items visible.
+
+⸻
+
+3) Universal name rendering inside tiles
+
+NameBar component (use everywhere a tile is filled):
+	•	Position: position:absolute; left/right: clamp(8px, 2vmin, 12px); bottom: clamp(8px, 1.6vmin, 12px);
+	•	Style: translucent dark background, border-radius clamp(10px, 1.3vmin, 14px), padding clamp(6px, 1vmin, 10px) clamp(8px, 1.4vmin, 12px).
+	•	Text: bold, high-contrast; font-size clamp(12px, 2.2vmin, 18px).
+
+Fit logic
+	1.	Try full name (First Last [Suffix]) with 2-line clamp:
+display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; hyphens:auto;
+	2.	If still overflows (measure via ref), render F. Last[ Suffix] on one line with ellipsis:
+white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+	3.	If F. Last still too long, the last name ends with an ellipsis automatically (browser truncates).
+
+	•	Preserve multi-word/hyphenated surnames and suffixes (Jr., Sr., II, III, IV, V).
+	•	Accessibility: title and aria-label must always contain the full, original name.
+
+Responsive acceptance
+	•	On narrow phones and large desktops, name is readable; tile never shows overlapping text or clipped glyphs; tooltip/long-press reveals full name.
+
+⸻
+
+4) Rarity chip & colors
+	•	Chip sits top-right; pill with readable size; uses color map: 0 = red → 100 = green (linear hue).
+	•	Use same color as a small accent in the modal rarity section.
+
+Buckets (labels unchanged)
+	•	0–9 Ultra common · 10–24 Very common · 25–39 Common · 40–59 Notable · 60–74 Rare · 75–89 Very rare · 90–100 Ultra rare
+
+⸻
+
+5) Player modal (profile)
+	•	Centered card; sticky header (title + close never scroll).
+	•	Body scrolls; sections styled as cards.
+	•	Order: Rarity → Teams → Other Answers.
+
+Rarity section (display-only change)
+	•	Keep rarity score and colors as-is.
+	•	Flip only the displayed rank so 1 = rarest, Y = most common:
+If current rank is 1 = most common, then
+displayRank = count - rank + 1
+Render: Ranked ${displayRank} out of ${count} eligible players
+Hint: 1 = rarest · ${count} = most common.
+
+Other Answers
+	•	Show top 10 by career WS (reuse the existing computed list). Scrollable.
+
+Responsive acceptance
+	•	Modal fits within min(86vh, 900px) height; no horizontal scroll; on small screens it can be nearly full-height, with only the body scrolling.
+
+⸻
+
+6) Mobile safe areas & tap targets
+	•	Add <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">.
+	•	App shell uses env(safe-area-inset-*) for padding.
+	•	Close button hitbox ≥ 40×40px.
+
+⸻
+
+7) Theme tokens (dark mode polish)
+
+Define and use tokens:
+--panel, --tile-bg, --tile-deeper, --tile-border, --text, --brand, --font
+Ensure contrast is comfortable in dark mode.
+
+⸻
+
+8) Responsive QA matrix (must pass)
+	•	Test widths: 320, 360, 375, 414, 480, 520, 640, 768, 820, 1024, 1280, 1440 px.
+	•	Test orientations: portrait + landscape on mobile.
+	•	Verify:
+	•	Tiles square; chip top-right; NameBar stable.
+	•	Scoreboard renders 2/3/4 columns at the specified breakpoints.
+	•	Modal header sticky; no horizontal scroll.
+	•	Long names behave per rules (full name → F. Last → ellipsis on last name if needed).
+	•	Safe-area padding applied (notch/home indicator don’t cover UI).
+
+⸻
+
+9) Do / Don’t
+	•	Do: implement UI exactly as above; reuse existing “Other Answers” list; flip only the displayed rank sentence.
+	•	Don’t: change rarity math, grid logic, eligibility, or server code.
+
+⸻
+
+Final acceptance checklist
+	•	Fully responsive across the QA matrix; no overflows.
+	•	Tiles, chips, avatars, and NameBar never collide.
+	•	Scoreboard clean at all widths.
+	•	Modal rarity line reads 1 = rarest, N = most common with hint.
+	•	Names: full name (2 lines) or F. Last (1 line) with ellipsis if still too long; tooltip shows full name.
+	•	Color mapping 0→red, 100→green consistent.
+	•	Safe-area paddings + close hitbox ≥ 40px.
+	•	No gameplay/rules/rarity regressions.
+
+Please implement exactly as specified.

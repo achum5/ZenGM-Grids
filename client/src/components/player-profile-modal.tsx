@@ -87,10 +87,10 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
                   {getRarityText(rarity || 0)}
                 </div>
                 <div className="text-sm text-gray-300">
-                  Ranked {rank} out of {eligibleCount} eligible players
+                  Ranked {rank} out of {eligibleCount} eligible players for this cell
                 </div>
                 <div className="text-xs text-gray-400">
-                  Higher rank = rarer
+                  Lower Win Shares = rarer pick
                 </div>
               </div>
             </div>
