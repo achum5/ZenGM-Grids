@@ -184,8 +184,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Comprehensive league-level achievement processing
   async function processLeagueLevelAchievements(leagueData: any, players: any[]) {
     console.log("🔍 Processing league-level achievements...");
-    console.log("League data keys:", Object.keys(leagueData));
+    console.log("League data keys:", Object.keys(leagueData || {}));
     console.log("Players with PIDs:", players.filter(p => p.pid !== undefined).length);
+    
+    // Add more detailed debugging
+    if (!leagueData) {
+      console.log("❌ CRITICAL ERROR: leagueData is null/undefined");
+      return;
+    }
+    
+    if (players.length === 0) {
+      console.log("❌ CRITICAL ERROR: No players provided");
+      return;
+    }
     
     // Build player lookup by pid
     const playerByPid = new Map<number, any>();
@@ -834,8 +845,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
         
         // Process league-level data for comprehensive achievements
+        console.log("🚀 About to process league-level achievements...");
+        console.log("isJson:", isJson, "data exists:", !!data);
+        console.log("Players array length:", players.length);
+        
         if (isJson && data) {
+          console.log("✅ Calling processLeagueLevelAchievements...");
           await processLeagueLevelAchievements(data, players);
+        } else {
+          console.log("❌ Skipping league-level processing - isJson:", isJson, "data:", !!data);
         }
       } else {
         return res.status(400).json({ message: "Unsupported file format. Please upload JSON or gzipped league files only." });
