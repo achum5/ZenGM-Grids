@@ -144,6 +144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Upload league file from URL
   app.post("/api/upload-url", async (req, res) => {
+    console.log("🚀 URL UPLOAD STARTED (/api/upload-url)");
+    console.log("URL:", req.body?.url);
     try {
       const { url } = req.body;
       if (!url) {
@@ -169,6 +171,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Upload league file and parse players
   app.post("/api/upload", upload.single("file"), async (req: MulterRequest, res) => {
+    console.log("🚀 FILE UPLOAD STARTED (/api/upload)");
+    console.log("File received:", !!req.file);
+    console.log("File name:", req.file?.originalname);
+    console.log("File size:", req.file?.size);
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -537,6 +543,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Helper function to process league files
   async function processLeagueFile(fileBuffer: Buffer, filename: string, res: any) {
+    console.log("📂 PROCESSING LEAGUE FILE:", filename);
+    console.log("Buffer size:", fileBuffer.length);
     try {
       let fileContent: string;
       
