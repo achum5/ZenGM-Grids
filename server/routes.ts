@@ -628,6 +628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("📂 PROCESSING LEAGUE FILE:", filename);
     console.log("Buffer size:", fileBuffer.length);
     try {
+      console.log("🚀 Starting file processing...");
       let fileContent: string;
       
       // Check if file is gzipped by magic bytes or filename
@@ -638,19 +639,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           fileBuffer = await gunzipAsync(fileBuffer);
           console.log("Successfully decompressed gzip file");
+          console.log("🔍 Decompressed buffer size:", fileBuffer.length);
+          
+          // Check if decompressed file is too large (>500MB)
+          const maxSize = 500 * 1024 * 1024; // 500MB
+          if (fileBuffer.length > maxSize) {
+            console.log("❌ Decompressed file too large:", fileBuffer.length, "bytes");
+            return res.status(400).json({ message: "Decompressed file is too large. Maximum size is 500MB." });
+          }
         } catch (error) {
           console.error("Gzip decompression error:", error);
           return res.status(400).json({ message: "Failed to decompress gzip file" });
         }
       }
       
-      fileContent = fileBuffer.toString();
+      console.log("🔍 Converting buffer to string...");
+      try {
+        fileContent = fileBuffer.toString('utf8');
+        console.log("🔍 Successfully converted to string. Length:", fileContent.length);
+      } catch (error) {
+        console.log("❌ Failed to convert buffer to string:", error instanceof Error ? error.message : 'Unknown error');
+        return res.status(400).json({ message: "Failed to process file content" });
+      }
       let players: any[] = [];
 
-      const isJson = filename.includes(".json") || (isGzipped && filename.includes(".json"));
+      // Try to detect JSON by content, not filename
+      let data: any = null;
+      let isJson = false;
+      console.log("🔍 About to parse JSON. Content length:", fileContent.length);
+      console.log("🔍 Content start:", fileContent.substring(0, 100));
+      try {
+        data = JSON.parse(fileContent);
+        isJson = true;
+        console.log("✅ Successfully parsed as JSON");
+        console.log("🔍 Parsed data keys:", Object.keys(data).slice(0, 10));
+      } catch (error) {
+        console.log("❌ JSON parsing failed:", error instanceof Error ? error.message : 'Unknown error');
+        console.log("🔍 Content sample for debug:", fileContent.substring(0, 200));
+        isJson = false;
+      }
 
       if (isJson) {
-        const data = JSON.parse(fileContent);
         let rawPlayers = [];
         
         console.log("File structure keys:", Object.keys(data));

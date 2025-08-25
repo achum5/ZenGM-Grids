@@ -118,11 +118,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "application/json": [".json"],
-      "application/gzip": [".gz", ".gzip"],
-      "application/x-gzip": [".gz", ".gzip"],
-    },
+    // Accept any file - let backend validate content
     multiple: false,
   });
 
