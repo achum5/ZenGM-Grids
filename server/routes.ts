@@ -435,6 +435,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     console.log(`🏆 Champions: ${champCount}`);
 
+    // Game-level achievements from playerFeats
+    let gameFeatsCount = { "50pts": 0, "20reb": 0, "20ast": 0, "10threes": 0, "tripleDbl": 0 };
+    for (const p of players) {
+      const feats = p.feats ?? [];
+      for (const feat of feats) {
+        // 50+ points
+        if ((feat.pts ?? 0) >= 50) {
+          add(p.pid, "Scored 50+ in a Game");
+          gameFeatsCount["50pts"]++;
+        }
+        // 20+ rebounds  
+        if (((feat.orb ?? 0) + (feat.drb ?? 0)) >= 20) {
+          add(p.pid, "20+ Rebounds in a Game");
+          gameFeatsCount["20reb"]++;
+        }
+        // 20+ assists
+        if ((feat.ast ?? 0) >= 20) {
+          add(p.pid, "20+ Assists in a Game");
+          gameFeatsCount["20ast"]++;
+        }
+        // 10+ threes
+        if ((feat.tp ?? 0) >= 10) {
+          add(p.pid, "10+ Threes in a Game");
+          gameFeatsCount["10threes"]++;
+        }
+        // Triple-double (10+ in 3 categories)
+        const stats = [feat.pts ?? 0, (feat.orb ?? 0) + (feat.drb ?? 0), feat.ast ?? 0, feat.stl ?? 0, feat.blk ?? 0];
+        if (stats.filter(s => s >= 10).length >= 3) {
+          add(p.pid, "Triple-Double in a Game");
+          gameFeatsCount["tripleDbl"]++;
+        }
+      }
+    }
+    console.log(`🎯 Game feats: 50pts=${gameFeatsCount["50pts"]}, 20reb=${gameFeatsCount["20reb"]}, 20ast=${gameFeatsCount["20ast"]}, 10threes=${gameFeatsCount["10threes"]}, tripleDbl=${gameFeatsCount["tripleDbl"]}`);
+
+    // Awards from league data
+    let awardCounts = { mvp: 0, dpoy: 0, roy: 0, smoy: 0, mip: 0, fmvp: 0 };
+    for (const award of ix.league?.awards ?? []) {
+      const pid = award.pid;
+      if (!pid) continue;
+      
+      switch (award.type) {
+        case "mvp":
+          add(pid, "MVP Winner");
+          awardCounts.mvp++;
+          break;
+        case "dpoy":
+          add(pid, "Defensive Player of the Year");
+          awardCounts.dpoy++;
+          break;
+        case "roy":
+          add(pid, "Rookie of the Year");
+          awardCounts.roy++;
+          break;
+        case "smoy":
+          add(pid, "Sixth Man of the Year");
+          awardCounts.smoy++;
+          break;
+        case "mip":
+          add(pid, "Most Improved Player");
+          awardCounts.mip++;
+          break;
+        case "finals_mvp":
+        case "fmvp":
+          add(pid, "Finals MVP");
+          awardCounts.fmvp++;
+          break;
+      }
+    }
+    console.log(`🏅 Awards: MVP=${awardCounts.mvp}, DPOY=${awardCounts.dpoy}, ROY=${awardCounts.roy}, 6MOY=${awardCounts.smoy}, MIP=${awardCounts.mip}, FMVP=${awardCounts.fmvp}`);
+
+    // Team achievements (All-League, All-Defensive)
+    let teamAchievements = { allLeague: 0, allDefensive: 0 };
+    for (const p of players) {
+      for (const award of p.awards ?? []) {
+        if (award.type === "All-League First Team" || award.type === "All-League Second Team" || award.type === "All-League Third Team") {
+          add(p.pid, "All-League Team");
+          teamAchievements.allLeague++;
+        }
+        if (award.type === "All-Defensive First Team" || award.type === "All-Defensive Second Team") {
+          add(p.pid, "All-Defensive Team");
+          teamAchievements.allDefensive++;
+        }
+      }
+    }
+    console.log(`🛡️ Team achievements: All-League=${teamAchievements.allLeague}, All-Defensive=${teamAchievements.allDefensive}`);
+
+    // Hall of Fame
+    let hofCount = 0;
+    for (const pid of ix.hallOfFamers ?? []) {
+      add(pid, "Hall of Fame");
+      hofCount++;
+    }
+    console.log(`🏛️ Hall of Fame: ${hofCount}`);
+
     // Teammate of All-Time Greats (different person on same team-season)
     let teammateCount = 0;
     for (const p of players) {
@@ -1159,7 +1254,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         console.log(`🔧 Total leader entries: ${totalLeaders}`);
         
-        await processLeagueLevelAchievements(leagueData, validatedPlayers);
+        // Build indices for achievements  
+        const indices = {
+          leadersBySeason,
+          allStarsBySeason: buildAllStarsBySeason(leagueData),
+          championsBySeason: buildChampionsBySeason(leagueData),
+          ...buildHOFMaps(leagueData),
+          league: leagueData // Pass full league data for awards and other processing
+        };
+        
+        // Apply all achievements using the indices
+        applyRemainingAchievements(validatedPlayers, indices);
         
         // C) Audit for false leaders 
         auditLeaders(validatedPlayers, globalIndices, ["Tiny Archibald"]);
