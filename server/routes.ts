@@ -255,6 +255,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
     
+    // DEBUG: Check if any players have PIDs at all
+    if (playerByPid.size === 0) {
+      console.log("🔍 CRITICAL DEBUG: No players have PIDs! Checking player structure...");
+      console.log("🔍 Sample player keys:", players.length > 0 ? Object.keys(players[0]) : "No players");
+      if (players.length > 0) {
+        console.log("🔍 Sample player PID field:", players[0].pid);
+        console.log("🔍 Sample player name:", players[0].name);
+      }
+    }
+    
     // Process Hall of Fame from events[]
     const hofPids = new Set<number>();
     if (leagueData.events && Array.isArray(leagueData.events)) {
@@ -265,6 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       console.log(`🏆 Found ${hofPids.size} Hall of Fame players`);
+      console.log(`🏆 First 5 HOF PIDs: [${Array.from(hofPids).slice(0, 5).join(', ')}]`);
     } else {
       console.log("❌ No events[] data found for Hall of Fame processing");
     }
@@ -902,6 +913,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (isJson && data) {
           console.log("✅ Calling processLeagueLevelAchievements...");
+          console.log("🔍 League data keys:", Object.keys(data));
+          console.log("🔍 Awards array length:", data.awards?.length || 0);
+          console.log("🔍 Events array length:", data.events?.length || 0);
           await processLeagueLevelAchievements(data, players);
         } else {
           console.log("❌ Skipping league-level processing - isJson:", isJson, "data:", !!data);
@@ -969,6 +983,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate career quality scores for all players
       deriveCareerAggregates(validatedPlayers);
       assignQuality(validatedPlayers);
+      
+      // CRITICAL FIX: Process league-level achievements on validated players BEFORE saving  
+      if (isJson) {
+        console.log("🔧 APPLYING league achievements to validated players before saving...");
+        const leagueData = JSON.parse(fileContent);
+        await processLeagueLevelAchievements(leagueData, validatedPlayers);
+      }
       
       // Clear existing players and add new ones
       await storage.clearPlayers();
