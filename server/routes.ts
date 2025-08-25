@@ -160,7 +160,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...p,
         achievements: [...p.achievements], // Make achievements array mutable
         careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
-        quality: p.quality ?? 50 // Ensure non-null
+        quality: p.quality ?? 50, // Ensure non-null
+        stats: p.stats ?? undefined // Fix null stats
       }));
       
       // Try to process league-level achievements (will mostly be empty due to no league data)
@@ -1040,7 +1041,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...p,
           achievements: [...p.achievements],
           careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
-          quality: p.quality ?? 50 // Ensure non-null
+          quality: p.quality ?? 50, // Ensure non-null
+          stats: p.stats ?? undefined // Fix null stats
         }));
         
         await processLeagueLevelAchievements({}, mutablePlayers);
