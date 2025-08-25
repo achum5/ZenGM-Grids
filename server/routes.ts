@@ -599,29 +599,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     });
     
-    // Apply legacy achievements using the new comprehensive variables
-    const playerByPid = new Map<number, any>();
-    players.forEach(player => {
-      if (typeof player.pid === 'number') {
-        playerByPid.set(player.pid, player);
-      }
-    });
-    
-    for (const hofPid of hallOfFamers) {
-      const player = playerByPid.get(hofPid);
-      if (player && !player.achievements.includes("Hall of Fame")) {
-        player.achievements.push("Hall of Fame");
-      }
-    }
-      
-    // All legacy award/feat processing moved to comprehensive system
-    console.log("✅ All achievements now handled by comprehensive applyRemainingAchievements system...");
-      
-      // Game feats and league leadership processing moved to comprehensive system
-      console.log("✅ Game feats and leadership processing handled by comprehensive system...");
-    
-    // Process "Teammate of All-Time Greats" (HOF players as greats) - Moved to comprehensive system
-    console.log("✅ Teammate processing moved to comprehensive applyRemainingAchievements...");
+    // All legacy processing completely replaced by comprehensive system
+    console.log("✅ All legacy achievement processing replaced by comprehensive applyRemainingAchievements system...");
     
     // Add BBGM Easter egg with curated allow-list (protect against generic inference)
     const EASTER_EGG_PIDS = new Set<number>([
