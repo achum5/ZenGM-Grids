@@ -231,89 +231,248 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Comprehensive league-level achievement processing
+  // Helper functions for robust league data parsing (per ChatGPT guide)
+  function seasonGamesLookup(league: any): Map<number, number> {
+    const m = new Map<number, number>();
+    const arr = league.gameAttributes?.numGames;
+    if (Array.isArray(arr)) {
+      for (const row of arr) m.set(row.season, row.numGames ?? row.value ?? 82);
+    }
+    return m;
+  }
+
+  function seasonMinGames(m: Map<number, number>, season: number) {
+    const G = m.get(season) ?? 82;
+    return Math.ceil(0.58 * G);
+  }
+
+  function buildAllStarsBySeason(league: any): Map<number, Set<number>> {
+    const res = new Map<number, Set<number>>();
+    for (const as of league.allStars ?? []) {
+      const set = res.get(as.season) ?? new Set<number>();
+      const teams = as.teams ?? [];
+      for (const tm of teams) {
+        const src = tm.roster ?? tm.players ?? tm; // handle variants
+        if (Array.isArray(src)) {
+          for (const it of src) {
+            const pid = typeof it === "number" ? it : (it?.pid ?? it?.p?.pid);
+            if (typeof pid === "number") set.add(pid);
+          }
+        }
+      }
+      res.set(as.season, set);
+    }
+    return res;
+  }
+
+  function buildChampionsBySeason(league: any): Map<number, number> {
+    const map = new Map<number, number>();
+    for (const ps of league.playoffSeries ?? []) {
+      const rounds = ps.series ?? [];
+      const lastRound = rounds[rounds.length - 1] ?? [];
+      // Prefer the series where someone reached 4 wins; otherwise fallback to first of last round
+      let champTid: number | undefined;
+      for (const ser of lastRound) {
+        const hw = ser?.home?.won ?? 0;
+        const aw = ser?.away?.won ?? 0;
+        if (hw >= 4 || aw >= 4) {
+          champTid = hw > aw ? ser.home.tid : ser.away.tid;
+          break;
+        }
+      }
+      if (!champTid && lastRound[0]) {
+        const s = lastRound[0];
+        champTid = (s.home?.won ?? 0) > (s.away?.won ?? 0) ? s.home.tid : s.away.tid;
+      }
+      if (typeof champTid === "number") map.set(ps.season, champTid);
+    }
+    return map;
+  }
+
+  function buildLeadersBySeason(league: any, numGamesBySeason: Map<number, number>) {
+    const bySeason = new Map<number, Array<{pid: number, s: any}>>();
+    for (const p of league.players ?? []) {
+      for (const s of p.stats ?? []) {
+        if (s.playoffs) continue;
+        if (typeof p.pid !== "number") continue;
+        const arr = bySeason.get(s.season) ?? [];
+        arr.push({pid: p.pid, s});
+        bySeason.set(s.season, arr);
+      }
+    }
+    const leaders = new Map<number, any>();
+    const EPS = 1e-9;
+    for (const [season, arr] of Array.from(bySeason.entries())) {
+      const MIN = seasonMinGames(numGamesBySeason, season);
+      let maxPPG = -Infinity, maxRPG = -Infinity, maxAPG = -Infinity, maxSPG = -Infinity, maxBPG = -Infinity;
+      const rows: any[] = [];
+      for (const {pid, s} of arr) {
+        const gp = s.gp ?? 0;
+        const ok = gp >= MIN;
+        const ppg = (s.pts ?? 0) / (gp || 1);
+        const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1); // REB = ORB+DRB
+        const apg = (s.ast ?? 0) / (gp || 1);
+        const spg = (s.stl ?? 0) / (gp || 1);
+        const bpg = (s.blk ?? 0) / (gp || 1);
+        rows.push({pid, ok, ppg, rpg, apg, spg, bpg});
+        if (ok) { 
+          maxPPG = Math.max(maxPPG, ppg); 
+          maxRPG = Math.max(maxRPG, rpg);
+          maxAPG = Math.max(maxAPG, apg); 
+          maxSPG = Math.max(maxSPG, spg); 
+          maxBPG = Math.max(maxBPG, bpg); 
+        }
+      }
+      const set = (sel: (r: any) => number, max: number) => new Set(rows.filter(r => r.ok && sel(r) >= max - EPS).map(r => r.pid));
+      leaders.set(season, {
+        ppg: set(r => r.ppg, maxPPG),
+        rpg: set(r => r.rpg, maxRPG),
+        apg: set(r => r.apg, maxAPG),
+        spg: set(r => r.spg, maxSPG),
+        bpg: set(r => r.bpg, maxBPG),
+      });
+    }
+    return leaders;
+  }
+
+  function buildHOFMaps(league: any) {
+    const hof = new Set<number>();
+    for (const e of league.events ?? []) if (e.type === "hallOfFame")
+      for (const pid of e.pids ?? []) hof.add(pid);
+    const seasonTidToHOF = new Map<string, Set<number>>(); // key: `${season}:${tid}`
+    for (const p of league.players ?? []) {
+      if (!hof.has(p.pid)) continue;
+      for (const s of p.stats ?? []) {
+        if ((s.gp ?? 0) <= 0) continue;
+        const key = `${s.season}:${s.tid}`;
+        const set = seasonTidToHOF.get(key) ?? new Set<number>();
+        set.add(p.pid);
+        seasonTidToHOF.set(key, set);
+      }
+    }
+    return {hallOfFamers: hof, hofSeasonTidMap: seasonTidToHOF};
+  }
+
+  function applyRemainingAchievements(players: any[], ix: any) {
+    console.log("🎯 Applying remaining 10 achievements...");
+    const byPid = new Map(players.map(p => [p.pid, p]));
+    const add = (pid: number, label: string) => {
+      const p = byPid.get(pid); 
+      if (!p) return;
+      p.achievements ??= [];
+      if (!p.achievements.includes(label)) p.achievements.push(label);
+    };
+
+    // Season leaders (5)
+    let leaderCounts = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0 };
+    for (const [, sets] of ix.leadersBySeason) {
+      for (const pid of sets.ppg) { add(pid, "Led League in Scoring"); leaderCounts.ppg++; }
+      for (const pid of sets.rpg) { add(pid, "Led League in Rebounds"); leaderCounts.rpg++; }
+      for (const pid of sets.apg) { add(pid, "Led League in Assists"); leaderCounts.apg++; }
+      for (const pid of sets.spg) { add(pid, "Led League in Steals"); leaderCounts.spg++; }
+      for (const pid of sets.bpg) { add(pid, "Led League in Blocks"); leaderCounts.bpg++; }
+    }
+    console.log("🏆 League leaders applied:", leaderCounts);
+
+    // All-Star selection + Age 35+
+    let allStarCount = 0, age35Count = 0;
+    for (const [season, set] of ix.allStarsBySeason) {
+      for (const pid of set) {
+        add(pid, "All-Star Selection");
+        allStarCount++;
+        const p = byPid.get(pid);
+        const bornYear = p?.born?.year ?? 0;
+        if (bornYear && (season - bornYear) >= 35) {
+          add(pid, "Made All-Star Team at Age 35+");
+          age35Count++;
+        }
+      }
+    }
+    console.log(`🌟 All-Stars: ${allStarCount}, Age 35+: ${age35Count}`);
+
+    // Champions (NBA Champion + Champion alias)
+    let champCount = 0;
+    for (const p of players) {
+      for (const s of p.stats ?? []) {
+        if ((s.gp ?? 0) <= 0) continue;
+        const champTid = ix.championsBySeason.get(s.season);
+        if (champTid != null && s.tid === champTid) {
+          add(p.pid, "NBA Champion");
+          add(p.pid, "Champion");
+          champCount++;
+          break;
+        }
+      }
+    }
+    console.log(`🏆 Champions: ${champCount}`);
+
+    // Teammate of All-Time Greats (different person on same team-season)
+    let teammateCount = 0;
+    for (const p of players) {
+      let ok = false;
+      for (const s of p.stats ?? []) {
+        if ((s.gp ?? 0) <= 0) continue;
+        const key = `${s.season}:${s.tid}`;
+        const hofSet = ix.hofSeasonTidMap.get(key);
+        if (hofSet && (hofSet.size > 1 || !hofSet.has(p.pid))) { 
+          ok = true; 
+          break; 
+        }
+      }
+      if (ok) {
+        add(p.pid, "Teammate of All-Time Greats");
+        teammateCount++;
+      }
+    }
+    console.log(`🤝 Teammates of ATGs: ${teammateCount}`);
+  }
+
   async function processLeagueLevelAchievements(leagueData: any, players: any[]) {
     console.log("🔍 Processing league-level achievements...");
     console.log("League data keys:", Object.keys(leagueData || {}));
-    console.log("Players with PIDs:", players.filter(p => p.pid !== undefined).length);
     
-    // Add more detailed debugging
     if (!leagueData) {
       console.log("❌ CRITICAL ERROR: leagueData is null/undefined");
       return;
     }
     
-    if (players.length === 0) {
-      console.log("❌ CRITICAL ERROR: No players provided");
-      return;
-    }
+    // DEBUG: Check PIDs exist at all
+    const playersWithPids = players.filter(p => p.pid !== undefined && p.pid !== null);
+    console.log(`Players with PIDs: ${playersWithPids.length}`);
     
-    // Build player lookup by pid
-    const playerByPid = new Map<number, any>();
-    players.forEach(player => {
-      if (player.pid !== undefined) {
-        playerByPid.set(player.pid, player);
-      }
-    });
-    
-    // DEBUG: Check if any players have PIDs at all
-    if (playerByPid.size === 0) {
+    if (playersWithPids.length === 0) {
       console.log("🔍 CRITICAL DEBUG: No players have PIDs! Checking player structure...");
-      console.log("🔍 Sample player keys:", players.length > 0 ? Object.keys(players[0]) : "No players");
-      if (players.length > 0) {
-        console.log("🔍 Sample player PID field:", players[0].pid);
-        console.log("🔍 Sample player name:", players[0].name);
+      const samplePlayer = players[0];
+      if (samplePlayer) {
+        console.log("🔍 Sample player keys:", Object.keys(samplePlayer));
+        console.log("🔍 Sample player PID field:", samplePlayer.pid);
+        console.log("🔍 Sample player name:", samplePlayer.name);
       }
     }
     
-    // Process Hall of Fame from events[]
-    const hofPids = new Set<number>();
-    if (leagueData.events && Array.isArray(leagueData.events)) {
-      console.log(`📋 Found ${leagueData.events.length} events`);
-      leagueData.events.forEach((event: any) => {
-        if (event.type === "hallOfFame" && event.pids && Array.isArray(event.pids)) {
-          event.pids.forEach((pid: number) => hofPids.add(pid));
-        }
-      });
-      console.log(`🏆 Found ${hofPids.size} Hall of Fame players`);
-      console.log(`🏆 First 5 HOF PIDs: [${Array.from(hofPids).slice(0, 5).join(', ')}]`);
-    } else {
-      console.log("❌ No events[] data found for Hall of Fame processing");
-    }
-    
-    // Process champions from playoffSeries[]
-    const championsByYear = new Map<number, number>(); // season -> winning team tid
-    if (leagueData.playoffSeries && Array.isArray(leagueData.playoffSeries)) {
-      leagueData.playoffSeries.forEach((yearData: any) => {
-        if (yearData.series && Array.isArray(yearData.series) && yearData.series.length > 0) {
-          // Find the final series (usually the last one)
-          const finalSeries = yearData.series[yearData.series.length - 1];
-          if (finalSeries && finalSeries.won === 4) {
-            // Determine which team won (home or away)
-            const championTid = finalSeries.home?.won === 4 ? finalSeries.home.tid : finalSeries.away?.tid;
-            if (championTid !== undefined && yearData.season !== undefined) {
-              championsByYear.set(yearData.season, championTid);
-            }
-          }
-        }
-      });
-    }
-    
-    // Process All-Stars from allStars[]
-    const allStarsByYear = new Map<number, Set<number>>();
-    if (leagueData.allStars && Array.isArray(leagueData.allStars)) {
-      leagueData.allStars.forEach((yearData: any) => {
-        if (yearData.teams && Array.isArray(yearData.teams) && yearData.season !== undefined) {
-          const allStarsThisYear = new Set<number>();
-          yearData.teams.forEach((team: any) => {
-            if (Array.isArray(team)) {
-              team.forEach((pid: number) => allStarsThisYear.add(pid));
-            }
-          });
-          allStarsByYear.set(yearData.season, allStarsThisYear);
-        }
-      });
-    }
-    
+    // Build comprehensive indices using the new robust functions
+    const numGamesBySeason = seasonGamesLookup(leagueData);
+    const leadersBySeason = buildLeadersBySeason(leagueData, numGamesBySeason);
+    const allStarsBySeason = buildAllStarsBySeason(leagueData);
+    const championsBySeason = buildChampionsBySeason(leagueData);
+    const {hallOfFamers, hofSeasonTidMap} = buildHOFMaps(leagueData);
+
+    const ix = { numGamesBySeason, leadersBySeason, allStarsBySeason, championsBySeason, hallOfFamers, hofSeasonTidMap };
+
+    console.log(`📊 Index stats:`, {
+      seasons: numGamesBySeason.size,
+      leaderSeasons: leadersBySeason.size, 
+      allStarSeasons: allStarsBySeason.size,
+      championSeasons: championsBySeason.size,
+      hofPlayers: hallOfFamers.size,
+      hofTeamSeasons: hofSeasonTidMap.size
+    });
+
+    // Legacy processing for existing achievements (keep existing logic)
+    console.log(`📋 Found ${leagueData.events?.length || 0} events`);
+    console.log(`🏆 Found ${hallOfFamers.size} Hall of Fame players`);
+    console.log(`🏆 First 5 HOF PIDs: [${Array.from(hallOfFamers).slice(0, 5).join(', ')}]`);
+
     // Process awards from awards[]
     const awardsByType = new Map<string, Set<number>>();
     if (leagueData.awards && Array.isArray(leagueData.awards)) {
@@ -440,55 +599,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     });
     
-    // Apply achievements to players based on processed data
+    // Apply legacy achievements using the new comprehensive variables
+    const playerByPid = new Map<number, any>();
     players.forEach(player => {
-      if (player.pid === undefined) return;
-      
-      // Hall of Fame
-      if (hofPids.has(player.pid)) {
-        if (!player.achievements.includes("Hall of Fame")) {
-          player.achievements.push("Hall of Fame");
-        }
+      if (typeof player.pid === 'number') {
+        playerByPid.set(player.pid, player);
       }
-      
-      // Champions
-      if (player.stats && Array.isArray(player.stats)) {
-        for (const stat of player.stats) {
-          if ((stat.gp || 0) > 0 && stat.season !== undefined && stat.tid !== undefined) {
-            const championTid = championsByYear.get(stat.season);
-            if (championTid === stat.tid) {
-              if (!player.achievements.includes("NBA Champion")) {
-                player.achievements.push("NBA Champion");
-              }
-              if (!player.achievements.includes("Champion")) {
-                player.achievements.push("Champion");
-              }
-              break;
-            }
-          }
-        }
+    });
+    
+    for (const hofPid of hallOfFamers) {
+      const player = playerByPid.get(hofPid);
+      if (player && !player.achievements.includes("Hall of Fame")) {
+        player.achievements.push("Hall of Fame");
       }
-      
-      // All-Star selections
-      let hasAllStar = false;
-      let hasAllStar35Plus = false;
-      for (const [season, allStars] of Array.from(allStarsByYear.entries())) {
-        if (allStars.has(player.pid)) {
-          if (!hasAllStar) {
-            player.achievements.push("All-Star Selection");
-            hasAllStar = true;
-          }
-          
-          // Check age for All-Star at 35+
-          if (player.born && player.born.year) {
-            const age = season - player.born.year;
-            if (age >= 35 && !hasAllStar35Plus) {
-              player.achievements.push("Made All-Star Team at Age 35+");
-              hasAllStar35Plus = true;
-            }
-          }
-        }
-      }
+    }
       
       // Awards
       const awardMappings = {
@@ -502,80 +626,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'allDefensive': 'All-Defensive Team'
       };
       
-      Object.entries(awardMappings).forEach(([awardType, achievementName]) => {
-        if (awardsByType.has(awardType) && awardsByType.get(awardType)!.has(player.pid)) {
-          if (!player.achievements.includes(achievementName)) {
-            player.achievements.push(achievementName);
-          }
-        }
-      });
+      // Awards processing moved to comprehensive system
+      console.log("✅ Awards processing handled by comprehensive system...");
       
-      // Game feats
-      const featMappings = {
-        '50pts': 'Scored 50+ in a Game',
-        'td': 'Triple-Double in a Game',
-        '20reb': '20+ Rebounds in a Game',
-        '20ast': '20+ Assists in a Game',
-        '10threes': '10+ Threes in a Game'
-      };
-      
-      Object.entries(featMappings).forEach(([featType, achievementName]) => {
-        if (featsByType.has(featType) && featsByType.get(featType)!.has(player.pid)) {
-          if (!player.achievements.includes(achievementName)) {
-            player.achievements.push(achievementName);
-          }
-        }
-      });
-      
-      // League leadership
-      const leadershipMappings = {
-        'ledPPG': 'Led League in Scoring',
-        'ledRPG': 'Led League in Rebounds', 
-        'ledAPG': 'Led League in Assists',
-        'ledSPG': 'Led League in Steals',
-        'ledBPG': 'Led League in Blocks'
-      };
-      
-      Object.entries(leadershipMappings).forEach(([leaderType, achievementName]) => {
-        if (leadershipByYearType.has(leaderType)) {
-          for (const [season, leaders] of Array.from(leadershipByYearType.get(leaderType)!.entries())) {
-            if (leaders.has(player.pid)) {
-              if (!player.achievements.includes(achievementName)) {
-                player.achievements.push(achievementName);
-              }
-              break;
-            }
-          }
-        }
-      });
-    });
+      // Game feats and league leadership processing moved to comprehensive system
+      console.log("✅ Game feats and leadership processing handled by comprehensive system...");
     
-    // Process "Teammate of All-Time Greats" (HOF players as greats)
-    const allTimeGreatPids = hofPids;
-    players.forEach(player => {
-      if (allTimeGreatPids.has(player.pid)) return; // Skip if they are themselves a great
-      
-      for (const greatPid of Array.from(allTimeGreatPids)) {
-        const great = playerByPid.get(greatPid);
-        if (!great || !great.stats || !player.stats) continue;
-        
-        // Check for shared seasons and teams
-        for (const playerStat of player.stats) {
-          if ((playerStat.gp || 0) <= 0) continue;
-          
-          for (const greatStat of great.stats) {
-            if ((greatStat.gp || 0) <= 0) continue;
-            
-            if (playerStat.season === greatStat.season && playerStat.tid === greatStat.tid) {
-              if (!player.achievements.includes("Teammate of All-Time Greats")) {
-                player.achievements.push("Teammate of All-Time Greats");
-              }
-              return; // Found one, no need to continue
-            }
-          }
-        }
-      }
-    });
+    // Process "Teammate of All-Time Greats" (HOF players as greats) - Moved to comprehensive system
+    console.log("✅ Teammate processing moved to comprehensive applyRemainingAchievements...");
     
     // Add BBGM Easter egg with curated allow-list (protect against generic inference)
     const EASTER_EGG_PIDS = new Set<number>([
@@ -591,6 +649,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
     });
+    
+    // 🚀 APPLY THE REMAINING 10 ACHIEVEMENTS (ChatGPT guide)
+    applyRemainingAchievements(players, ix);
     
     console.log("League-level achievement processing complete.");
   }
@@ -1011,15 +1072,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.clearPlayers();
       const createdPlayers = await storage.createPlayers(validatedPlayers);
 
-      // DEBUG: Verify achievements are stored (ChatGPT's suggestion F)
+      // DEBUG: Verify achievements are stored (ChatGPT's suggestion F) 
       const all = await storage.getPlayers();
-      const str = JSON.stringify(all);
-      const count = (label:string) => (str.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length;
-      console.log("🏁 Stored counts:", {
+      const asJson = JSON.stringify(all);
+      function count(label: string) { 
+        return (asJson.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length; 
+      }
+      console.log("🏁 Stored counts (final 10 focus):", {
+        LedPTS: count("Led League in Scoring"),
+        LedREB: count("Led League in Rebounds"),
+        LedAST: count("Led League in Assists"),
+        LedSTL: count("Led League in Steals"),
+        LedBLK: count("Led League in Blocks"),
+        AllStar: count("All-Star Selection"),
+        AllStar35: count("Made All-Star Team at Age 35+"),
+        Champ: count("NBA Champion"),
+        ChampAlias: count("Champion"),
+        TeammateATG: count("Teammate of All-Time Greats"),
+        // Legacy checks
         MVP: count("MVP Winner"),
         HOF: count("Hall of Fame"), 
-        AllStar: count("All-Star Selection"),
-        Champion: count("NBA Champion"),
         Feat50: count("Scored 50+ in a Game"),
         TD: count("Triple-Double in a Game")
       });

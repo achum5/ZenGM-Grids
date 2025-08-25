@@ -1,0 +1,265 @@
+Awesome—teams fixed and 50/40/90 is now showing. The remaining 10 holdouts are all “league-join” types: season leaders (5), All-Star/Champion (4), and Teammate-of-ATGs (1). Below is a copy-paste brief for Replit AI that finishes those, using robust parsing against the BBGM export.
+
+⸻
+
+COPY/PASTE FOR REPLIT AI — Finish the Last 10 Achievements (Leaders, All-Star, Champions, ATGs)
+
+Preconditions (already in place)
+	•	PID is preserved through upload/validation/save (player.pid and optionally player.id = pid).
+	•	Career totals, per-season rate checks, awards, player feats, HOF are working and saved.
+
+A) Build/repair the remaining indices at upload (before save)
+
+type Indices = {
+  numGamesBySeason: Map<number, number>;
+  leadersBySeason: Map<number, { ppg:Set<number>, rpg:Set<number>, apg:Set<number>, spg:Set<number>, bpg:Set<number> }>;
+  allStarsBySeason: Map<number, Set<number>>;
+  championsBySeason: Map<number, number>;
+  hallOfFamers: Set<number>;
+  hofSeasonTidMap: Map<string /*season:tid*/, Set<number /*hofPid*/>>;
+};
+
+A1. Season length (for min-games thresholds)
+
+function seasonGamesLookup(league: any): Map<number, number> {
+  const m = new Map<number, number>();
+  const arr = league.gameAttributes?.numGames;
+  if (Array.isArray(arr)) {
+    for (const row of arr) m.set(row.season, row.numGames ?? row.value ?? 82);
+  } else if (typeof arr === "number") {
+    // single number applied to all seasons
+  }
+  return m;
+}
+function seasonMinGames(m: Map<number, number>, season: number) {
+  const G = m.get(season) ?? 82;
+  return Math.ceil(0.58 * G);
+}
+
+A2. All-Star selections (robust to schema variants)
+
+BBGM allStars[] can have teams with roster or players arrays, or raw pid arrays. Normalize all.
+
+function buildAllStarsBySeason(league:any): Map<number, Set<number>> {
+  const res = new Map<number, Set<number>>();
+  for (const as of league.allStars ?? []) {
+    const set = res.get(as.season) ?? new Set<number>();
+    const teams = as.teams ?? [];
+    for (const tm of teams) {
+      const src = tm.roster ?? tm.players ?? tm; // handle variants
+      if (Array.isArray(src)) {
+        for (const it of src) {
+          const pid = typeof it === "number" ? it : (it?.pid ?? it?.p?.pid);
+          if (typeof pid === "number") set.add(pid);
+        }
+      }
+    }
+    res.set(as.season, set);
+  }
+  return res;
+}
+
+A3. Champions by season (finals winner; robust)
+
+playoffSeries[season].series is an array of rounds; each round is an array of series.
+
+function buildChampionsBySeason(league:any): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const ps of league.playoffSeries ?? []) {
+    const rounds = ps.series ?? [];
+    const lastRound = rounds[rounds.length - 1] ?? [];
+    // Prefer the series where someone reached 4 wins; otherwise fallback to first of last round
+    let champTid: number | undefined;
+    for (const ser of lastRound) {
+      const hw = ser?.home?.won ?? 0;
+      const aw = ser?.away?.won ?? 0;
+      if (hw >= 4 || aw >= 4) {
+        champTid = hw > aw ? ser.home.tid : ser.away.tid;
+        break;
+      }
+    }
+    if (!champTid && lastRound[0]) {
+      const s = lastRound[0];
+      champTid = (s.home?.won ?? 0) > (s.away?.won ?? 0) ? s.home.tid : s.away.tid;
+    }
+    if (typeof champTid === "number") map.set(ps.season, champTid);
+  }
+  return map;
+}
+
+A4. Leaders by season (compute from player stats; ties count)
+
+Some BBGM exports include seasonLeaders[]; don’t rely on it—compute from players[].stats[] (regular-season only).
+
+function buildLeadersBySeason(league:any, numGamesBySeason: Map<number,number>) {
+  const bySeason = new Map<number, Array<{pid:number, s:any}>>();
+  for (const p of league.players ?? []) {
+    for (const s of p.stats ?? []) {
+      if (s.playoffs) continue;
+      if (typeof p.pid !== "number") continue;
+      const arr = bySeason.get(s.season) ?? [];
+      arr.push({pid:p.pid, s});
+      bySeason.set(s.season, arr);
+    }
+  }
+  const leaders = new Map<number, any>();
+  const EPS = 1e-9;
+  for (const [season, arr] of bySeason) {
+    const MIN = seasonMinGames(numGamesBySeason, season);
+    let maxPPG=-Infinity, maxRPG=-Infinity, maxAPG=-Infinity, maxSPG=-Infinity, maxBPG=-Infinity;
+    const rows = [];
+    for (const {pid, s} of arr) {
+      const gp = s.gp ?? 0;
+      const ok = gp >= MIN;
+      const ppg = (s.pts ?? 0) / (gp || 1);
+      const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1); // REB = ORB+DRB
+      const apg = (s.ast ?? 0) / (gp || 1);
+      const spg = (s.stl ?? 0) / (gp || 1);
+      const bpg = (s.blk ?? 0) / (gp || 1);
+      rows.push({pid, ok, ppg, rpg, apg, spg, bpg});
+      if (ok) { maxPPG = Math.max(maxPPG, ppg); maxRPG = Math.max(maxRPG, rpg);
+                maxAPG = Math.max(maxAPG, apg); maxSPG = Math.max(maxSPG, spg); maxBPG = Math.max(maxBPG, bpg); }
+    }
+    const set = (sel:(r:any)=>number, max:number)=> new Set(rows.filter(r=>r.ok && sel(r)>=max-EPS).map(r=>r.pid));
+    leaders.set(season, {
+      ppg: set(r=>r.ppg, maxPPG),
+      rpg: set(r=>r.rpg, maxRPG),
+      apg: set(r=>r.apg, maxAPG),
+      spg: set(r=>r.spg, maxSPG),
+      bpg: set(r=>r.bpg, maxBPG),
+    });
+  }
+  return leaders;
+}
+
+A5. Teammate-of-ATGs helper (HOFers’ team-seasons → who overlapped with them)
+
+Require that the teammate is someone else (not the HOFer himself).
+
+function buildHOFMaps(league:any) {
+  const hof = new Set<number>();
+  for (const e of league.events ?? []) if (e.type === "hallOfFame")
+    for (const pid of e.pids ?? []) hof.add(pid);
+  const seasonTidToHOF = new Map<string, Set<number>>(); // key: `${season}:${tid}`
+  for (const p of league.players ?? []) {
+    if (!hof.has(p.pid)) continue;
+    for (const s of p.stats ?? []) {
+      if ((s.gp ?? 0) <= 0) continue;
+      const key = `${s.season}:${s.tid}`;
+      const set = seasonTidToHOF.get(key) ?? new Set<number>();
+      set.add(p.pid);
+      seasonTidToHOF.set(key, set);
+    }
+  }
+  return {hallOfFamers: hof, hofSeasonTidMap: seasonTidToHOF};
+}
+
+A6. Wire it all together at upload
+
+const numGamesBySeason   = seasonGamesLookup(leagueData);
+const leadersBySeason    = buildLeadersBySeason(leagueData, numGamesBySeason);
+const allStarsBySeason   = buildAllStarsBySeason(leagueData);
+const championsBySeason  = buildChampionsBySeason(leagueData);
+const {hallOfFamers, hofSeasonTidMap} = buildHOFMaps(leagueData);
+
+const ix: Indices = { numGamesBySeason, leadersBySeason, allStarsBySeason, championsBySeason, hallOfFamers, hofSeasonTidMap };
+
+B) Evaluators/assigners for the last 10 (apply to validatedPlayers before save)
+
+function applyRemainingAchievements(players:any[], ix:Indices) {
+  const byPid = new Map(players.map(p => [p.pid, p]));
+  const add = (pid:number, label:string) => {
+    const p = byPid.get(pid); if (!p) return;
+    p.achievements ??= [];
+    if (!p.achievements.includes(label)) p.achievements.push(label);
+  };
+
+  // B1. Season leaders (5)
+  for (const [,sets] of ix.leadersBySeason) {
+    for (const pid of sets.ppg) add(pid, "Led League in Scoring");
+    for (const pid of sets.rpg) add(pid, "Led League in Rebounds");
+    for (const pid of sets.apg) add(pid, "Led League in Assists");
+    for (const pid of sets.spg) add(pid, "Led League in Steals");
+    for (const pid of sets.bpg) add(pid, "Led League in Blocks");
+  }
+
+  // B2. All-Star selection + Age 35+
+  for (const [season, set] of ix.allStarsBySeason) {
+    for (const pid of set) {
+      add(pid, "All-Star Selection");
+      const p = byPid.get(pid);
+      const bornYear = p?.born?.year ?? 0;
+      if (bornYear && (season - bornYear) >= 35) add(pid, "Made All-Star Team at Age 35+");
+    }
+  }
+
+  // B3. Champions (NBA Champion + Champion alias)
+  for (const p of players) {
+    for (const s of p.stats ?? []) {
+      if ((s.gp ?? 0) <= 0) continue;
+      const champTid = ix.championsBySeason.get(s.season);
+      if (champTid != null && s.tid === champTid) {
+        add(p.pid, "NBA Champion");
+        add(p.pid, "Champion");
+        break;
+      }
+    }
+  }
+
+  // B4. Teammate of All-Time Greats (different person on same team-season)
+  for (const p of players) {
+    let ok = false;
+    for (const s of p.stats ?? []) {
+      if ((s.gp ?? 0) <= 0) continue;
+      const key = `${s.season}:${s.tid}`;
+      const hofSet = ix.hofSeasonTidMap.get(key);
+      if (hofSet && (hofSet.size > 1 || !hofSet.has(p.pid))) { ok = true; break; }
+    }
+    if (ok) add(p.pid, "Teammate of All-Time Greats (dynamic)");
+  }
+}
+
+Run applyRemainingAchievements(validatedPlayers, ix) right after your existing award/feats/HOF logic and before saving to storage.
+
+C) Post-save verification (explicit counts)
+
+Add these logs immediately after saving:
+
+const all = await storage.getPlayers();
+const asJson = JSON.stringify(all);
+function count(label:string){ return (asJson.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\\]\\\\]","g")}"+`,"g"))||[]).length; }
+console.log("🏁 Stored counts (final 10 focus):", {
+  LedPTS: count("Led League in Scoring"),
+  LedREB: count("Led League in Rebounds"),
+  LedAST: count("Led League in Assists"),
+  LedSTL: count("Led League in Steals"),
+  LedBLK: count("Led League in Blocks"),
+  AllStar: count("All-Star Selection"),
+  AllStar35: count("Made All-Star Team at Age 35+"),
+  Champ: count("NBA Champion"),
+  ChampAlias: count("Champion"),
+  TeammateATG: count("Teammate of All-Time Greats (dynamic)"),
+});
+
+You should see > 0 for each item in your far-future league.
+
+D) Grid generation — eligible-only, uniform
+
+Keep your “must have ≥1 players” rule, but now that populations exist:
+
+const ELIGIBLE = ACHIEVEMENTS.filter(id => population[id] >= 1);
+const chosen = uniformSample(ELIGIBLE, N);
+console.log(`🎲 Available achievements for grid generation: ${ELIGIBLE.length}/${ACHIEVEMENTS.length}`);
+
+Expect ~all 42 (minus any intentionally excluded ones like Easter egg).
+
+E) Common pitfalls to avoid
+	•	Missing PIDs on saved players → all joins fail. (You already fixed schema and routing—double-check the sample logging shows real pid values before save.)
+	•	All-Star parsing: some exports store pids under teams[].players[], others teams[].roster[], sometimes even raw numbers—handle all.
+	•	Leaders: don’t forget min games; rebounds = orb + drb; ties should count.
+	•	Champions: finals might include multiple entries; pick the one with won ≥ 4, else fallback.
+	•	ATGs: ensure the teammate is “someone else” (exclude self-only sets).
+
+⸻
+
+If you wire this exactly, you’ll unlock the remaining 10 and your “Available achievements” line should jump from 32/42 → 42/42 for this league.
