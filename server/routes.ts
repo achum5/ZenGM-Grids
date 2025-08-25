@@ -614,20 +614,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
       
-      // Awards
-      const awardMappings = {
-        'mvp': 'MVP Winner',
-        'dpoy': 'Defensive Player of the Year',
-        'roy': 'Rookie of the Year',
-        'smoy': 'Sixth Man of the Year',
-        'mip': 'Most Improved Player',
-        'finalsMvp': 'Finals MVP',
-        'allLeague': 'All-League Team',
-        'allDefensive': 'All-Defensive Team'
-      };
-      
-      // Awards processing moved to comprehensive system
-      console.log("✅ Awards processing handled by comprehensive system...");
+    // All legacy award/feat processing moved to comprehensive system
+    console.log("✅ All achievements now handled by comprehensive applyRemainingAchievements system...");
       
       // Game feats and league leadership processing moved to comprehensive system
       console.log("✅ Game feats and leadership processing handled by comprehensive system...");
