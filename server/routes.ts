@@ -158,7 +158,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert to mutable objects and try to process with empty league data
       const mutablePlayers = existingPlayers.map(p => ({
         ...p,
-        achievements: [...p.achievements] // Make achievements array mutable
+        achievements: [...p.achievements], // Make achievements array mutable
+        careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
+        quality: p.quality ?? 50 // Ensure non-null
       }));
       
       // Try to process league-level achievements (will mostly be empty due to no league data)
@@ -564,13 +566,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     // Add BBGM Easter egg with curated allow-list (protect against generic inference)
-    const EASTER_EGG_PIDS = new Set([
+    const EASTER_EGG_PIDS = new Set<number>([
       // Curated list of special BBGM-related players (can be updated as needed)
       // These are intentionally rare and hand-picked
     ]);
     
     players.forEach((player: any) => {
-      if (player.pid !== undefined && (EASTER_EGG_PIDS.has(player.pid) || 
+      if (typeof player.pid === 'number' && (EASTER_EGG_PIDS.has(player.pid) || 
           (player.name && (player.name.includes("dumbmatter") || player.name.includes("BBGM"))))) {
         if (!player.achievements.includes("BBGM Player")) {
           player.achievements.push("BBGM Player");
@@ -1036,7 +1038,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("🔧 TEMP: Processing league achievements on existing players...");
         const mutablePlayers = players.map(p => ({
           ...p,
-          achievements: [...p.achievements]
+          achievements: [...p.achievements],
+          careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
+          quality: p.quality ?? 50 // Ensure non-null
         }));
         
         await processLeagueLevelAchievements({}, mutablePlayers);
@@ -1066,23 +1070,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get unique teams and filter out inactive franchises
+      // Get unique teams from player data
       const allTeams = Array.from(new Set(players.flatMap(p => p.teams)));
+      console.log("🔧 All teams in database:", allTeams.length, "total teams");
+      console.log("🔧 Sample teams:", allTeams.slice(0, 10));
       
-      // Current active NBA teams (30 teams)
-      const activeTeams = [
-        "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets",
-        "Chicago Bulls", "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets",
-        "Detroit Pistons", "Golden State Warriors", "Houston Rockets", "Indiana Pacers",
-        "Los Angeles Clippers", "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat",
-        "Milwaukee Bucks", "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks",
-        "Oklahoma City Thunder", "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns",
-        "Portland Trail Blazers", "Portland Trailblazers", "Sacramento Kings", "San Antonio Spurs",
-        "Toronto Raptors", "Utah Jazz", "Washington Wizards"
-      ];
+      // Use all teams that have sufficient players (supports custom leagues)
+      // This ensures teams like St. Louis Spirits and Columbus Crush appear
+      const teams = allTeams.filter(team => {
+        const teamPlayerCount = players.filter(p => p.teams.includes(team)).length;
+        return teamPlayerCount >= 10; // Minimum players for a team to appear in grids
+      });
       
-      // Filter to only include active teams
-      const teams = allTeams.filter(team => activeTeams.includes(team));
+      console.log("🔧 Eligible teams for grids:", teams.length, "teams");
+      console.log("🔧 Checking for St. Louis Spirits:", teams.includes("St. Louis Spirits"));
+      console.log("🔧 Checking for Columbus Crush:", teams.includes("Columbus Crush"));
       const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
       
       // Complete list of 34 achievements for uniform sampling (as specified in brief)
