@@ -126,29 +126,19 @@ function describeAxis(type: AxisType, label: string, passed: boolean, player?: P
     return passed ? "was a 2nd round pick" : "was not a 2nd round pick";
   }
   if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
-    if (passed) return "had 20,000+ career points";
-    const actual = getActualStatValue(player, label);
-    return actual ? `did not have 20,000+ career points (${actual})` : "did not have 20,000+ career points";
+    return passed ? "had 20,000+ career points" : "did not have 20,000+ career points";
   }
   if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
-    if (passed) return "had 10,000+ career rebounds";
-    const actual = getActualStatValue(player, label);
-    return actual ? `did not have 10,000+ career rebounds (${actual})` : "did not have 10,000+ career rebounds";
+    return passed ? "had 10,000+ career rebounds" : "did not have 10,000+ career rebounds";
   }
   if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
-    if (passed) return "had 5,000+ career assists";
-    const actual = getActualStatValue(player, label);
-    return actual ? `did not have 5,000+ career assists (${actual})` : "did not have 5,000+ career assists";
+    return passed ? "had 5,000+ career assists" : "did not have 5,000+ career assists";
   }
   if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
-    if (passed) return "had 2,000+ career steals";
-    const actual = getActualStatValue(player, label);
-    return actual ? `did not have 2,000+ career steals (${actual})` : "did not have 2,000+ career steals";
+    return passed ? "had 2,000+ career steals" : "did not have 2,000+ career steals";
   }
   if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
-    if (passed) return "had 1,500+ career blocks";
-    const actual = getActualStatValue(player, label);
-    return actual ? `did not have 1,500+ career blocks (${actual})` : "did not have 1,500+ career blocks";
+    return passed ? "had 1,500+ career blocks" : "did not have 1,500+ career blocks";
   }
   if (/2,000\+?\s*made\s+threes/i.test(label)) {
     return passed ? "made 2,000+ career threes" : "did not make 2,000+ career threes";
@@ -235,9 +225,7 @@ function describeAxis(type: AxisType, label: string, passed: boolean, player?: P
     return passed ? "played 15+ seasons" : "did not play 15+ seasons";
   }
   if (/only\s+one\s+team/i.test(label)) {
-    if (passed) return "played for only one team";
-    const actual = getActualStatValue(player, label);
-    return actual ? `did not play for only one team (${actual} teams)` : "did not play for only one team";
+    return passed ? "played for only one team" : "did not play for only one team";
   }
 
   // Fallback for any unmatched criteria
