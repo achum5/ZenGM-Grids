@@ -6,11 +6,47 @@ import multer from "multer";
 import { z } from "zod";
 import { gunzip } from "zlib";
 import { promisify } from "util";
-import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria } from "@shared/schema";
-import { EligibilityChecker } from "./eligibility";
+import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria, type Player } from "@shared/schema";
+import { EligibilityChecker, buildLeadersBySeason, EVALS, auditLeaders, ACH_LEADERS } from "./eligibility";
 import { sampleUniform } from "@shared/utils/rng";
 
 const gunzipAsync = promisify(gunzip);
+
+// Global indices for leader evaluations
+let globalIndices: { leadersBySeason: Map<number, Record<string, Set<number>>> } | null = null;
+
+// Helper functions for team checks and other logic
+function didPlayForTeam(player: Player, teamName: string): boolean {
+  return player.teams.includes(teamName);
+}
+
+function getAchievementId(label: string): string | null {
+  for (const [id, config] of Object.entries(ACH_LEADERS)) {
+    if (config.label === label) return id;
+  }
+  return null;
+}
+
+function eligibleForCell(p: Player, row: any, col: any, ix: any): boolean {
+  const teamCriteria = row.type === "team" ? row : col;
+  const achievementCriteria = row.type === "achievement" ? row : col;
+  
+  const teamPass = didPlayForTeam(p, teamCriteria.value);
+  
+  // CRITICAL: Use EVALS with indices, never p.achievements.includes()
+  let critPass = false;
+  if (achievementCriteria.type === "achievement") {
+    const achievementId = getAchievementId(achievementCriteria.label);
+    if (achievementId && EVALS[achievementId] && ix) {
+      critPass = EVALS[achievementId](p, ix);
+    } else {
+      // Fallback for non-leader achievements
+      critPass = p.achievements.includes(achievementCriteria.label);
+    }
+  }
+  
+  return teamPass && critPass;
+}
 
 // Use uniform sampling for fairness
 function sample<T>(arr: T[], n: number): T[] {
@@ -1073,16 +1109,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       deriveCareerAggregates(validatedPlayers);
       assignQuality(validatedPlayers);
       
-      // Helper function for team checks
-  function didPlayForTeam(player: Player, teamName: string): boolean {
-    return player.teams.includes(teamName);
-  }
+      // D) Clear bad data (clear leader tags from previous runs)
+      const LEADER_LABELS = new Set([
+        "Led League in Scoring","Led League in Rebounds","Led League in Assists","Led League in Steals","Led League in Blocks"
+      ]);
+      
+      for (const p of validatedPlayers) {
+        if (Array.isArray(p.achievements)) {
+          p.achievements = p.achievements.filter((a: string) => !LEADER_LABELS.has(a));
+        }
+      }
+      console.log("🔧 Cleared old leader labels from achievements");
 
-  // CRITICAL FIX: Process league-level achievements on validated players BEFORE saving  
+      // CRITICAL FIX: Build leaders index and process league-level achievements
       if (isJson) {
         console.log("🔧 APPLYING league achievements to validated players before saving...");
         const leagueData = JSON.parse(fileContent);
+        
+        // Build leaders index
+        const numGamesBySeason = new Map<number, number>();
+        // Extract games per season from league data
+        for (const team of leagueData.teams ?? []) {
+          for (const s of team.seasons ?? []) {
+            if (s.gp) {
+              numGamesBySeason.set(s.season, s.gp);
+            }
+          }
+        }
+        // Default 82 games if no data found
+        if (numGamesBySeason.size === 0) {
+          console.log("🔧 No games per season data found, using default 82");
+          for (let season = 1947; season <= 2030; season++) {
+            numGamesBySeason.set(season, 82);
+          }
+        }
+        
+        // Build the leaders index
+        const leadersBySeason = buildLeadersBySeason(leagueData, numGamesBySeason);
+        globalIndices = { leadersBySeason };
+        
+        console.log(`🔧 Built leaders index: ${leadersBySeason.size} seasons`);
+        let totalLeaders = 0;
+        for (const [season, leaders] of Array.from(leadersBySeason.entries())) {
+          totalLeaders += leaders.ppg?.size ?? 0;
+          totalLeaders += leaders.rpg?.size ?? 0;
+          totalLeaders += leaders.apg?.size ?? 0;
+          totalLeaders += leaders.spg?.size ?? 0;
+          totalLeaders += leaders.bpg?.size ?? 0;
+        }
+        console.log(`🔧 Total leader entries: ${totalLeaders}`);
+        
         await processLeagueLevelAchievements(leagueData, validatedPlayers);
+        
+        // C) Audit for false leaders 
+        auditLeaders(validatedPlayers, globalIndices, ["Tiny Archibald"]);
       }
       
       // DEBUG: Verify PIDs exist before saving (ChatGPT's suggestion)
@@ -1656,26 +1736,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      // FIXED: Use proper intersection logic instead of flawed string matching
-      function eligibleForCell(p: Player, row: any, col: any): boolean {
-        const teamPass = didPlayForTeam(p, row.type === "team" ? row.value : col.value);
-        
-        // For achievement criteria, check achievements array directly
-        const achievementCriteria = row.type === "achievement" ? row : col;
-        const critPass = p.achievements.includes(achievementCriteria.label);
-        
-        return teamPass && critPass;
-      }
+      // FIXED: Use EVALS system with proper indices (never string matching)
       
-      // Get all eligible players using intersection (AND logic, not OR)
+      // Get all eligible players using intersection with proper indices
       const eligiblePlayers = players.filter(p => 
-        eligibleForCell(p, rowCriteria_item, colCriteria)
+        eligibleForCell(p, rowCriteria_item, colCriteria, globalIndices)
       );
       
-      // Debug log for verification
-      if (colCriteria.label?.includes("Led League in Blocks") || rowCriteria_item.label?.includes("Led League in Blocks")) {
-        console.log(`✅ Fixed eligibility for "Led League in Blocks": ${eligiblePlayers.length} players found`);
-        console.log(`✅ Sample eligible players:`, eligiblePlayers.slice(0, 3).map(p => p.name));
+      // Add invariant check for leader achievements  
+      const isLeaderAchievement = colCriteria.label?.includes("Led League in") || rowCriteria_item.label?.includes("Led League in");
+      if (isLeaderAchievement && globalIndices) {
+        const achievementCriteria = rowCriteria_item.type === "achievement" ? rowCriteria_item : colCriteria;
+        const achievementId = getAchievementId(achievementCriteria.label);
+        
+        if (achievementId && ACH_LEADERS[achievementId as keyof typeof ACH_LEADERS]) {
+          const key = ACH_LEADERS[achievementId as keyof typeof ACH_LEADERS].key;
+          const bogus = eligiblePlayers.filter(p => {
+            const pid = p.pid;
+            if (pid === undefined) return false;
+            // Check if player is NOT actually a leader according to the index
+            for (const sets of Array.from(globalIndices.leadersBySeason.values())) {
+              if (sets[key]?.has(pid)) return false; // Player IS a leader, so not bogus
+            }
+            return true; // Player is NOT a leader, so this is bogus
+          }).map(p => p.name);
+          
+          if (bogus.length) {
+            console.warn(`🚨 ${achievementCriteria.label} false positives:`, bogus.slice(0,5));
+          } else {
+            console.log(`✅ ${achievementCriteria.label} eligibility verified: ${eligiblePlayers.length} players`);
+          }
+        }
       }
       
       // Sort by Win Shares using the existing logic
