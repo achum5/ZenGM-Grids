@@ -1,0 +1,249 @@
+Awesome—here’s a single copy-paste brief you can give to Replit AI. It uses your attached BBGM JSON schema and spells out exactly how to compute every achievement, fix the Jokic/REB bug, and ensure all achievements are equally likely in grid generation.
+
+---
+
+COPY/PASTE FOR REPLIT AI — Accurate Achievement Logic + Fair Randomization
+
+## Ground rules (match BBGM export schema)
+
+* **Data sources** (from the league JSON):
+
+  * `players[].stats[]` (per-season, regular season when `playoffs` is falsy)
+  * `players[].awards[]` (per-player list, present in BBGM) — *useful but redundant with top-level awards; prefer top-level*
+  * `awards[]` (per-season: `mvp`, `dpoy`, `smoy`, `mip`, `roy`, `finalsMvp`, `allLeague`, `allDefensive`, `allRookie`)
+  * `allStars[]` (rosters of All-Star teams each season)
+  * `playoffSeries[]` (brackets; champion team = winner of last series in each season)
+  * `playerFeats[]` (notable single-game feats; includes boxscore fields like `pts`, `ast`, `orb`, `drb`, `tp`, and flags `td`, `qd`)
+  * `events[]` (contains `type: "hallOfFame"` entries with `pids`)
+  * `gameAttributes.numGames` (season-dependent # of games; use to set minimums)
+* **Regular season vs playoffs**
+
+  * **Career and season stats/averages**: **regular season only** (`!stats.playoffs`).
+  * **“Played for Team”** checks: **≥1 game in RS or playoffs** for that season (either counts).
+  * **Awards/All-League/All-Defensive/All-Star/Finals MVP/Champion**: use the designated sources (awards/playoffSeries/allStars).
+  * **Single-game feats**: use `playerFeats` (includes both RS and playoffs — both should count).
+* **Numeric safety**: guard divides by zero; use `Number.isFinite` checks; compare with an EPS (`1e-9`) for decimals.
+* **Season game minimums** (leaders & per-game averages):
+
+  * Compute season length `G = seasonNumGames(season)` from `gameAttributes.numGames` (pick the entry whose `start` ≤ season and closest to it; fallback 82).
+  * Define `MIN_GAMES_AVG = ceil(0.58 * G)` (mirrors common leaderboard thresholds).
+  * For rate-based achievements (e.g., 30+ PPG), require `gp ≥ MIN_GAMES_AVG`.
+* **Key field notes** (from the attached JSON):
+
+  * There is **no `trb`** counter in `stats`; **use `orb + drb`** for rebounds.
+  * Threes: makes = `tp`, attempts = `tpa`.
+  * Draft: use `draft.round` and `draft.pick` (not `roundNumber`/`overallPick`).
+  * Teams played for: `players[].statsTids` plus per-season `stats[].tid` (count **only** seasons with `gp > 0`).
+
+---
+
+## Fix the Jokic bug (career rebounds)
+
+**Bug**: career rebounds are read from a non-existent `trb` field → 0.
+**Fix**: career rebounds = **sum of `orb + drb` across all regular-season seasons**.
+
+```ts
+function careerTotalsRegularSeason(p: Player) {
+  let pts=0, ast=0, stl=0, blk=0, tp=0, orb=0, drb=0;
+  for (const s of p.stats ?? []) {
+    if (s.playoffs) continue;
+    pts += s.pts ?? 0;
+    ast += s.ast ?? 0;
+    stl += s.stl ?? 0;
+    blk += s.blk ?? 0;
+    tp  += s.tp  ?? 0;
+    orb += s.orb ?? 0;
+    drb += s.drb ?? 0;
+  }
+  const trb = orb + drb; // <-- use this
+  return {pts, trb, ast, stl, blk, tp};
+}
+```
+
+**Acceptance test**: Nikola Jokić in the provided file = **18,600** career rebounds (matches `Σ(orb+drb)`), so “10,000+ Career Rebounds” must evaluate **true**.
+
+---
+
+## Achievement definitions (implement all)
+
+### Career total thresholds (regular season totals)
+
+* **20,000+ Career Points** → `careerTotals.pts ≥ 20000`
+* **10,000+ Career Rebounds** → `careerTotals.trb ≥ 10000` (**trb = orb + drb**)
+* **5,000+ Career Assists** → `careerTotals.ast ≥ 5000`
+* **2,000+ Career Steals** → `careerTotals.stl ≥ 2000`
+* **1,500+ Career Blocks** → `careerTotals.blk ≥ 1500`
+* **2,000+ Made Threes** → `careerTotals.tp ≥ 2000`
+
+```ts
+// Use the helper above once per player, cache results.
+```
+
+### Single-season per-game thresholds (regular season, with min games)
+
+For any **single** regular season `s` (with `s.gp ≥ MIN_GAMES_AVG(season)`):
+
+* **Averaged 30+ PPG in a Season** → `s.pts / s.gp ≥ 30`
+* **Averaged 10+ APG in a Season** → `s.ast / s.gp ≥ 10`
+* **Averaged 15+ RPG in a Season** → `(s.orb + s.drb) / s.gp ≥ 15`
+* **Averaged 3+ BPG in a Season** → `s.blk / s.gp ≥ 3`
+* **Averaged 2.5+ SPG in a Season** → `s.stl / s.gp ≥ 2.5`
+
+**50/40/90 in a Season** (with reasonable attempt floors to avoid noise—tuneable constants):
+
+* Require: `s.fga ≥ 300`, `s.tpa ≥ 82`, `s.fta ≥ 125`
+* Then: `fg% = s.fg/s.fga ≥ .500`, `3p% = s.tp/s.tpa ≥ .400`, `ft% = s.ft/s.fta ≥ .900`
+
+```ts
+const MIN_FGA=300, MIN_TPA=82, MIN_FTA=125;
+function has504090(s: StatSeason) {
+  if (s.fga < MIN_FGA || s.tpa < MIN_TPA || s.fta < MIN_FTA) return false;
+  const fg = (s.fg / s.fga) >= 0.5 - 1e-9;
+  const tp = (s.tp / s.tpa) >= 0.4 - 1e-9;
+  const ft = (s.ft / s.fta) >= 0.9 - 1e-9;
+  return fg && tp && ft;
+}
+```
+
+### Led League in X (any season; regular season per-game leaders with min games)
+
+For each season `t`, compute league leaders among players with `gp ≥ MIN_GAMES_AVG(t)`:
+
+* **Led League in Scoring** → max of `pts/gp`
+* **Led League in Rebounds** → max of `(orb+drb)/gp`
+* **Led League in Assists** → max `ast/gp`
+* **Led League in Steals** → max `stl/gp`
+* **Led League in Blocks** → max `blk/gp`
+
+**Ties count as leading.** Build an index once per season for performance.
+
+```ts
+function leadersBySeason(players: Player[]): Map<number, {ppg: Set<pid>, rpg: Set<pid>, apg: Set<pid>, spg: Set<pid>, bpg: Set<pid>}> { /* scan players.stats */ }
+function ledLeague(playerPid: number, cat: 'ppg'|'rpg'|'apg'|'spg'|'bpg') {
+  for (const [season, leaders] of leadersIndex) if (leaders[cat].has(playerPid)) return true;
+  return false;
+}
+```
+
+### Game Performance Feats (use `playerFeats`)
+
+Any record in `playerFeats` for that player satisfies:
+
+* **Scored 50+ in a Game** → `feat.stats.pts ≥ 50`
+* **Triple-Double in a Game** → `feat.stats.td > 0` **OR** `(≥10 in at least 3 categories)` if you prefer robust check
+* **20+ Rebounds in a Game** → `(feat.stats.orb + feat.stats.drb) ≥ 20`
+* **20+ Assists in a Game** → `feat.stats.ast ≥ 20`
+* **10+ Threes in a Game** → `feat.stats.tp ≥ 10`
+
+> If you ever add raw box scores, you can compute feats directly; for now `playerFeats` is the correct source.
+
+### Major awards (use `awards[]`)
+
+Player satisfies if their `pid` appears in the corresponding `awards[season]` entry **any season**:
+
+* **MVP Winner** → `awards[m].mvp.pid === pid`
+* **Defensive Player of the Year** → `awards[m].dpoy.pid === pid`
+* **Rookie of the Year** → `awards[m].roy.pid === pid`
+* **Sixth Man of the Year** → `awards[m].smoy.pid === pid`
+* **Most Improved Player** → `awards[m].mip.pid === pid`
+* **Finals MVP** → `awards[m].finalsMvp.pid === pid`
+
+### Teams of the year (use `awards[]`)
+
+* **All-League Team** → player appears in any `awards[m].allLeague[k].players[].pid`
+* **All-Defensive Team** → player appears in any `awards[m].allDefensive[k].players[].pid`
+
+### All-Star (use `allStars[]`)
+
+* **All-Star Selection** → player `pid` is present in `allStars[m].teams[0/1]` arrays for any season.
+
+### Champion (title winner; use `playoffSeries[]` + player’s season team)
+
+* **NBA Champion / Champion** → Determine champion team for each season `m` by reading the **last series** in `playoffSeries[m].series` and taking the team (home/away) with `won === 4`. A player is a champion that year if **any** of their `stats` entries for season `m` (RS or playoffs) have `tid === championTid` **and** `gp > 0`.
+
+```ts
+function championsBySeason(series: PlayoffSeries[]): Map<number, number /*championTid*/> { /* final round winner */ }
+function isChampion(p: Player) {
+  for (const s of p.stats ?? []) {
+    if (s.gp <= 0) continue;
+    const champ = champions.get(s.season);
+    if (champ != null && s.tid === champ) return true;
+  }
+  return false;
+}
+```
+
+### Career length & draft (use `players[].stats[]` and `players[].draft`)
+
+* **Played 15+ Seasons** → count **distinct seasons** in regular season stats with `gp > 0` → `≥ 15`.
+* **#1 Overall Draft Pick** → `draft.round === 1 && draft.pick === 1`.
+  *Fix the prior bug that treated “first pick of any round” as valid.*
+* **Undrafted Player** → `draft.round === 0` **or** `draft.pick === 0` **or** `draft.tid < 0` (covers BBGM undrafted semantics).
+* **First Round Pick** → `draft.round === 1`
+* **2nd Round Pick** → `draft.round === 2`
+
+### Special categories
+
+* **Made All-Star Team at Age 35+**
+  For each `allStars[m]` where the player appears, compute approximate age: `age = m - player.born.year`. True if `age ≥ 35`. (JSON only includes `born.year`, so month/day precision isn’t available.)
+* **Only One Team**
+  Compute the set of team IDs for seasons with `gp > 0` from `players[].stats[]` (or `new Set(players[].statsTids)` filtered by years with games). True if set size === 1. (Franchise relocations keep the same `tid` in BBGM.)
+* **Hall of Fame**
+  Build a set of HOF `pids` from `events[]` where `type === "hallOfFame"`. True if player’s `pid` is in that set.
+* **Teammate of All-Time Greats (dynamic)**
+  Define “All-Time Greats” = **Hall of Famers** (from the event set above). Build a set of `(season, tid)` pairs for all HOFers with `gp > 0`. A player satisfies if **any** of their `(season, tid)` pairs (with `gp > 0`) intersects that set.
+* **BBGM Player (Easter egg — extremely rare)**
+  Protect with a **curated allow-list** (`EASTER_EGG_PIDS` or name hashes) maintained in code. Return true **only** if `pid` in that allow-list. Do **not** infer from `real` or other generic fields.
+
+---
+
+## Modal wording (incorrect guesses only)
+
+* Keep just **one sentence** with ✅/❌ and natural phrasing.
+* Use templates for **every single achievement** so it reads correctly (e.g., “didn’t play for the X”, “was not a first overall pick”, “did not have 20,000+ points”, “did not average 15+ RPG in a season”, etc.).
+* (Already implemented per our earlier brief; ensure it covers **all** achievements, not just examples.)
+
+---
+
+## Ensure every achievement can appear (fair grid generation)
+
+1. **Define the catalog exactly once** (no hidden filters):
+
+```ts
+const ACHIEVEMENTS: readonly string[] = [
+  "20kPoints","10kReb","5kAst","2kStl","1_5kBlk","2kThrees",
+  "30ppgSeason","10apgSeason","15rpgSeason","3bpgSeason","2_5spgSeason","504090Season",
+  "LedPTS","LedREB","LedAST","LedSTL","LedBLK",
+  "Game50Pts","GameTripleDouble","Game20Reb","Game20Ast","Game10Threes",
+  "MVP","DPOY","ROY","SMOY","MIP","FinalsMVP",
+  "AllLeague","AllDefensive","AllStar","Champion",
+  "Seasons15Plus","#1Overall","Undrafted","Round1","Round2",
+  "AllStar35Plus","OnlyOneTeam","HallOfFame","TeammateOfHOF","BBGM_EasterEgg"
+];
+```
+
+2. **Uniform sampling**: when generating a grid, select from `ACHIEVEMENTS` with **equal probability** (e.g., `shuffle([...ACHIEVEMENTS]).slice(n)`), unless you intentionally disable the Easter egg in production (then remove it from the array).
+3. **Do not** bias by recent frequency; **do not** silently skip items because of data availability. If a particular league seed has zero matches for a criterion, it’s still a valid column/row—the grid can be hard, that’s fine.
+
+---
+
+## Test cases (must pass)
+
+* **Jokić career rebounds**: evaluates true for “10,000+ Career Rebounds” (18,600 from `orb+drb`).
+* **#1 Overall Pick**: only `draft.round===1 && draft.pick===1` passes (Round-2 Pick-1 fails).
+* **50/40/90**: a season with 0 threes or 10 FTAs cannot qualify due to attempt floors.
+* **Leaders**: A player tied for most `ppg` with `gp ≥ MIN_GAMES_AVG` counts as “Led League in Scoring.”
+* **Champion**: a mid-season trade to the champs counts if `gp > 0` with the champion team in that season.
+* **All-Star 35+**: uses `season - born.year ≥ 35`.
+* **Only One Team**: exactly one distinct `tid` with games across career.
+* **Hall of Fame / Teammate of HOF**: derived from `events[type="hallOfFame"]`.
+
+---
+
+## Implementation notes
+
+* Build reusable helpers: `careerTotalsRegularSeason`, `seasonNumGames`, `minGames(season)`, `ledLeagueIndex`, `isChampion`, `has504090`, `hasFeat`, `playedForTeam(season, tid)` (RS or playoffs), `playedAnyForTeam(tid)` (career).
+* Cache per-season leader indices and HOF sets once at load; reuse for all evaluations.
+* When composing the modal sentence, **don’t** show the old bullet list—only the single sentence.
+
+— End brief —
