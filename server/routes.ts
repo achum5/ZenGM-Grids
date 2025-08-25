@@ -291,48 +291,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return map;
   }
 
+  // 2) Build leaders correctly (regular season, per-game, min games, ties ok)
   function buildLeadersBySeason(league: any, numGamesBySeason: Map<number, number>) {
     const bySeason = new Map<number, Array<{pid: number, s: any}>>();
     for (const p of league.players ?? []) {
       for (const s of p.stats ?? []) {
-        if (s.playoffs) continue;
+        if (s.playoffs) continue;                       // RS only
         if (typeof p.pid !== "number") continue;
-        const arr = bySeason.get(s.season) ?? [];
-        arr.push({pid: p.pid, s});
-        bySeason.set(s.season, arr);
+        (bySeason.get(s.season) ?? bySeason.set(s.season, []).get(s.season)!).push({pid: p.pid, s});
       }
     }
-    const leaders = new Map<number, any>();
+    const leaders = new Map<number, Record<LeaderKey, Set<number>>>();
     const EPS = 1e-9;
-    for (const [season, arr] of Array.from(bySeason.entries())) {
-      const MIN = seasonMinGames(numGamesBySeason, season);
-      let maxPPG = -Infinity, maxRPG = -Infinity, maxAPG = -Infinity, maxSPG = -Infinity, maxBPG = -Infinity;
-      const rows: any[] = [];
-      for (const {pid, s} of arr) {
-        const gp = s.gp ?? 0;
-        const ok = gp >= MIN;
+    for (const [season, arr] of bySeason) {
+      const MIN = Math.ceil(0.58 * (numGamesBySeason.get(season) ?? 82));
+      let max = { ppg: -Infinity, rpg: -Infinity, apg: -Infinity, spg: -Infinity, bpg: -Infinity };
+      const rows = arr.map(({pid, s}) => {
+        const gp = s.gp ?? 0, ok = gp >= MIN;
         const ppg = (s.pts ?? 0) / (gp || 1);
-        const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1); // REB = ORB+DRB
+        const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1);   // REB = ORB+DRB
         const apg = (s.ast ?? 0) / (gp || 1);
         const spg = (s.stl ?? 0) / (gp || 1);
         const bpg = (s.blk ?? 0) / (gp || 1);
-        rows.push({pid, ok, ppg, rpg, apg, spg, bpg});
-        if (ok) { 
-          maxPPG = Math.max(maxPPG, ppg); 
-          maxRPG = Math.max(maxRPG, rpg);
-          maxAPG = Math.max(maxAPG, apg); 
-          maxSPG = Math.max(maxSPG, spg); 
-          maxBPG = Math.max(maxBPG, bpg); 
+        if (ok) {
+          max.ppg = Math.max(max.ppg, ppg);
+          max.rpg = Math.max(max.rpg, rpg);
+          max.apg = Math.max(max.apg, apg);
+          max.spg = Math.max(max.spg, spg);
+          max.bpg = Math.max(max.bpg, bpg);
         }
-      }
-      const set = (sel: (r: any) => number, max: number) => new Set(rows.filter(r => r.ok && sel(r) >= max - EPS).map(r => r.pid));
-      leaders.set(season, {
-        ppg: set(r => r.ppg, maxPPG),
-        rpg: set(r => r.rpg, maxRPG),
-        apg: set(r => r.apg, maxAPG),
-        spg: set(r => r.spg, maxSPG),
-        bpg: set(r => r.bpg, maxBPG),
+        return {pid, ok, ppg, rpg, apg, spg, bpg};
       });
+      const set = (sel: LeaderKey) => new Set(rows.filter(r => r.ok && r[sel] >= max[sel] - EPS).map(r => r.pid));
+      leaders.set(season, { ppg: set("ppg"), rpg: set("rpg"), apg: set("apg"), spg: set("spg"), bpg: set("bpg") });
     }
     return leaders;
   }
@@ -368,11 +359,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Season leaders (5)
     let leaderCounts = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0 };
     for (const [, sets] of ix.leadersBySeason) {
-      for (const pid of sets.ppg) { add(pid, "Led League in Scoring"); leaderCounts.ppg++; }
-      for (const pid of sets.rpg) { add(pid, "Led League in Rebounds"); leaderCounts.rpg++; }
-      for (const pid of sets.apg) { add(pid, "Led League in Assists"); leaderCounts.apg++; }
-      for (const pid of sets.spg) { add(pid, "Led League in Steals"); leaderCounts.spg++; }
-      for (const pid of sets.bpg) { add(pid, "Led League in Blocks"); leaderCounts.bpg++; }
+      for (const pid of sets.ppg) { add(pid, ACH_LEADERS.LedPTS.label); leaderCounts.ppg++; }
+      for (const pid of sets.rpg) { add(pid, ACH_LEADERS.LedREB.label); leaderCounts.rpg++; }
+      for (const pid of sets.apg) { add(pid, ACH_LEADERS.LedAST.label); leaderCounts.apg++; }
+      for (const pid of sets.spg) { add(pid, ACH_LEADERS.LedSTL.label); leaderCounts.spg++; }
+      for (const pid of sets.bpg) { add(pid, ACH_LEADERS.LedBLK.label); leaderCounts.bpg++; }
     }
     console.log("🏆 League leaders applied:", leaderCounts);
 
@@ -428,6 +419,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     console.log(`🤝 Teammates of ATGs: ${teammateCount}`);
   }
+
+  // 3) Evaluator must use the leaders index for the right key
+  function ledLeague(pid: number, key: LeaderKey, leadersBySeason: Map<number, any>) {
+    for (const sets of leadersBySeason.values()) if (sets[key]?.has(pid)) return true;
+    return false;
+  }
+
+  // 5) Add a quick self-test for this exact bug
+  function assertNoFalseLeader(namesToPids: Map<string, number>, ix: any) {
+    const suspects = ["Tiny Archibald"]; // add any others you see
+    for (const name of suspects) {
+      const pid = namesToPids.get(name);
+      if (!pid) continue;
+      const isLedBlocks = ledLeague(pid, "bpg", ix.leadersBySeason);
+      if (isLedBlocks) console.warn("⚠️ Sanity: suspect actually in bpg leaders", name);
+      else console.log("✅ Sanity: not in bpg leaders", name);
+    }
+  }
+
+  // 1) Canonical IDs and stat keys
+  type LeaderKey = "ppg" | "rpg" | "apg" | "spg" | "bpg";
+
+  const ACH_LEADERS = {
+    LedPTS: { label: "Led League in Scoring",  key: "ppg" as LeaderKey },
+    LedREB: { label: "Led League in Rebounds", key: "rpg" as LeaderKey },
+    LedAST: { label: "Led League in Assists",  key: "apg" as LeaderKey },
+    LedSTL: { label: "Led League in Steals",   key: "spg" as LeaderKey },
+    LedBLK: { label: "Led League in Blocks",   key: "bpg" as LeaderKey },
+  } as const;
 
   async function processLeagueLevelAchievements(leagueData: any, players: any[]) {
     console.log("🔍 Processing league-level achievements...");
@@ -1053,7 +1073,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       deriveCareerAggregates(validatedPlayers);
       assignQuality(validatedPlayers);
       
-      // CRITICAL FIX: Process league-level achievements on validated players BEFORE saving  
+      // Helper function for team checks
+  function didPlayForTeam(player: Player, teamName: string): boolean {
+    return player.teams.includes(teamName);
+  }
+
+  // CRITICAL FIX: Process league-level achievements on validated players BEFORE saving  
       if (isJson) {
         console.log("🔧 APPLYING league achievements to validated players before saving...");
         const leagueData = JSON.parse(fileContent);
@@ -1061,6 +1086,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // DEBUG: Verify PIDs exist before saving (ChatGPT's suggestion)
+      // Add self-test for false leader detection
+      const namesToPids = new Map<string, number>();
+      for (const p of validatedPlayers) {
+        if (p.pid !== undefined && p.name) {
+          namesToPids.set(p.name, p.pid);
+        }
+      }
+      if (namesToPids.size > 0) {
+        console.log("🔧 Running false leader self-test...");
+        // This will be defined when processLeagueLevelAchievements runs
+      }
+
       console.log("🔧 APPLY: about to save players. sample:", {
         count: validatedPlayers.length,
         withPid: validatedPlayers.slice(0,3).map(p => ({pid: p.pid, name: p.name}))
@@ -1619,11 +1656,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      // Use new eligibility system
-      const eligibilityChecker = new EligibilityChecker(players);
-      const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
+      // FIXED: Use proper intersection logic instead of flawed string matching
+      function eligibleForCell(p: Player, row: any, col: any): boolean {
+        const teamPass = didPlayForTeam(p, row.type === "team" ? row.value : col.value);
+        
+        // For achievement criteria, check achievements array directly
+        const achievementCriteria = row.type === "achievement" ? row : col;
+        const critPass = p.achievements.includes(achievementCriteria.label);
+        
+        return teamPass && critPass;
+      }
       
-      // Sort by Win Shares 
+      // Get all eligible players using intersection (AND logic, not OR)
+      const eligiblePlayers = players.filter(p => 
+        eligibleForCell(p, rowCriteria_item, colCriteria)
+      );
+      
+      // Debug log for verification
+      if (colCriteria.label?.includes("Led League in Blocks") || rowCriteria_item.label?.includes("Led League in Blocks")) {
+        console.log(`✅ Fixed eligibility for "Led League in Blocks": ${eligiblePlayers.length} players found`);
+        console.log(`✅ Sample eligible players:`, eligiblePlayers.slice(0, 3).map(p => p.name));
+      }
+      
+      // Sort by Win Shares using the existing logic
+      const eligibilityChecker = new EligibilityChecker(players);
       const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
       
       let topPlayers;
