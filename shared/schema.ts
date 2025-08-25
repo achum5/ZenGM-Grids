@@ -6,6 +6,7 @@ import { z } from "zod";
 export const players = pgTable("players", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  pid: integer("pid"), // BBGM player ID for league achievement matching
   teams: jsonb("teams").$type<string[]>().notNull(),
   years: jsonb("years").$type<{ team: string; start: number; end: number }[]>().notNull(),
   achievements: jsonb("achievements").$type<string[]>().notNull(),
@@ -45,6 +46,7 @@ export const uploadedFiles = pgTable("uploaded_files", {
 
 export const insertPlayerSchema = z.object({
   name: z.string().min(1),
+  pid: z.number().nullable().optional(), // BBGM player ID for league achievement matching
   teams: z.array(z.string()).default([]),
   years: z.array(z.object({
     team: z.string(),

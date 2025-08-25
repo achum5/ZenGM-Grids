@@ -1,0 +1,204 @@
+TL;DR (root cause)
+
+Upload flow validates/transforms players, but drops p.pid (or saves a different array than the one we mutate).
+
+All league-level achievements rely on pid to join with awards[], allStars[], playerFeats[], events[] (HOF).
+
+Result: populations for 24 achievements stay 0, so they never enter the eligible pool.
+
+A) Player ingestion — preserve pid (and alias to id if needed)
+
+In the upload route (the real one: /api/upload), when you build validatedPlayers, carry through the BBGM pid into storage. If your app expects id, set both:
+
+function normalizePlayer(bb: any) {
+  const pid = bb.pid;                         // REQUIRED
+  return {
+    // keep whatever fields you already use...
+    pid,                                      // <- preserve
+    id: pid,                                  // <- alias if the app uses .id elsewhere
+    name: bb.firstName && bb.lastName ? `${bb.firstName} ${bb.lastName}` : bb.name,
+    born: bb.born,
+    draft: bb.draft,
+    stats: bb.stats,                          // include RS & playoffs rows as in file
+    // achievements will be added later
+  };
+}
+
+
+Do not reassign your own auto IDs for players. If you must, still keep pid intact and use it for all joins.
+
+After you build validatedPlayers, that is the array we must mutate with achievements and save:
+
+const leagueData = parsedFromUpload; // full JSON
+
+const validatedPlayers = leagueData.players.map(normalizePlayer);
+
+// Build indices from leagueData (see Section C)
+const ix = buildIndices(leagueData);
+
+// Apply achievements TO validatedPlayers (by pid) BEFORE saving
+applyLeagueAchievements(validatedPlayers, ix);
+
+// Now save validatedPlayers (not a stale pre-mutation copy)
+await storage.replacePlayers(validatedPlayers);
+
+B) Smoking-gun logs (prove pid exists before save)
+
+Right before replacePlayers:
+
+console.log("🔧 APPLY: about to save players. sample:", {
+  count: validatedPlayers.length,
+  withPid: validatedPlayers.slice(0,3).map(p => ({pid: p.pid, id: p.id, name: p.name}))
+});
+
+
+If you ever see pid: undefined here, stop—the join will fail.
+
+C) Build league indices (once per upload)
+
+(You already have this; ensure it keys by pid everywhere.)
+
+type Indices = {
+  careerTotals: Map<number, {pts:number,trb:number,ast:number,stl:number,blk:number,tp:number}>;
+  leadersBySeason: Map<number, {ppg:Set<number>, rpg:Set<number>, apg:Set<number>, spg:Set<number>, bpg:Set<number>}>;
+  awards: {
+    mvp:Set<number>, dpoy:Set<number>, roy:Set<number>, smoy:Set<number>, mip:Set<number>, finalsMvp:Set<number>,
+    allLeague:Set<number>, allDefensive:Set<number>
+  };
+  allStarsBySeason: Map<number, Set<number>>;
+  championsBySeason: Map<number, number>;   // season -> champTid
+  hallOfFamers: Set<number>;
+  hofSeasonTidPairs: Set<string>;           // `${season}:${tid}` for any HOFer with gp>0 that year
+  featsByPid: Map<number, any[]>;           // from playerFeats[]
+  numGamesBySeason: Map<number, number>;
+};
+
+
+Rebounds = orb + drb (fixes Jokić). Build career totals from regular season rows only (!s.playoffs).
+
+D) Apply achievements to the validatedPlayers by pid
+
+Use a Set to avoid duplicates; write back to player.achievements as a string[] before save.
+
+function applyLeagueAchievements(players: any[], ix: Indices) {
+  const byPid = new Map(players.map(p => [p.pid, p]));
+
+  // helper to add
+  const add = (pid:number, ach:string) => {
+    const p = byPid.get(pid);
+    if (!p) return;
+    p.achievements ??= [];
+    const set = new Set(p.achievements);
+    set.add(ach);
+    p.achievements = [...set];
+  };
+
+  // ---- Awards (examples) ----
+  for (const pid of ix.awards.mvp)       add(pid, "MVP Winner");
+  for (const pid of ix.awards.dpoy)      add(pid, "Defensive Player of the Year");
+  for (const pid of ix.awards.roy)       add(pid, "Rookie of the Year");
+  for (const pid of ix.awards.smoy)      add(pid, "Sixth Man of the Year");
+  for (const pid of ix.awards.mip)       add(pid, "Most Improved Player");
+  for (const pid of ix.awards.finalsMvp) add(pid, "Finals MVP");
+  for (const pid of ix.awards.allLeague) add(pid, "All-League Team");
+  for (const pid of ix.awards.allDefensive) add(pid, "All-Defensive Team");
+
+  // ---- All-Star ----
+  for (const [, set] of ix.allStarsBySeason)
+    for (const pid of set) add(pid, "All-Star Selection");
+
+  // ---- Hall of Fame ----
+  for (const pid of ix.hallOfFamers) add(pid, "Hall of Fame");
+
+  // ---- Game feats ----
+  for (const [pid, feats] of ix.featsByPid) {
+    for (const f of feats) {
+      const reb = (f.orb ?? 0) + (f.drb ?? 0);
+      if ((f.pts ?? 0) >= 50) add(pid, "Scored 50+ in a Game");
+      if ((f.td ?? 0) > 0 || count10s([f.pts, reb, f.ast, f.stl, f.blk]) >= 3)
+        add(pid, "Triple-Double in a Game");
+      if (reb >= 20) add(pid, "20+ Rebounds in a Game");
+      if ((f.ast ?? 0) >= 20) add(pid, "20+ Assists in a Game");
+      if ((f.tp  ?? 0) >= 10) add(pid, "10+ Threes in a Game");
+    }
+  }
+
+  // ---- Champion (join by season/tid) ----
+  for (const p of players) {
+    const stats = p.stats ?? [];
+    if (stats.some(s => (s.gp ?? 0) > 0 && ix.championsBySeason.get(s.season) === s.tid)) {
+      add(p.pid, "NBA Champion");
+      add(p.pid, "Champion"); // if you show both
+    }
+  }
+
+  // ---- Age >= 35 All-Star ----
+  for (const p of players) {
+    const bornYear = p.born?.year ?? 0;
+    for (const [season, set] of ix.allStarsBySeason) {
+      if (set.has(p.pid) && season - bornYear >= 35) {
+        add(p.pid, "Made All-Star Team at Age 35+");
+        break;
+      }
+    }
+  }
+
+  // ---- Only One Team ----
+  for (const p of players) {
+    const tids = new Set<number>();
+    for (const s of p.stats ?? []) if ((s.gp ?? 0) > 0) tids.add(s.tid);
+    if (tids.size === 1) add(p.pid, "Only One Team");
+  }
+}
+
+function count10s(arr:any[]) {
+  let n=0;
+  for (const v of arr) if ((v ?? 0) >= 10) n++;
+  return n;
+}
+
+
+Per-season rates, leaders, 50/40/90, draft, career totals should already be computed in your EVALS—keep those where they are; the key is pid now matches.
+
+E) Save, then verify with hard counts
+
+Immediately after replacePlayers(validatedPlayers):
+
+const all = await storage.getPlayers();
+const str = JSON.stringify(all);
+const count = (label:string) => (str.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length);
+
+console.log("🏁 Stored counts:",
+  { MVP: count("MVP Winner"),
+    HOF: count("Hall of Fame"),
+    AllStar: count("All-Star Selection"),
+    Champion: count("NBA Champion"),
+    Feat50: count("Scored 50+ in a Game"),
+    TD: count("Triple-Double in a Game") }
+);
+
+
+If any of these remain 0 in your far-future league, the join is still broken—check that pid is present on players and matches the ids in awards/allStars/playerFeats/events.
+
+F) Grid generation — eligible achievements only, uniformly
+
+Once populations are computed from stored players:
+
+const ELIGIBLE = ACHIEVEMENTS.filter(id => population[id] >= 1); // keep your “must have ≥1” rule
+const selection = uniformSample(ELIGIBLE, n);
+
+
+Add a log once per grid build:
+
+console.log(`🎲 Available achievements for grid generation: ${ELIGIBLE.length}/${ACHIEVEMENTS.length}`);
+
+
+You should see this jump from 18/42 to the full set (minus any intentionally excluded Easter egg).
+
+G) Quick checklist (what to look for in logs)
+
+🔧 APPLY: about to save players. sample: ... pid: ### → pid present
+
+🏁 Stored counts: { MVP: >0, HOF: >0, AllStar: >0, Champion: >0, Feat50: >0, TD: >0 }
+
+🎲 Available achievements for grid generation: → now high (not stuck at 18/42)

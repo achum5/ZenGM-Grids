@@ -660,6 +660,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Transform BBGM player data to our format
         players = rawPlayers.map((player: any) => {
+          // DEBUG: Check if PID exists in raw BBGM data
+          if (rawPlayers.indexOf(player) < 3) {
+            console.log(`🔍 RAW PLAYER DEBUG #${rawPlayers.indexOf(player)}:`, {
+              pid: player.pid,
+              name: player.firstName && player.lastName ? `${player.firstName} ${player.lastName}` : player.name,
+              hasStats: !!player.stats,
+              keys: Object.keys(player).slice(0, 10)
+            });
+          }
           const name = player.firstName && player.lastName 
             ? `${player.firstName} ${player.lastName}` 
             : player.name || "Unknown Player";
@@ -895,6 +904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           return {
             name,
+            pid: player.pid || undefined, // CRITICAL: Preserve PID for league achievement matching
             teams: Array.from(allTeams),
             years,
             achievements,
@@ -991,9 +1001,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await processLeagueLevelAchievements(leagueData, validatedPlayers);
       }
       
+      // DEBUG: Verify PIDs exist before saving (ChatGPT's suggestion)
+      console.log("🔧 APPLY: about to save players. sample:", {
+        count: validatedPlayers.length,
+        withPid: validatedPlayers.slice(0,3).map(p => ({pid: p.pid, name: p.name}))
+      });
+      
       // Clear existing players and add new ones
       await storage.clearPlayers();
       const createdPlayers = await storage.createPlayers(validatedPlayers);
+
+      // DEBUG: Verify achievements are stored (ChatGPT's suggestion F)
+      const all = await storage.getPlayers();
+      const str = JSON.stringify(all);
+      const count = (label:string) => (str.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length;
+      console.log("🏁 Stored counts:", {
+        MVP: count("MVP Winner"),
+        HOF: count("Hall of Fame"), 
+        AllStar: count("All-Star Selection"),
+        Champion: count("NBA Champion"),
+        Feat50: count("Scored 50+ in a Game"),
+        TD: count("Triple-Double in a Game")
+      });
 
       // Extract teams and achievements for frontend
       const teamNames = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
