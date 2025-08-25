@@ -142,6 +142,46 @@ const answerSchema = z.object({
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Debug endpoint to manually process league-level achievements on existing data
+  app.post("/api/debug/process-league-achievements", async (req, res) => {
+    try {
+      console.log("🔧 DEBUG: Manually processing league-level achievements...");
+      
+      // Get all existing players
+      const existingPlayers = await storage.getPlayers();
+      console.log(`Found ${existingPlayers.length} existing players`);
+      
+      if (existingPlayers.length === 0) {
+        return res.json({ message: "No existing players to process" });
+      }
+      
+      // Convert to mutable objects and try to process with empty league data
+      const mutablePlayers = existingPlayers.map(p => ({
+        ...p,
+        achievements: [...p.achievements] // Make achievements array mutable
+      }));
+      
+      // Try to process league-level achievements (will mostly be empty due to no league data)
+      await processLeagueLevelAchievements({}, mutablePlayers);
+      
+      // Update storage with any changes
+      console.log("Updating players with league-level achievements...");
+      await storage.clearPlayers();
+      for (const player of mutablePlayers) {
+        await storage.createPlayer(player);
+      }
+      
+      res.json({ 
+        message: "League-level achievement processing complete",
+        playersProcessed: mutablePlayers.length 
+      });
+      
+    } catch (error: any) {
+      console.error("Debug processing error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Upload league file from URL
   app.post("/api/upload-url", async (req, res) => {
     console.log("🚀 URL UPLOAD STARTED (/api/upload-url)");
@@ -862,6 +902,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await processLeagueLevelAchievements(data, players);
         } else {
           console.log("❌ Skipping league-level processing - isJson:", isJson, "data:", !!data);
+          // TEMPORARY: Force call with existing data to test
+          if (players.length > 0) {
+            console.log("🔧 TEMP: Forcing league-level processing with available data...");
+            await processLeagueLevelAchievements(data || {}, players);
+          }
         }
       } else {
         return res.status(400).json({ message: "Unsupported file format. Please upload JSON or gzipped league files only." });
@@ -982,7 +1027,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate a new game grid
   app.post("/api/games/generate", async (req, res) => {
     try {
+      console.log("🔧 TESTING: Running league-level processing during grid generation...");
+      
       const players = await storage.getPlayers();
+      
+      // TEMPORARY: Force league-level processing on existing players to test
+      if (players.length > 0) {
+        console.log("🔧 TEMP: Processing league achievements on existing players...");
+        const mutablePlayers = players.map(p => ({
+          ...p,
+          achievements: [...p.achievements]
+        }));
+        
+        await processLeagueLevelAchievements({}, mutablePlayers);
+        
+        // Update storage if achievements were added
+        let hadChanges = false;
+        for (let i = 0; i < mutablePlayers.length; i++) {
+          if (mutablePlayers[i].achievements.length !== players[i].achievements.length) {
+            hadChanges = true;
+            break;
+          }
+        }
+        
+        if (hadChanges) {
+          console.log("🔧 Detected changes, updating storage...");
+          await storage.clearPlayers();
+          for (const player of mutablePlayers) {
+            await storage.createPlayer(player);
+          }
+          console.log("🔧 Storage updated with league-level achievements");
+        }
+      }
+      
       if (players.length === 0) {
         return res.status(400).json({ 
           message: "No players data available. Please upload a league file first." 
