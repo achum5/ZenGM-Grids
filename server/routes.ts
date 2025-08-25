@@ -117,8 +117,10 @@ function assignQuality(players: any[]) {
 
     const blended = 0.60 * pWS + 0.25 * pWS48 + 0.15 * pBPM;
     const r = clamp((p.careerMinutes ?? 0) / 6000, 0, 1);
-    const quality = Math.round(r * blended + (1 - r) * 50);
-    p.quality = clamp(quality, 1, 99);
+    const rawQuality = Math.round(r * blended + (1 - r) * 50);
+    // Reverse scoring: most common = 10 points, most rare = 100 points
+    const quality = 110 - clamp(rawQuality, 1, 99);
+    p.quality = clamp(quality, 10, 100);
   }
 }
 

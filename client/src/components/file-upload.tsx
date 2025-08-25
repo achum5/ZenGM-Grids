@@ -112,8 +112,21 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       });
       return;
     }
+    
+    // Auto-convert Dropbox www URLs to dl URLs
+    let processedUrl = urlInput.trim();
+    if (processedUrl.includes("www.dropbox.com")) {
+      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
+      // Also ensure the dl=0 parameter is set to dl=1 for direct download
+      if (processedUrl.includes("dl=0")) {
+        processedUrl = processedUrl.replace("dl=0", "dl=1");
+      } else if (!processedUrl.includes("dl=1")) {
+        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
+      }
+    }
+    
     setUploadedFile(null);
-    uploadMutation.mutate(urlInput.trim());
+    uploadMutation.mutate(processedUrl);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

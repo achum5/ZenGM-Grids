@@ -6,6 +6,7 @@ export interface EvaluationResult {
   critPass: boolean;
   teamLabel: string;
   critLabel: string;
+  player?: Player; // Add player data for stat values
 }
 
 export function evaluatePlayerAnswer(
@@ -26,7 +27,8 @@ export function evaluatePlayerAnswer(
     teamPass,
     critPass,
     teamLabel: teamCriteria.label,
-    critLabel: criteriaCriteria.label
+    critLabel: criteriaCriteria.label,
+    player // Include player data for stat values
   };
 }
 
@@ -43,6 +45,60 @@ export function meetsCriterion(player: Player, criterion: string): boolean {
 
 type AxisType = "team" | "stat";
 
+// Helper function to get actual stat values for a player
+function getActualStatValue(player: Player | undefined, label: string): string | null {
+  if (!player || !player.stats || !Array.isArray(player.stats)) return null;
+  
+  const regularSeasonStats = player.stats.filter((season: any) => !season.playoffs);
+  
+  // Career totals
+  if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.pts || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + ((season.orb || 0) + (season.drb || 0)), 0);
+    return total.toLocaleString();
+  }
+  if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.ast || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.stl || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.blk || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/2,000\+?\s*made\s+threes/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.tp || 0), 0);
+    return total.toLocaleString();
+  }
+  
+  // Season highs
+  if (/30\+?\s*ppg|averaged\s+30/i.test(label)) {
+    const maxPpg = Math.max(...regularSeasonStats.map((s: any) => s.ppg || 0));
+    return maxPpg > 0 ? maxPpg.toFixed(1) : "0.0";
+  }
+  if (/10\+?\s*apg|averaged.*10.*assists/i.test(label)) {
+    const maxApg = Math.max(...regularSeasonStats.map((s: any) => s.apg || 0));
+    return maxApg > 0 ? maxApg.toFixed(1) : "0.0";
+  }
+  if (/15\+?\s*rpg|averaged.*15.*rebounds/i.test(label)) {
+    const maxRpg = Math.max(...regularSeasonStats.map((s: any) => s.rpg || 0));
+    return maxRpg > 0 ? maxRpg.toFixed(1) : "0.0";
+  }
+  
+  // Team count for "Only One Team"
+  if (/only\s+one\s+team/i.test(label)) {
+    return player.teams?.length?.toString() || "0";
+  }
+  
+  return null;
+}
+
 interface DetailedEvaluation {
   correct: boolean;
   leftPass: boolean;
@@ -53,7 +109,7 @@ interface DetailedEvaluation {
   rightLabel: string;
 }
 
-function describeAxis(type: AxisType, label: string, passed: boolean): string {
+function describeAxis(type: AxisType, label: string, passed: boolean, player?: Player): string {
   // Teams
   if (type === "team") {
     return passed ? `played for the ${label}` : `didn't play for the ${label}`;
@@ -67,22 +123,32 @@ function describeAxis(type: AxisType, label: string, passed: boolean): string {
     return passed ? "was a first-round pick" : "was not a first-round pick";
   }
   if (/2nd\s+round\s+pick|second\s+round/i.test(label)) {
-    return passed ? "was a second-round pick" : "was not a second-round pick";
+    return passed ? "was a 2nd round pick" : "was not a 2nd round pick";
   }
   if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
-    return passed ? "had 20,000+ career points" : "did not have 20,000+ career points";
+    if (passed) return "had 20,000+ career points";
+    const actual = getActualStatValue(player, label);
+    return actual ? `did not have 20,000+ career points (${actual})` : "did not have 20,000+ career points";
   }
   if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
-    return passed ? "had 10,000+ career rebounds" : "did not have 10,000+ career rebounds";
+    if (passed) return "had 10,000+ career rebounds";
+    const actual = getActualStatValue(player, label);
+    return actual ? `did not have 10,000+ career rebounds (${actual})` : "did not have 10,000+ career rebounds";
   }
   if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
-    return passed ? "had 5,000+ career assists" : "did not have 5,000+ career assists";
+    if (passed) return "had 5,000+ career assists";
+    const actual = getActualStatValue(player, label);
+    return actual ? `did not have 5,000+ career assists (${actual})` : "did not have 5,000+ career assists";
   }
   if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
-    return passed ? "had 2,000+ career steals" : "did not have 2,000+ career steals";
+    if (passed) return "had 2,000+ career steals";
+    const actual = getActualStatValue(player, label);
+    return actual ? `did not have 2,000+ career steals (${actual})` : "did not have 2,000+ career steals";
   }
   if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
-    return passed ? "had 1,500+ career blocks" : "did not have 1,500+ career blocks";
+    if (passed) return "had 1,500+ career blocks";
+    const actual = getActualStatValue(player, label);
+    return actual ? `did not have 1,500+ career blocks (${actual})` : "did not have 1,500+ career blocks";
   }
   if (/2,000\+?\s*made\s+threes/i.test(label)) {
     return passed ? "made 2,000+ career threes" : "did not make 2,000+ career threes";
@@ -165,6 +231,14 @@ function describeAxis(type: AxisType, label: string, passed: boolean): string {
   if (/champion|championship/i.test(label)) {
     return passed ? "won a championship" : "did not win a championship";
   }
+  if (/15\+?\s*seasons|played.*15.*seasons/i.test(label)) {
+    return passed ? "played 15+ seasons" : "did not play 15+ seasons";
+  }
+  if (/only\s+one\s+team/i.test(label)) {
+    if (passed) return "played for only one team";
+    const actual = getActualStatValue(player, label);
+    return actual ? `did not play for only one team (${actual} teams)` : "did not play for only one team";
+  }
 
   // Fallback for any unmatched criteria
   return passed ? `met "${label}"` : `did not meet "${label}"`;
@@ -188,8 +262,8 @@ export function buildIncorrectMessage(playerName: string, evaluation: Evaluation
     rightLabel: critCriteria
   };
   
-  const L = describeAxis(detailed.leftType, detailed.leftLabel, detailed.leftPass);
-  const R = describeAxis(detailed.rightType, detailed.rightLabel, detailed.rightPass);
+  const L = describeAxis(detailed.leftType, detailed.leftLabel, detailed.leftPass, evaluation.player);
+  const R = describeAxis(detailed.rightType, detailed.rightLabel, detailed.rightPass, evaluation.player);
 
   if (!detailed.leftPass && detailed.rightPass) {
     return `${playerName} ${R} (${ok(true)}) but ${L} (${ok(false)}).`;
