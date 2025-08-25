@@ -407,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     let allStarCount = 0, age35Count = 0;
     for (const [season, set] of ix.allStarsBySeason) {
       for (const pid of set) {
-        add(pid, "All-Star Selection");
+        add(pid, "All-Star"); // Match what eligibility checker expects
         allStarCount++;
         const p = byPid.get(pid);
         const bornYear = p?.born?.year ?? 0;
