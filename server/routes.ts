@@ -183,7 +183,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Comprehensive league-level achievement processing
   async function processLeagueLevelAchievements(leagueData: any, players: any[]) {
-    console.log("Processing league-level achievements...");
+    console.log("🔍 Processing league-level achievements...");
+    console.log("League data keys:", Object.keys(leagueData));
+    console.log("Players with PIDs:", players.filter(p => p.pid !== undefined).length);
     
     // Build player lookup by pid
     const playerByPid = new Map<number, any>();
@@ -196,11 +198,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Process Hall of Fame from events[]
     const hofPids = new Set<number>();
     if (leagueData.events && Array.isArray(leagueData.events)) {
+      console.log(`📋 Found ${leagueData.events.length} events`);
       leagueData.events.forEach((event: any) => {
         if (event.type === "hallOfFame" && event.pids && Array.isArray(event.pids)) {
           event.pids.forEach((pid: number) => hofPids.add(pid));
         }
       });
+      console.log(`🏆 Found ${hofPids.size} Hall of Fame players`);
+    } else {
+      console.log("❌ No events[] data found for Hall of Fame processing");
     }
     
     // Process champions from playoffSeries[]
@@ -240,6 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Process awards from awards[]
     const awardsByType = new Map<string, Set<number>>();
     if (leagueData.awards && Array.isArray(leagueData.awards)) {
+      console.log(`🏅 Found ${leagueData.awards.length} seasons of awards data`);
       leagueData.awards.forEach((yearData: any) => {
         // Process individual awards
         ['mvp', 'dpoy', 'roy', 'smoy', 'mip', 'finalsMvp'].forEach(awardType => {
@@ -265,11 +272,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         });
       });
+      console.log("Awards processed:", Array.from(awardsByType.entries()).map(([type, pids]) => `${type}: ${pids.size} players`));
+    } else {
+      console.log("❌ No awards[] data found");
     }
     
     // Process game feats from playerFeats[]
     const featsByType = new Map<string, Set<number>>();
     if (leagueData.playerFeats && Array.isArray(leagueData.playerFeats)) {
+      console.log(`🎯 Found ${leagueData.playerFeats.length} player feats`);
       leagueData.playerFeats.forEach((feat: any) => {
         if (feat.pid !== undefined && feat.stats) {
           const stats = feat.stats;
@@ -390,7 +401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // All-Star selections
       let hasAllStar = false;
       let hasAllStar35Plus = false;
-      for (const [season, allStars] of allStarsByYear) {
+      for (const [season, allStars] of Array.from(allStarsByYear.entries())) {
         if (allStars.has(player.pid)) {
           if (!hasAllStar) {
             player.achievements.push("All-Star Selection");
@@ -456,7 +467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       Object.entries(leadershipMappings).forEach(([leaderType, achievementName]) => {
         if (leadershipByYearType.has(leaderType)) {
-          for (const [season, leaders] of leadershipByYearType.get(leaderType)!) {
+          for (const [season, leaders] of Array.from(leadershipByYearType.get(leaderType)!.entries())) {
             if (leaders.has(player.pid)) {
               if (!player.achievements.includes(achievementName)) {
                 player.achievements.push(achievementName);
@@ -473,7 +484,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     players.forEach(player => {
       if (allTimeGreatPids.has(player.pid)) return; // Skip if they are themselves a great
       
-      for (const greatPid of allTimeGreatPids) {
+      for (const greatPid of Array.from(allTimeGreatPids)) {
         const great = playerByPid.get(greatPid);
         if (!great || !great.stats || !player.stats) continue;
         
@@ -501,9 +512,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // These are intentionally rare and hand-picked
     ]);
     
-    players.forEach(player => {
-      if (EASTER_EGG_PIDS.has(player.pid) || 
-          (player.name && (player.name.includes("dumbmatter") || player.name.includes("BBGM")))) {
+    players.forEach((player: any) => {
+      if (player.pid !== undefined && (EASTER_EGG_PIDS.has(player.pid) || 
+          (player.name && (player.name.includes("dumbmatter") || player.name.includes("BBGM"))))) {
         if (!player.achievements.includes("BBGM Player")) {
           player.achievements.push("BBGM Player");
         }
@@ -1071,11 +1082,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
-      // Use uniform sampling from all 34 achievements (excluding BBGM easter egg for fair grids)
+      // Debug: Log all achievements found in players
+      console.log("All unique achievements in player data:", Array.from(allAchievements).sort());
+      
+      // Debug: Check each achievement in our master list
       const availableAchievements = ACHIEVEMENTS.filter(ach => {
         const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
-        return allAchievements.includes(ach) && playersWithAchievement >= 2;
+        const isAvailable = allAchievements.includes(ach) && playersWithAchievement >= 2;
+        
+        if (!allAchievements.includes(ach)) {
+          console.log(`❌ Achievement "${ach}" not found in any player data`);
+        } else if (playersWithAchievement < 2) {
+          console.log(`⚠️  Achievement "${ach}" found but only ${playersWithAchievement} players have it (need ≥2)`);
+        } else {
+          console.log(`✅ Achievement "${ach}" available with ${playersWithAchievement} players`);
+        }
+        
+        return isAvailable;
       });
+      
+      console.log(`Available achievements for grid generation: ${availableAchievements.length}/${ACHIEVEMENTS.length}`);
+      console.log("Available achievements:", availableAchievements);
       
       // Uniform sampling - shuffle array to ensure equal probability for all achievements
       const achievements = [...availableAchievements].sort(() => Math.random() - 0.5);
