@@ -1,4 +1,4 @@
-import { type Player, type Game, type GameSession, type DailyPickFrequency, type InsertPlayer, type InsertGame, type InsertGameSession, perGuessScore } from "@shared/schema";
+import { type Player, type Game, type GameSession, type InsertPlayer, type InsertGame, type InsertGameSession } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -6,23 +6,19 @@ export interface IStorage {
   createPlayer(player: InsertPlayer): Promise<Player>;
   createPlayers(players: InsertPlayer[]): Promise<Player[]>;
   getPlayers(): Promise<Player[]>;
+  getAllPlayers(): Promise<Player[]>;
+  updatePlayer(id: string, updates: Partial<Player>): Promise<Player>;
   searchPlayers(query: string): Promise<Player[]>;
   
   // Game operations
   createGame(game: InsertGame): Promise<Game>;
   getGame(id: string): Promise<Game | undefined>;
-  updateGame(id: string, updates: Partial<Game>): Promise<Game | undefined>;
-  getGameBySeed(seed: string): Promise<Game | undefined>;
   
   // Game session operations
   createGameSession(session: InsertGameSession): Promise<GameSession>;
   updateGameSession(id: string, updates: Partial<GameSession>): Promise<GameSession | undefined>;
   getGameSession(id: string): Promise<GameSession | undefined>;
   getGameSessions(): Promise<GameSession[]>;
-  
-  // Pick frequency operations per spec point 5
-  recordPickFrequency(playerName: string, cellKey: string): Promise<void>;
-  getPickFrequencies(cellKey: string): Promise<DailyPickFrequency[]>;
   
   // Clear operations
   clearPlayers(): Promise<void>;
@@ -32,13 +28,11 @@ export class MemStorage implements IStorage {
   private players: Map<string, Player>;
   private games: Map<string, Game>;
   private gameSessions: Map<string, GameSession>;
-  private dailyPickFrequencies: Map<string, DailyPickFrequency>;
 
   constructor() {
     this.players = new Map();
     this.games = new Map();
     this.gameSessions = new Map();
-    this.dailyPickFrequencies = new Map();
   }
 
   async createPlayer(insertPlayer: InsertPlayer): Promise<Player> {
@@ -67,6 +61,19 @@ export class MemStorage implements IStorage {
 
   async getPlayers(): Promise<Player[]> {
     return Array.from(this.players.values());
+  }
+
+  async getAllPlayers(): Promise<Player[]> {
+    return Array.from(this.players.values());
+  }
+
+  async updatePlayer(id: string, updates: Partial<Player>): Promise<Player> {
+    const player = this.players.get(id);
+    if (!player) throw new Error(`Player with id ${id} not found`);
+    
+    const updatedPlayer = { ...player, ...updates };
+    this.players.set(id, updatedPlayer);
+    return updatedPlayer;
   }
 
   async searchPlayers(query: string): Promise<Player[]> {
@@ -121,9 +128,6 @@ export class MemStorage implements IStorage {
       correctAnswers: Object.fromEntries(
         Object.entries(insertGame.correctAnswers).map(([key, value]) => [key, [...value]])
       ),
-      seed: insertGame.seed || null,
-      isShared: insertGame.isShared || false,
-      shareableUrl: insertGame.shareableUrl || null,
       createdAt: new Date().toISOString()
     };
     this.games.set(id, game);
@@ -132,19 +136,6 @@ export class MemStorage implements IStorage {
 
   async getGame(id: string): Promise<Game | undefined> {
     return this.games.get(id);
-  }
-
-  async updateGame(id: string, updates: Partial<Game>): Promise<Game | undefined> {
-    const existing = this.games.get(id);
-    if (!existing) return undefined;
-    
-    const updated = { ...existing, ...updates };
-    this.games.set(id, updated);
-    return updated;
-  }
-
-  async getGameBySeed(seed: string): Promise<Game | undefined> {
-    return Array.from(this.games.values()).find(game => game.seed === seed);
   }
 
   async createGameSession(insertSession: InsertGameSession): Promise<GameSession> {
@@ -193,35 +184,6 @@ export class MemStorage implements IStorage {
 
   async getGameSessions(): Promise<GameSession[]> {
     return Array.from(this.gameSessions.values());
-  }
-
-  // Pick frequency operations per spec point 5
-  async recordPickFrequency(playerName: string, cellKey: string): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
-    const key = `${cellKey}_${playerName}_${today}`;
-    
-    const existing = this.dailyPickFrequencies.get(key);
-    if (existing) {
-      // Increment count
-      existing.pickCount += 1;
-      this.dailyPickFrequencies.set(key, existing);
-    } else {
-      // Create new record
-      const frequency: DailyPickFrequency = {
-        id: randomUUID(),
-        playerName,
-        cellKey,
-        pickCount: 1,
-        date: today
-      };
-      this.dailyPickFrequencies.set(key, frequency);
-    }
-  }
-
-  async getPickFrequencies(cellKey: string): Promise<DailyPickFrequency[]> {
-    const today = new Date().toISOString().split('T')[0];
-    return Array.from(this.dailyPickFrequencies.values())
-      .filter(freq => freq.cellKey === cellKey && freq.date === today);
   }
 
   async clearPlayers(): Promise<void> {

@@ -3,7 +3,7 @@ import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
 import type { EvaluationResult } from "@shared/evaluation";
-import { buildIncorrectMessage, evaluatePlayerAnswer } from "@shared/evaluation";
+import { buildIncorrectMessage } from "@shared/evaluation";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -11,7 +11,7 @@ interface PlayerProfileModalProps {
   onOpenChange: (open: boolean) => void;
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
-  score?: number;
+  rarity?: number;
   rank?: number;
   eligibleCount?: number;
   isCorrect?: boolean;
@@ -40,25 +40,7 @@ function getRarityColor(rarity: number): string {
   return "text-red-500";
 }
 
-// Component to display colored incorrect message with proper HTML rendering
-function IncorrectMessageDisplay({ playerName, evaluation }: { playerName: string, evaluation: EvaluationResult }) {
-  const message = buildIncorrectMessage(playerName, evaluation);
-  
-  // Convert CSS classes to Tailwind classes for proper styling
-  const processedMessage = message
-    .replace(/class="ok"/g, 'class="text-green-400"')
-    .replace(/class="bad"/g, 'class="text-red-400"');
-  
-  // Render the HTML with proper styling
-  return (
-    <div 
-      className="text-gray-200" 
-      dangerouslySetInnerHTML={{ __html: processedMessage }}
-    />
-  );
-}
-
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, score, rank, eligibleCount, isCorrect = true, evaluation }: PlayerProfileModalProps) {
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount, isCorrect = true, evaluation }: PlayerProfileModalProps) {
   if (!player) return null;
 
   // Fetch top players for this cell - show for both correct and incorrect
@@ -108,18 +90,18 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
 
           {/* Rarity Section for correct answers OR Why this was incorrect for wrong answers */}
           {isCorrect ? (
-            (score !== undefined && rank !== undefined && eligibleCount !== undefined) && (
+            (rarity !== undefined && rank !== undefined && eligibleCount !== undefined) && (
               <div className="bg-slate-700 rounded-lg p-4">
-                <h3 className="font-semibold text-purple-300 mb-2">Score</h3>
+                <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
                 <div className="space-y-2">
-                  <div className={`text-lg font-bold text-green-400`}>
-                    {score} / 10 points
+                  <div className={`text-lg font-bold ${getRarityColor(rarity || 0)}`}>
+                    {getRarityText(rarity || 0)}
                   </div>
                   <div className="text-sm text-gray-300">
-                    {eligibleCount} eligible players for this cell
+                    Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
                   </div>
                   <div className="text-xs text-gray-400">
-                    Score based on pick frequency and rarity
+                    1 = rarest · {eligibleCount} = most common
                   </div>
                 </div>
               </div>
@@ -128,9 +110,9 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             evaluation && (
               <div className="bg-slate-700 rounded-lg p-4">
                 <h3 className="font-semibold text-red-300 mb-2">Why this was incorrect</h3>
-                <div className="explain font-semibold text-sm">
-                  <IncorrectMessageDisplay playerName={player.name} evaluation={evaluation} />
-                </div>
+                <p className="explain font-semibold text-sm text-gray-200">
+                  {buildIncorrectMessage(player.name, evaluation)}
+                </p>
               </div>
             )
           )}
@@ -141,13 +123,13 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {player.years && player.years.length > 0 ? (
                 // Sort teams chronologically by start year
-                ([...player.years]
+                [...player.years]
                   .sort((a, b) => a.start - b.start)
                   .map((teamYear, idx) => (
                     <div key={`${teamYear.team}-${teamYear.start}-${idx}`} className="text-sm truncate">
                       {teamYear.team} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                     </div>
-                  )))
+                  ))
               ) : (
                 player.teams.map((team, idx) => (
                   <div key={team} className="text-sm truncate">{team}</div>
@@ -158,7 +140,7 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
 
           {/* Other Top Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-yellow-300 mb-2">Most Common Answers</h3>
+            <h3 className="font-semibold text-yellow-300 mb-2">Other Top Answers</h3>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {topPlayers && topPlayers.length > 0 ? (
                 topPlayers.map((topPlayer, idx) => (

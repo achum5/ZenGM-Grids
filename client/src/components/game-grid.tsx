@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Clock, RotateCcw, Play, Share2 } from "lucide-react";
+import { Clock, RotateCcw, Play } from "lucide-react";
 import React from "react";
 import { PlayerSearchModal } from "./player-search-modal";
 import { CorrectAnswersModal } from "./correct-answers-modal";
@@ -9,7 +9,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Game, GameSession, GridCell, Player, TeamInfo } from "@shared/schema";
-
 
 interface GameGridProps {
   gameId: string | null;
@@ -165,28 +164,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     }
   };
 
-  // Share game functionality per spec point 2
-  const shareGameMutation = useMutation({
-    mutationFn: async (gameId: string) => {
-      const response = await apiRequest("POST", `/api/games/${gameId}/share`);
-      return response.json();
-    },
-    onSuccess: (data) => {
-      navigator.clipboard.writeText(data.shareUrl);
-      toast({
-        title: "Grid shared!",
-        description: "Share URL copied to clipboard",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Share failed",
-        description: "Could not share the grid",
-        variant: "destructive",
-      });
-    },
-  });
-
   if (!game) {
     return (
       <div className="bg-slate-800 dark:bg-slate-900 p-8 rounded-xl">
@@ -201,18 +178,23 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
   }
 
 
-
-  // Helper function to render team logo or name for headers  
+  // Helper function to render team logo or name for headers
   const renderTeamHeader = (criteria: any) => {
-    return criteria.type === 'team' ? (
-      <div className="flex flex-col items-center gap-1">
-        <div className="text-[9px] sm:text-xs font-semibold text-gray-900 dark:text-white leading-tight text-center break-words">
+    if (criteria.type === 'team') {
+      // For now, display team name - can be enhanced with logos later
+      return (
+        <div className="text-center w-full h-full flex items-center justify-center px-1">
+          <div className="text-[9px] sm:text-xs font-semibold text-gray-900 dark:text-white leading-tight text-center break-words">
+            {criteria.label}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="text-center w-full h-full flex items-center justify-center px-1">
+        <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white leading-tight text-center">
           {criteria.label}
         </div>
-      </div>
-    ) : (
-      <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white leading-tight text-center">
-        {criteria.label}
       </div>
     );
   };
@@ -223,18 +205,6 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
         <div className="text-gray-900 dark:text-white">
           <h2 className="text-xl sm:text-2xl font-bold">Immaculate Grid</h2>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            onClick={() => shareGameMutation.mutate(game.id)}
-            disabled={shareGameMutation.isPending}
-            variant="outline"
-            size="sm"
-            data-testid="button-share-grid"
-          >
-            <Share2 className="h-4 w-4 mr-1" />
-            Share Grid
-          </Button>
         </div>
       </div>
 
@@ -247,7 +217,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
         {game.columnCriteria.map((criteria, index) => (
           <div
             key={`col-${index}`}
-            className="aspect-square border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm bg-gray-200 dark:bg-slate-700"
+            className="aspect-square bg-gray-200 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm"
             data-testid={`header-column-${index}`}
           >
             {renderTeamHeader(criteria)}
@@ -259,7 +229,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
           <div key={`row-${rowIndex}`} className="contents">
             {/* Row header */}
             <div
-              className="aspect-square border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm bg-gray-200 dark:bg-slate-700"
+              className="aspect-square bg-gray-200 dark:bg-slate-700 border border-gray-300 dark:border-slate-600 flex items-center justify-center rounded-sm"
               data-testid={`header-row-${rowIndex}`}
             >
               {renderTeamHeader(rowCriteria)}
@@ -299,7 +269,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                       <PlayerCellInfo 
                         playerName={answer.player}
                         isCorrect={!!isCorrect}
-                        score={answer.score || 0}
+                        rarity={answer.rarity || 0}
                         rank={answer.rank || 0}
                         eligibleCount={answer.eligibleCount || 0}
                         cellCriteria={game ? {

@@ -1,77 +1,93 @@
 interface StatsProps {
-  sessionScore: number;
   correct: number;
   incorrect: number;
   guessesLeft: number;
-  bestPerGuess?: number;
-  avgPerGuess?: number;
+  totalRarity: number;
+  avgRarity: number;
+  best: number;
+  worst: number;
+  rarityScore?: number;
 }
 
 export function Stats({ 
-  sessionScore,
   correct, 
   incorrect, 
   guessesLeft, 
-  bestPerGuess,
-  avgPerGuess
+  totalRarity, 
+  avgRarity, 
+  best, 
+  worst, 
+  rarityScore 
 }: StatsProps) {
-  const hasGuesses = correct > 0;
-  
   return (
     <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-4 sm:p-6 rounded-xl shadow-sm">
       <div className="text-center mb-4">
-        <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">STATS</h3>
+        <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">Stats</h3>
       </div>
       
-      {/* Big Score */}
-      <div className="text-center mb-6">
-        <div className="text-4xl sm:text-5xl font-bold text-blue-600 dark:text-blue-400" data-testid="text-session-score">
-          {sessionScore}
-        </div>
-        <div className="text-sm text-gray-500 dark:text-gray-300">(Session Score)</div>
-      </div>
-      
-      {/* Separator */}
-      <hr className="border-gray-300 dark:border-gray-600 mb-4" />
-      
-      {/* Stats row - responsive layout */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 text-gray-900 dark:text-white mb-4">
+      <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-gray-900 dark:text-white">
         <div className="text-center">
-          <span className="text-sm font-medium">Correct: </span>
-          <span className="font-bold text-green-600" data-testid="text-correct-answers">{correct}</span>
-        </div>
-        
-        <div className="hidden sm:block text-gray-400">•</div>
-        
-        <div className="text-center">
-          <span className="text-sm font-medium">Incorrect: </span>
-          <span className="font-bold text-red-600" data-testid="text-incorrect-answers">{incorrect}</span>
-        </div>
-        
-        <div className="hidden sm:block text-gray-400">•</div>
-        
-        <div className="text-center">
-          <span className="text-sm font-medium">Left: </span>
-          <span className="font-bold" data-testid="text-remaining-cells">{guessesLeft}</span>
-        </div>
-      </div>
-      
-      {/* Best/Avg row - only show if there are correct guesses */}
-      {hasGuesses && bestPerGuess !== undefined && avgPerGuess !== undefined && (
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-6 text-gray-900 dark:text-white">
-          <div className="text-center">
-            <span className="text-sm font-medium">Best: </span>
-            <span className="font-bold text-green-600" data-testid="text-best-per-guess">{bestPerGuess}</span>
+          <div className="text-xl sm:text-2xl font-bold text-green-400" data-testid="text-correct-answers">
+            {correct}
           </div>
-          
-          <div className="hidden sm:block text-gray-400">•</div>
-          
-          <div className="text-center">
-            <span className="text-sm font-medium">Avg: </span>
-            <span className="font-bold text-blue-600" data-testid="text-avg-per-guess">{avgPerGuess.toFixed(1)}</span>
-          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-300">CORRECT</div>
         </div>
-      )}
+        
+        <div className="text-center">
+          <div className="text-xl sm:text-2xl font-bold text-red-400" data-testid="text-incorrect-answers">
+            {incorrect}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-300">INCORRECT</div>
+        </div>
+        
+        <div className="text-center">
+          <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-remaining-cells">
+            {guessesLeft}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-300">GUESSES LEFT</div>
+        </div>
+        
+        <div className="text-center">
+          <div className="text-lg sm:text-xl font-bold text-blue-400" data-testid="text-total-rarity">
+            {totalRarity}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-300">TOTAL RARITY</div>
+        </div>
+        
+        <div className="text-center">
+          <div className="text-lg sm:text-xl font-bold text-purple-400" data-testid="text-average-rarity">
+            {avgRarity}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-300">AVG RARITY</div>
+        </div>
+        
+        {correct > 0 && (
+          <>
+            <div className="text-center">
+              <div className="text-lg sm:text-xl font-bold text-green-300" data-testid="text-best-rarity">
+                {best}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-300">BEST</div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-lg sm:text-xl font-bold text-orange-400" data-testid="text-worst-rarity">
+                {worst}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-300">WORST</div>
+            </div>
+          </>
+        )}
+        
+        {rarityScore !== undefined && (
+          <div className="text-center">
+            <div className="text-lg sm:text-xl font-bold text-yellow-400" data-testid="text-rarity-score">
+              {rarityScore}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-300">RARITY SCORE</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

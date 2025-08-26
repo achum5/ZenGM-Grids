@@ -1,211 +1,268 @@
-// Evaluation logic for basketball grid game
+import type { Player, GridCriteria } from "./schema";
+
 export interface EvaluationResult {
-  player: string;
-  teamLabel: string;
-  critLabel: string;
+  correct: boolean;
   teamPass: boolean;
   critPass: boolean;
-  correct: boolean;
-  parenthCrit?: string;
+  teamLabel: string;
+  critLabel: string;
+  player?: Player; // Add player data for stat values
 }
 
-export interface DetailedEvaluation {
+export function evaluatePlayerAnswer(
+  player: Player,
+  columnCriteria: GridCriteria,
+  rowCriteria: GridCriteria
+): EvaluationResult {
+  // Determine which is team and which is criterion
+  const teamCriteria = columnCriteria.type === "team" ? columnCriteria : rowCriteria;
+  const criteriaCriteria = columnCriteria.type === "achievement" ? columnCriteria : rowCriteria;
+  
+  const teamPass = didPlayForTeam(player, teamCriteria.value);
+  const critPass = meetsCriterion(player, criteriaCriteria.value);
+  const correct = teamPass && critPass;
+  
+  return {
+    correct,
+    teamPass,
+    critPass,
+    teamLabel: teamCriteria.label,
+    critLabel: criteriaCriteria.label,
+    player // Include player data for stat values
+  };
+}
+
+export function didPlayForTeam(player: Player, teamName: string): boolean {
+  // Check if player played for team (≥1 game at any time, regular season or playoffs)
+  // Also check the teams array as backup
+  return player.teams.includes(teamName);
+}
+
+export function meetsCriterion(player: Player, criterion: string): boolean {
+  // Career-wide check - not tied to specific team
+  return player.achievements.includes(criterion);
+}
+
+type AxisType = "team" | "stat";
+
+// Helper function to get actual stat values for a player
+function getActualStatValue(player: Player | undefined, label: string): string | null {
+  if (!player || !player.stats || !Array.isArray(player.stats)) return null;
+  
+  const regularSeasonStats = player.stats.filter((season: any) => !season.playoffs);
+  
+  // Career totals
+  if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.pts || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + ((season.orb || 0) + (season.drb || 0)), 0);
+    return total.toLocaleString();
+  }
+  if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.ast || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.stl || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.blk || 0), 0);
+    return total.toLocaleString();
+  }
+  if (/2,000\+?\s*made\s+threes/i.test(label)) {
+    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.tp || 0), 0);
+    return total.toLocaleString();
+  }
+  
+  // Season highs
+  if (/30\+?\s*ppg|averaged\s+30/i.test(label)) {
+    const maxPpg = Math.max(...regularSeasonStats.map((s: any) => s.ppg || 0));
+    return maxPpg > 0 ? maxPpg.toFixed(1) : "0.0";
+  }
+  if (/10\+?\s*apg|averaged.*10.*assists/i.test(label)) {
+    const maxApg = Math.max(...regularSeasonStats.map((s: any) => s.apg || 0));
+    return maxApg > 0 ? maxApg.toFixed(1) : "0.0";
+  }
+  if (/15\+?\s*rpg|averaged.*15.*rebounds/i.test(label)) {
+    const maxRpg = Math.max(...regularSeasonStats.map((s: any) => s.rpg || 0));
+    return maxRpg > 0 ? maxRpg.toFixed(1) : "0.0";
+  }
+  
+  // Team count for "Only One Team"
+  if (/only\s+one\s+team/i.test(label)) {
+    return player.teams?.length?.toString() || "0";
+  }
+  
+  return null;
+}
+
+interface DetailedEvaluation {
   correct: boolean;
   leftPass: boolean;
   rightPass: boolean;
-  leftType: string;
-  rightType: string;
+  leftType: AxisType;
+  rightType: AxisType;
   leftLabel: string;
   rightLabel: string;
 }
 
-export interface CellSpec {
-  kind: "team" | "ach";
-  teamId?: number;
-  teamName?: string;
-  achId?: string;
-  achLabel?: string;
-}
-
-export interface EvalData {
-  playerName: string;
-  row: CellSpec;
-  col: CellSpec;
-  teamPass: boolean;
-  critPass: boolean;
-  parenthCrit?: string;
-}
-
-// Achievement phrase table per spec C3
-const PHRASES: Record<string, {pos:()=>string; neg:()=>string}> = {
-  // totals
-  TOT_20000_PTS:{pos:()=> "had 20,000+ career points",  neg:()=> "did not have 20,000+ career points"},
-  TOT_10000_REB:{pos:()=> "had 10,000+ career rebounds", neg:()=> "did not have 10,000+ career rebounds"},
-  TOT_5000_AST:{pos:()=> "had 5,000+ career assists",    neg:()=> "did not have 5,000+ career assists"},
-  TOT_2000_STL:{pos:()=> "had 2,000+ career steals",     neg:()=> "did not have 2,000+ career steals"},
-  TOT_1500_BLK:{pos:()=> "had 1,500+ career blocks",     neg:()=> "did not have 1,500+ career blocks"},
-  TOT_2000_3PM:{pos:()=> "made 2,000+ career threes",    neg:()=> "did not make 2,000+ career threes"},
-  // season averages
-  AVG_30_PPG:  {pos:()=> "averaged 30+ PPG in a season",  neg:()=> "did not average 30+ PPG in a season"},
-  AVG_10_APG:  {pos:()=> "averaged 10+ APG in a season",  neg:()=> "did not average 10+ APG in a season"},
-  AVG_15_RPG:  {pos:()=> "averaged 15+ RPG in a season",  neg:()=> "did not average 15+ RPG in a season"},
-  AVG_3_BPG:   {pos:()=> "averaged 3+ BPG in a season",   neg:()=> "did not average 3+ BPG in a season"},
-  AVG_2p5_SPG: {pos:()=> "averaged 2.5+ SPG in a season", neg:()=> "did not average 2.5+ SPG in a season"},
-  SEAS_504090: {pos:()=> "recorded a 50/40/90 season",    neg:()=> "did not record a 50/40/90 season"},
-  // leaders
-  LED_PTS:     {pos:()=> "led the league in scoring",     neg:()=> "did not lead the league in scoring"},
-  LED_REB:     {pos:()=> "led the league in rebounds",    neg:()=> "did not lead the league in rebounds"},
-  LED_AST:     {pos:()=> "led the league in assists",     neg:()=> "did not lead the league in assists"},
-  LED_STL:     {pos:()=> "led the league in steals",      neg:()=> "did not lead the league in steals"},
-  LED_BLK:     {pos:()=> "led the league in blocks",      neg:()=> "did not lead the league in blocks"},
-  // feats
-  FEAT_50PTS:  {pos:()=> "scored 50+ points in a game",   neg:()=> "did not score 50+ points in a game"},
-  FEAT_20REB:  {pos:()=> "grabbed 20+ rebounds in a game",neg:()=> "did not grab 20+ rebounds in a game"},
-  FEAT_20AST:  {pos:()=> "dished 20+ assists in a game",  neg:()=> "did not dish 20+ assists in a game"},
-  FEAT_10_3PM: {pos:()=> "made 10+ threes in a game",     neg:()=> "did not make 10+ threes in a game"},
-  FEAT_TRIPLE: {pos:()=> "recorded a triple-double",      neg:()=> "did not record a triple-double"},
-  // awards/selections/champs
-  AWD_MVP:     {pos:()=> "won MVP",                        neg:()=> "did not win MVP"},
-  AWD_DPOY:    {pos:()=> "won Defensive Player of the Year", neg:()=> "did not win Defensive Player of the Year"},
-  AWD_ROY:     {pos:()=> "won Rookie of the Year",         neg:()=> "did not win Rookie of the Year"},
-  AWD_6MOY:    {pos:()=> "won Sixth Man of the Year",      neg:()=> "did not win Sixth Man of the Year"},
-  AWD_MIP:     {pos:()=> "won Most Improved Player",       neg:()=> "did not win Most Improved Player"},
-  AWD_FMVP:    {pos:()=> "won Finals MVP",                 neg:()=> "did not win Finals MVP"},
-  SEL_ALLNBA:  {pos:()=> "made an All-League team",        neg:()=> "did not make an All-League team"},
-  SEL_ALLDEF:  {pos:()=> "made an All-Defensive team",     neg:()=> "did not make an All-Defensive team"},
-  SEL_ALLSTAR: {pos:()=> "was an All-Star",                neg:()=> "was not an All-Star"},
-  SEL_ALLSTAR_35:{pos:()=> "made an All-Star team at age 35+", neg:()=> "did not make an All-Star team at age 35+"},
-  CHAMPION:    {pos:()=> "won an NBA championship",        neg:()=> "did not win an NBA championship"},
-  HOF:         {pos:()=> "made the Hall of Fame",          neg:()=> "did not make the Hall of Fame"},
-  // draft/meta
-  DRAFT_1OA:   {pos:()=> "was a first overall pick",       neg:()=> "was not a first overall pick"},
-  DRAFT_FIRST: {pos:()=> "was a first-round pick",         neg:()=> "was not a first-round pick"},
-  DRAFT_SECOND:{pos:()=> "was a second-round pick",        neg:()=> "was not a second-round pick"},
-  UNDRAFTED:   {pos:()=> "was undrafted",                  neg:()=> "was not undrafted"},
-  CAREER_15Y:  {pos:()=> "played 15+ seasons",             neg:()=> "did not play 15+ seasons"},
-  ONLY_ONE_TEAM:{pos:()=> "played only on one team",       neg:()=> "did not play only on one team"},
-};
-
-// Helper functions per spec C3
-const teamPos = (name:string)=>`played for the ${name}`;
-const teamNeg = (name:string)=>`did not play for the ${name}`;
-const achPos  = (id:string)=>PHRASES[id]?.pos() ?? "met the criterion";
-const achNeg  = (id:string)=>PHRASES[id]?.neg() ?? "did not meet the criterion";
-
-// Map labels to IDs - maps actual achievement labels to phrase table keys
-function mapLabelToId(label: string): string {
-  // totals
-  if (/20,?000\+?\s*(career\s+)?points/i.test(label)) return "TOT_20000_PTS";
-  if (/10,?000\+?\s*(career\s+)?rebounds/i.test(label)) return "TOT_10000_REB";
-  if (/5,?000\+?\s*(career\s+)?assists/i.test(label)) return "TOT_5000_AST";
-  if (/2,?000\+?\s*(career\s+)?steals/i.test(label)) return "TOT_2000_STL";
-  if (/1,?500\+?\s*(career\s+)?blocks/i.test(label)) return "TOT_1500_BLK";
-  if (/2,?000\+?\s*made\s+threes/i.test(label)) return "TOT_2000_3PM";
-  
-  // season averages
-  if (/30\+?\s*ppg/i.test(label)) return "AVG_30_PPG";
-  if (/10\+?\s*apg/i.test(label)) return "AVG_10_APG";
-  if (/15\+?\s*rpg/i.test(label)) return "AVG_15_RPG";
-  if (/3\+?\s*bpg/i.test(label)) return "AVG_3_BPG";
-  if (/2\.?5\+?\s*spg/i.test(label)) return "AVG_2p5_SPG";
-  if (/50.?40.?90/i.test(label)) return "SEAS_504090";
-  
-  // leaders
-  if (/led\s+league\s+in\s+scoring/i.test(label)) return "LED_PTS";
-  if (/led\s+league\s+in\s+rebounds/i.test(label)) return "LED_REB";
-  if (/led\s+league\s+in\s+assists/i.test(label)) return "LED_AST";
-  if (/led\s+league\s+in\s+steals/i.test(label)) return "LED_STL";
-  if (/led\s+league\s+in\s+blocks/i.test(label)) return "LED_BLK";
-  
-  // awards
-  if (/mvp/i.test(label) && !/finals/i.test(label)) return "AWD_MVP";
-  if (/all.?star|all\s+star/i.test(label) && !/35/i.test(label)) return "SEL_ALLSTAR";
-  if (/all.?star.*35|35.*all.?star/i.test(label)) return "SEL_ALLSTAR_35";
-  if (/champion|championship/i.test(label)) return "CHAMPION";
-  if (/hall\s+of\s+fame/i.test(label)) return "HOF";
-  
-  // draft
-  if (/#?1\s+overall|first\s+overall/i.test(label)) return "DRAFT_1OA";
-  if (/first\s+round/i.test(label)) return "DRAFT_FIRST";
-  if (/second\s+round/i.test(label)) return "DRAFT_SECOND";
-  if (/undrafted/i.test(label)) return "UNDRAFTED";
-  
-  // meta
-  if (/15\+?\s*seasons|played.*15.*seasons/i.test(label)) return "CAREER_15Y";
-  if (/only\s+one\s+team/i.test(label)) return "ONLY_ONE_TEAM";
-  
-  return "UNKNOWN"; // fallback
-}
-
-// Sentence builder per spec C4
-export function buildIncorrectSentence(e: EvalData): string {
-  const p = e.playerName;
-
-  // Team vs team
-  if (e.row.kind==="team" && e.col.kind==="team") {
-    const A = e.row.teamName!, B = e.col.teamName!;
-    if (!e.teamPass && !e.critPass)
-      return `<span class="bad">${p} played for neither the ${A} nor the ${B}</span>.`;
-    if (e.teamPass && e.critPass)
-      return `<span class="ok">${p} played for both the ${A} and the ${B}</span>.`;
-    const pass = e.teamPass ? A : B;
-    const fail = e.teamPass ? B : A;
-    return `<span class="ok">${p} ${teamPos(pass)}</span> but <span class="bad">${p} ${teamNeg(fail)}</span>.`;
+function describeAxis(type: AxisType, label: string, passed: boolean, player?: Player): string {
+  // Teams
+  if (type === "team") {
+    return passed ? `played for the ${label}` : `didn't play for the ${label}`;
   }
 
-  // Mixed (team + achievement)
-  const teamCell = (e.row.kind==="team") ? e.row : e.col;
-  const achCell  = (e.row.kind==="ach")  ? e.row : e.col;
+  // Stats/Achievements - natural language templates for all supported criteria
+  if (/first\s+overall\s+pick|#1\s+overall/i.test(label)) {
+    return passed ? "was a first overall pick" : "was not a first overall pick";
+  }
+  if (/first\s+round\s+pick/i.test(label)) {
+    return passed ? "was a first-round pick" : "was not a first-round pick";
+  }
+  if (/2nd\s+round\s+pick|second\s+round/i.test(label)) {
+    return passed ? "was a 2nd round pick" : "was not a 2nd round pick";
+  }
+  if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
+    return passed ? "had 20,000+ career points" : "did not have 20,000+ career points";
+  }
+  if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
+    return passed ? "had 10,000+ career rebounds" : "did not have 10,000+ career rebounds";
+  }
+  if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
+    return passed ? "had 5,000+ career assists" : "did not have 5,000+ career assists";
+  }
+  if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
+    return passed ? "had 2,000+ career steals" : "did not have 2,000+ career steals";
+  }
+  if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
+    return passed ? "had 1,500+ career blocks" : "did not have 1,500+ career blocks";
+  }
+  if (/2,000\+?\s*made\s+threes/i.test(label)) {
+    return passed ? "made 2,000+ career threes" : "did not make 2,000+ career threes";
+  }
+  if (/30\+?\s*ppg|averaged\s+30/i.test(label)) {
+    return passed ? "averaged 30+ PPG in a season" : "did not average 30+ PPG in a season";
+  }
+  if (/10\+?\s*apg|averaged.*10.*assists/i.test(label)) {
+    return passed ? "averaged 10+ APG in a season" : "did not average 10+ APG in a season";
+  }
+  if (/15\+?\s*rpg|averaged.*15.*rebounds/i.test(label)) {
+    return passed ? "averaged 15+ RPG in a season" : "did not average 15+ RPG in a season";
+  }
+  if (/3\+?\s*bpg|averaged.*3.*blocks/i.test(label)) {
+    return passed ? "averaged 3+ BPG in a season" : "did not average 3+ BPG in a season";
+  }
+  if (/2\.5\+?\s*spg|averaged.*2\.5.*steals/i.test(label)) {
+    return passed ? "averaged 2.5+ SPG in a season" : "did not average 2.5+ SPG in a season";
+  }
+  if (/50\/40\/90/i.test(label)) {
+    return passed ? "shot 50/40/90 in a season" : "did not shoot 50/40/90 in a season";
+  }
+  if (/led\s+league.*scoring/i.test(label)) {
+    return passed ? "led the league in scoring" : "did not lead the league in scoring";
+  }
+  if (/led\s+league.*rebounds/i.test(label)) {
+    return passed ? "led the league in rebounds" : "did not lead the league in rebounds";
+  }
+  if (/led\s+league.*assists/i.test(label)) {
+    return passed ? "led the league in assists" : "did not lead the league in assists";
+  }
+  if (/led\s+league.*steals/i.test(label)) {
+    return passed ? "led the league in steals" : "did not lead the league in steals";
+  }
+  if (/led\s+league.*blocks/i.test(label)) {
+    return passed ? "led the league in blocks" : "did not lead the league in blocks";
+  }
+  if (/50\+.*game|scored\s+50/i.test(label)) {
+    return passed ? "scored 50+ in a game" : "did not score 50+ in a game";
+  }
+  if (/triple.?double/i.test(label)) {
+    return passed ? "recorded a triple-double" : "did not record a triple-double";
+  }
+  if (/20\+.*rebounds.*game/i.test(label)) {
+    return passed ? "had 20+ rebounds in a game" : "did not have 20+ rebounds in a game";
+  }
+  if (/20\+.*assists.*game/i.test(label)) {
+    return passed ? "had 20+ assists in a game" : "did not have 20+ assists in a game";
+  }
+  if (/10\+.*threes.*game/i.test(label)) {
+    return passed ? "made 10+ threes in a game" : "did not make 10+ threes in a game";
+  }
+  if (/mvp\s+winner|mvp/i.test(label)) {
+    return passed ? "won MVP" : "did not win MVP";
+  }
+  if (/defensive\s+player/i.test(label)) {
+    return passed ? "won Defensive Player of the Year" : "did not win Defensive Player of the Year";
+  }
+  if (/6th\s+man|sixth\s+man/i.test(label)) {
+    return passed ? "won Sixth Man of the Year" : "did not win Sixth Man of the Year";
+  }
+  if (/rookie.*year|roty/i.test(label)) {
+    return passed ? "won Rookie of the Year" : "did not win Rookie of the Year";
+  }
+  if (/finals\s+mvp/i.test(label)) {
+    return passed ? "won Finals MVP" : "did not win Finals MVP";
+  }
+  if (/all.?star|all\s+star/i.test(label)) {
+    return passed ? "made an All-Star team" : "did not make an All-Star team";
+  }
+  if (/all.?nba|all\s+nba/i.test(label)) {
+    return passed ? "made an All-NBA team" : "did not make an All-NBA team";
+  }
+  if (/all.?defense|all\s+defensive/i.test(label)) {
+    return passed ? "made an All-Defensive team" : "did not make an All-Defensive team";
+  }
+  if (/hall\s+of\s+fame/i.test(label)) {
+    return passed ? "is in the Hall of Fame" : "is not in the Hall of Fame";
+  }
+  if (/champion|championship/i.test(label)) {
+    return passed ? "won a championship" : "did not win a championship";
+  }
+  if (/15\+?\s*seasons|played.*15.*seasons/i.test(label)) {
+    return passed ? "played 15+ seasons" : "did not play 15+ seasons";
+  }
+  if (/only\s+one\s+team/i.test(label)) {
+    return passed ? "played for only one team" : "did not play for only one team";
+  }
 
-  const teamClause = e.teamPass
-    ? `<span class="ok">${p} ${teamPos(teamCell.teamName!)}</span>`
-    : `<span class="bad">${p} ${teamNeg(teamCell.teamName!)}</span>`;
-
-  const achId = mapLabelToId(achCell.achLabel!);
-  const critClause = e.critPass
-    ? `<span class="ok">${achPos(achId)}${e.parenthCrit ? " " + e.parenthCrit : ""}</span>`
-    : `<span class="bad">${achNeg(achId)}${e.parenthCrit ? " " + e.parenthCrit : ""}</span>`;
-
-  const joiner = (e.teamPass !== e.critPass) ? " but " : " and ";
-  return teamClause + joiner + critClause + ".";
+  // Fallback for any unmatched criteria
+  return passed ? `met "${label}"` : `did not meet "${label}"`;
 }
 
-// Legacy function for compatibility - convert old format to new
 export function buildIncorrectMessage(playerName: string, evaluation: EvaluationResult): string {
-  // Map old evaluation to new format
-  const achievementKeywords = ['PPG', 'APG', 'RPG', 'MVP', 'All-Star', 'Champion', 'Finals', 'Points', 'Rebounds', 'Assists', 'Blocks', 'Steals', 'Draft', 'Rookie', 'Hall of Fame', 'season', 'career', 'game', 'Overall', 'Round', 'Led League'];
+  const ok = (b: boolean) => (b ? "✅" : "❌");
   
-  const teamLabelIsAchievement = achievementKeywords.some(keyword => evaluation.teamLabel.includes(keyword));
-  const critLabelIsAchievement = achievementKeywords.some(keyword => evaluation.critLabel.includes(keyword));
+  // Convert to detailed evaluation format  
+  const teamCriteria = evaluation.teamLabel;
+  const critCriteria = evaluation.critLabel;
   
-  const evalData: EvalData = {
-    playerName,
-    row: teamLabelIsAchievement 
-      ? { kind: "ach", achId: mapLabelToId(evaluation.teamLabel), achLabel: evaluation.teamLabel }
-      : { kind: "team", teamName: evaluation.teamLabel },
-    col: critLabelIsAchievement 
-      ? { kind: "ach", achId: mapLabelToId(evaluation.critLabel), achLabel: evaluation.critLabel }
-      : { kind: "team", teamName: evaluation.critLabel },
-    teamPass: evaluation.teamPass,
-    critPass: evaluation.critPass,
-    parenthCrit: evaluation.parenthCrit
+  // Determine axis types and create detailed eval
+  const detailed: DetailedEvaluation = {
+    correct: evaluation.correct,
+    leftPass: evaluation.teamPass,
+    rightPass: evaluation.critPass,
+    leftType: "team",
+    rightType: "stat", 
+    leftLabel: teamCriteria,
+    rightLabel: critCriteria
   };
   
-  return buildIncorrectSentence(evalData);
-}
+  const L = describeAxis(detailed.leftType, detailed.leftLabel, detailed.leftPass, evaluation.player);
+  const R = describeAxis(detailed.rightType, detailed.rightLabel, detailed.rightPass, evaluation.player);
 
-// Evaluation function for player answers
-export function evaluatePlayerAnswer(player: any, rowCriteria: any, colCriteria: any): EvaluationResult {
-  // Basic evaluation logic - this would need to be implemented based on your criteria system
-  const teamPass = true; // placeholder
-  const critPass = true; // placeholder
+  if (!detailed.leftPass && detailed.rightPass) {
+    return `${playerName} ${R} (${ok(true)}) but ${L} (${ok(false)}).`;
+  }
+  if (detailed.leftPass && !detailed.rightPass) {
+    return `${playerName} ${L} (${ok(true)}) but ${R} (${ok(false)}).`;
+  }
+  if (!detailed.leftPass && !detailed.rightPass) {
+    return `${playerName} ${L} (${ok(false)}) and ${R} (${ok(false)}).`;
+  }
   
-  return {
-    player: player.name,
-    teamLabel: rowCriteria.label || "",
-    critLabel: colCriteria.label || "",
-    teamPass,
-    critPass,
-    correct: teamPass && critPass
-  };
+  // Safety fallback
+  return `${playerName} did not meet all requirements.`;
 }

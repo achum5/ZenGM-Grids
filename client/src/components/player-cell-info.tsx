@@ -8,7 +8,7 @@ import { evaluatePlayerAnswer, type EvaluationResult } from "@shared/evaluation"
 interface PlayerCellInfoProps {
   playerName: string;
   isCorrect: boolean;
-  score: number;
+  rarity: number;
   rank?: number;
   eligibleCount?: number;
   cellCriteria?: { row: string; column: string };
@@ -83,14 +83,18 @@ function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
-// Function to get score color for 1-10 scoring system
-function getScoreColor(score: number): string {
-  // Perfect scores (8-10) are green
-  if (score >= 8) return "bg-green-600";
-  if (score >= 6) return "bg-green-500";
-  if (score >= 5) return "bg-yellow-500";
-  if (score >= 3) return "bg-orange-500";
-  if (score >= 2) return "bg-red-400";
+// Function to get rarity color as a gradient from red (0) to green (100)
+function getRarityColor(rarity: number): string {
+  // Clamp rarity between 0 and 100
+  const clamped = Math.max(0, Math.min(100, rarity));
+  
+  // Red to green gradient: red at 0, green at 100
+  if (clamped >= 90) return "bg-green-600";
+  if (clamped >= 75) return "bg-green-500";
+  if (clamped >= 60) return "bg-yellow-500";
+  if (clamped >= 40) return "bg-orange-500";
+  if (clamped >= 25) return "bg-red-400";
+  if (clamped >= 10) return "bg-red-500";
   return "bg-red-600";
 }
 
@@ -105,7 +109,7 @@ function getRarityText(rarity: number): string {
   return "Ultra common";
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, score, rank, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
+export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
   const [showExpanded, setShowExpanded] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -126,7 +130,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, score, rank, eli
           {playerName}
         </div>
         <div className="text-xs text-white opacity-80">
-          {isCorrect ? `${score}` : 'X'}
+          {isCorrect ? `${rarity}%` : 'X'}
         </div>
       </div>
     );
@@ -310,7 +314,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, score, rank, eli
         onOpenChange={setShowProfileModal}
         columnCriteria={columnCriteria}
         rowCriteria={rowCriteria}
-        score={score}
+        rarity={rarity}
         rank={rank}
         eligibleCount={eligibleCount}
         isCorrect={isCorrect}
@@ -419,8 +423,8 @@ export default function PlayerCellInfo({ playerName, isCorrect, score, rank, eli
       >
       {/* Rarity indicator for correct answers */}
       <div className="absolute top-1 right-1 z-10">
-        <div className={`${getScoreColor(score)} text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center`}>
-          {score}
+        <div className={`${getRarityColor(rarity)} text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center`}>
+          {rarity}
         </div>
       </div>
       {/* Player Face */}
@@ -482,7 +486,7 @@ export default function PlayerCellInfo({ playerName, isCorrect, score, rank, eli
       onOpenChange={setShowProfileModal}
       columnCriteria={columnCriteria}
       rowCriteria={rowCriteria}
-      score={score}
+      rarity={rarity}
       rank={rank}
       eligibleCount={eligibleCount}
     />

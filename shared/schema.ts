@@ -22,28 +22,16 @@ export const games = pgTable("games", {
   columnCriteria: jsonb("column_criteria").$type<{ label: string; type: string; value: string }[]>().notNull(),
   rowCriteria: jsonb("row_criteria").$type<{ label: string; type: string; value: string }[]>().notNull(),
   correctAnswers: jsonb("correct_answers").$type<{ [key: string]: string[] }>().notNull(),
-  seed: text("seed"), // Add seed for stable URLs per spec point 2
-  isShared: boolean("is_shared").notNull().default(false), // Add sharing capability
-  shareableUrl: text("shareable_url"), // Add shareable URL
   createdAt: text("created_at").notNull().default(sql`NOW()`),
 });
 
 export const gameSessions = pgTable("game_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   gameId: varchar("game_id").notNull().references(() => games.id),
-  answers: jsonb("answers").$type<{ [key: string]: { player: string; correct: boolean; score: number; rank?: number; eligibleCount?: number } }>().notNull().default({}),
+  answers: jsonb("answers").$type<{ [key: string]: { player: string; correct: boolean; quality?: number; rarity?: number; rank?: number; eligibleCount?: number } }>().notNull().default({}),
   score: integer("score").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
   createdAt: text("created_at").notNull().default(sql`NOW()`),
-});
-
-// Daily pick frequency tracking per spec point 5
-export const dailyPickFrequency = pgTable("daily_pick_frequency", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  playerName: text("player_name").notNull(),
-  cellKey: text("cell_key").notNull(), // format: "gameId_cellCoordinate"
-  pickCount: integer("pick_count").notNull().default(1),
-  date: text("date").notNull().default(sql`DATE('now')`),
 });
 
 export const uploadedFiles = pgTable("uploaded_files", {
@@ -92,7 +80,6 @@ export type Player = typeof players.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type UploadedFile = typeof uploadedFiles.$inferSelect;
-export type DailyPickFrequency = typeof dailyPickFrequency.$inferSelect;
 export type InsertPlayer = z.infer<typeof insertPlayerSchema>;
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type InsertGameSession = z.infer<typeof insertGameSessionSchema>;
@@ -129,14 +116,4 @@ export interface SessionStats {
   averageScore: number;
   bestScore: number;
   successRate: number;
-}
-
-// Per-guess scoring formula per spec point 5
-export function perGuessScore(freq: number, maxFreq: number, eligibleCount: number): number {
-  const f = Math.max(0, freq) + 1;
-  const fm = Math.max(f, maxFreq) + 1;
-  let s = 1 + 9 * (1 - Math.log(f) / Math.log(fm));
-  const poolAdj = 0.025 * (1 - 1 / Math.max(1, eligibleCount));
-  s *= (1 + poolAdj);
-  return Math.max(1, Math.min(10, Math.round(s)));
 }
