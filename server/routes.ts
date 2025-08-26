@@ -1056,6 +1056,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log("🔧 Cleared old leader labels from achievements");
 
+      // Debug: Check globalIndices status before EVALS application
+      console.log("🔍 EVALS Debug - globalIndices exists:", !!globalIndices);
+      console.log("🔍 EVALS Debug - EVALS object exists:", !!EVALS);
+      console.log("🔍 EVALS Debug - EVALS keys:", Object.keys(EVALS || {}));
+      console.log("🔍 EVALS Debug - validatedPlayers count:", validatedPlayers.length);
+
       // Apply EVALS achievements using the globalIndices
       if (globalIndices) {
         console.log("🎯 Applying all EVALS achievements with league data...");
