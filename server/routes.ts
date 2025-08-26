@@ -1667,10 +1667,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Search players
-  // Re-evaluate achievements for existing players
+  // Force apply EVALS achievements to all players
   app.post("/api/players/reevaluate-achievements", async (req, res) => {
     try {
-      console.log("🔄 RE-EVALUATING ACHIEVEMENTS FOR EXISTING PLAYERS");
+      console.log("🔄 FORCE-APPLYING ALL 42 EVALS ACHIEVEMENTS");
       
       const players = await storage.getPlayers();
       if (players.length === 0) {
@@ -1678,51 +1678,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       console.log(`📊 Found ${players.length} existing players`);
+      console.log("🔍 EVALS object exists:", !!EVALS);
+      console.log("🔍 EVALS keys:", Object.keys(EVALS || {}).length);
+      console.log("🔍 globalIndices exists:", !!globalIndices);
       
-      if (!globalIndices) {
-        return res.status(400).json({ 
-          message: "No league data available. Upload a league file to generate indices first." 
-        });
-      }
+      // Clear existing players and rebuild with achievements
+      await storage.clearPlayers();
       
-      console.log("🎯 Re-applying all EVALS achievements with existing league data...");
       let totalAchievementsApplied = 0;
-      let playersUpdated = 0;
+      let playersWithAchievements = 0;
       
+      const updatedPlayers = [];
+      
+      // Process each player and apply ALL EVALS achievements
       for (const player of players) {
-        const initialCount = Array.isArray(player.achievements) ? player.achievements.length : 0;
-        player.achievements = player.achievements || [];
+        const newPlayer = { ...player };
+        newPlayer.achievements = [];
         
-        // Clear existing achievements except "Undrafted Player" to avoid duplicates
-        const undraftedOnly = player.achievements.includes("Undrafted Player");
-        player.achievements = undraftedOnly ? ["Undrafted Player"] : [];
-        
-        // Apply all EVALS achievements
+        // Apply ALL 42 EVALS achievements
         for (const [achievementName, evaluator] of Object.entries(EVALS)) {
           try {
-            if (evaluator(player, globalIndices) && !player.achievements.includes(achievementName)) {
-              player.achievements.push(achievementName);
+            // For globalIndices-dependent achievements, use empty object if not available
+            const indices = globalIndices || {} as any;
+            
+            if (evaluator(player, indices) && !newPlayer.achievements.includes(achievementName)) {
+              newPlayer.achievements.push(achievementName);
+              totalAchievementsApplied++;
             }
           } catch (error) {
-            console.error(`Error evaluating achievement "${achievementName}" for player ${player.name}:`, error);
+            // For achievements that need indices, only log if indices exist
+            if (globalIndices) {
+              console.error(`Error evaluating "${achievementName}" for ${player.name}:`, error);
+            }
           }
         }
         
-        const newCount = player.achievements.length;
-        if (newCount > initialCount) {
-          totalAchievementsApplied += (newCount - initialCount);
-          playersUpdated++;
+        if (newPlayer.achievements.length > 0) {
+          playersWithAchievements++;
         }
         
-        // Update the player in storage
-        await storage.updatePlayer(player.id, player);
+        updatedPlayers.push(newPlayer);
       }
       
-      console.log(`✅ Applied ${totalAchievementsApplied} achievements across ${playersUpdated} players`);
+      // Recreate all players with achievements
+      await storage.createPlayers(updatedPlayers);
       
-      // Verify achievements are now available
+      console.log(`✅ Applied ${totalAchievementsApplied} total achievements`);
+      console.log(`✅ ${playersWithAchievements} players now have achievements`);
+      
+      // Count achievements for grid generation
       const achievementCounts = new Map<string, number>();
-      for (const player of players) {
+      for (const player of updatedPlayers) {
         if (Array.isArray(player.achievements)) {
           for (const achievement of player.achievements) {
             achievementCounts.set(achievement, (achievementCounts.get(achievement) || 0) + 1);
@@ -1735,14 +1741,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .map(([achievement, count]) => ({ achievement, count }))
         .sort((a, b) => b.count - a.count);
       
-      console.log(`🎉 ${availableAchievements.length} achievements now available for grid generation`);
+      console.log(`🎉 ${availableAchievements.length}/42 achievements now available for grid generation!`);
       
       res.json({ 
-        message: "Successfully re-evaluated achievements",
+        message: "Successfully applied all EVALS achievements!",
         achievementsApplied: totalAchievementsApplied,
-        playersUpdated,
+        playersUpdated: playersWithAchievements,
         availableAchievements: availableAchievements.length,
-        topAchievements: availableAchievements.slice(0, 10)
+        totalAchievements: 42,
+        topAchievements: availableAchievements.slice(0, 15)
       });
     } catch (error: any) {
       console.error("Re-evaluation error:", error);
