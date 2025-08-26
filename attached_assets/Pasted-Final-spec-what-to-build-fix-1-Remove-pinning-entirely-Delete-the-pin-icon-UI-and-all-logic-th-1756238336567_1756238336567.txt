@@ -1,0 +1,473 @@
+Final spec — what to build & fix
+1) Remove pinning entirely
+
+Delete the pin icon/UI and all logic that preserves headers across generations.
+
+Generating a new grid always re-rolls all headers (unless loading a saved/shared grid by seed).
+
+Remove any warnings that existed solely for pinning.
+
+Acceptance
+
+No pin UI anywhere.
+
+“Generate New Grid” re-rolls all headers unless a seed is being loaded.
+
+2) Team logos from league file (no emojis)
+
+Use team.logoURL from the uploaded league JSON (BBGM-style links) for header logos.
+
+If logoURL exists, render the image (centered, ~36–48px height). Hide the text name.
+
+Fallback to text if the image fails or is missing.
+
+Add alt + title = team name.
+
+Never render emoji for teams.
+
+Acceptance
+
+Real logos show when available; otherwise text name. No emoji rockets, etc.
+
+3) Modal sentence logic (type-correct wording, color text, keep Teams list)
+
+Generate the top sentence using wording that matches the criterion type (team, draft, totals, season averages, 50/40/90, leaders, feats, awards, All-Star, champion, career meta).
+
+Color the clauses (no emoji): green for true, red for false.
+
+Team vs. team special case:
+“Player X played for neither the [Team A] nor the [Team B].”
+
+Keep the Teams list section exactly as it exists now, below the sentence.
+
+Remove the “Team: … / Criterion: …” bullets.
+
+Acceptance
+
+Achievements never use team phrasing.
+
+Colors applied correctly.
+
+“Played for neither … nor …” used when both axes are teams.
+
+Teams list remains visible.
+
+4) Numbers in parentheses (exact extraction & formatting)
+
+Use these helpers everywhere:
+
+function fmtInt(n: number){return n.toLocaleString("en-US");}
+function fmt1(n: number){return (Math.round(n*10)/10).toFixed(1);}
+function pct(n: number){return fmt1(100*n)+"%";}
+
+
+Data sources (BBGM JSON):
+
+Season stats (RS only): league.players[].stats[] (s.playoffs !== true). Keys: gp, pts, ast, stl, blk, trb (or orb+drb if trb missing), fg,fga,ft,fta,tp(3p),tpa(3pa).
+
+Awards/All-NBA/All-Def: league.awards[].
+
+All-Star: league.allStars[] (rosters → pids).
+
+Champions: league.playoffSeries[] → champion team; ring if player logged ≥1 game for champion that season (RS or PO).
+
+Feats: league.playerFeats[].
+
+Draft: league.players[].draft (round,pick,year).
+
+Leaders: compute from RS stats (per-game, ≥58% GP, ties allowed). Never trust strings.
+
+What to show:
+
+Career totals (e.g., 2,000+ steals): sum s.stl → "(1,620)".
+
+Season averages (e.g., 15+ RPG): best single RS season value → "(14.6 RPG)".
+
+50/40/90: check per season with minimums FGA≥300, 3PA≥82, FTA≥125 and thresholds FG≥.500, 3P≥.400, FT≥.900.
+
+If fail: closest season triple "(2018–19: 52.4% / 38.9% / 88.1%)".
+
+If pass: years "(2015–16, 2017–18)".
+
+Leaders (PPG/RPG/APG/SPG/BPG):
+
+If fail: best per-game "(2.3 BPG)" etc.
+
+If pass: years led "(2004–05, 2006–07)".
+
+Game feats: show count if pass "(3 times)"; otherwise best single-game near-miss "(career high: 46 pts)" (reb/ast/3s analogous; triple-double count if pass).
+
+Awards (MVP, DPOY, ROY, 6MOY, MIP, Finals MVP): count wins "(0×)" / "(2×)".
+
+All-League / All-Defensive: total selections "(3×)".
+
+All-Star: selections "(9×)"; Age 35+ All-Star → "(age 36 in 2030)" if pass, else "(0×)".
+
+NBA Champion: rings "(3×)".
+
+Draft:
+#1 overall → "(Round 1, Pick 1)",
+1st round → "(Round 1, Pick X)",
+2nd round → "(Round 2, Pick X)",
+Undrafted → "(Undrafted)".
+
+Career meta:
+15+ seasons → count RS seasons with gp≥1: "(17 seasons)".
+Only one team → distinct RS team IDs with gp≥1: "(3 teams)".
+
+Formatting rules
+
+Use fmtInt, fmt1, pct. Labels: PPG, RPG, APG, SPG, BPG.
+
+Season labels: YYYY–YY if available, else YYYY/YYYY–YYYY.
+
+If a value can’t be computed, omit the parentheses (never show undefined/NaN).
+
+Acceptance
+
+Anthony Davis example shows correct All-Star wording and parentheses values.
+
+5) Per-guess scoring MUST be 1–10 (full overhaul)
+
+Goal
+
+Correct guess returns integer 1..10 (1 = most common in that cell, 10 = rarest).
+
+Wrong guess returns 0.
+
+There must be no 0–100 pipeline anywhere (no later division or hidden scaling).
+
+5.A Where to implement
+
+Implement scoring in one place only: computePerGuessScore(cellId, playerId).
+
+All callers (submit/validate flow) must use this function and nothing else.
+
+Remove/disable any legacy “rarity score” calculators, percentiles, or 0–100 mappers.
+
+5.B Required inputs
+
+freq(p) = current pick count for this player in this cell (reset daily).
+
+maxFreq = maximum pick count among all valid players for this cell.
+
+eligibleCount = number of valid players for this cell.
+
+5.C The only allowed formula
+function perGuessScore(freq: number, maxFreq: number, eligibleCount: number): number {
+  const f  = Math.max(0, freq) + 1;                // smoothing
+  const fm = Math.max(f, maxFreq) + 1;             // guard
+
+  // Base in [1,10]: log-rarity (rarer -> closer to 10)
+  let s = 1 + 9 * (1 - Math.log(f) / Math.log(fm));
+
+  // Small pool fairness (≤ +2.5%)
+  const poolAdj = 0.025 * (1 - 1 / Math.max(1, eligibleCount));
+  s *= (1 + poolAdj);
+
+  // Hard clamp & integerize to [1..10]
+  s = Math.max(1, Math.min(10, Math.round(s)));
+  return s;
+}
+
+5.D Guardrails (must implement)
+
+Unit check at runtime (dev mode log or assert): if any per-guess score > 10 or < 0, log 🚨 INVALID SCORE with inputs and block the write.
+
+No hidden rescale: search the codebase and delete any function that multiplies by 10, divides by 10, maps to 0–100, or stores “rarity percentage”.
+
+Database/API shape for a guess result must carry the final 1..10 integer (not a 0–100 value).
+
+UI must render the integer 1–10 directly—no percentage bars.
+
+5.E Examples (for QA)
+
+If the chosen player is the most-picked for that cell (largest freq), score should be 1 (or 2 with early smoothing, but after enough picks it should settle at 1).
+
+If the chosen player is unique so far (freq=0 while many others have picks), score approaches 10.
+
+With freq=3, maxFreq=30, eligibleCount=40 → score should be near 9–10.
+
+With freq=25, maxFreq=30 → score should be around 2–3.
+
+Acceptance
+
+No correct guess ever yields 0.
+
+No score prints above 10.
+
+Removing all legacy 0–100 code leaves per-guess scoring working as 1–10.
+
+6) Simplify the Stats panel (replace old “rarity” stats)
+
+Remove old top metrics (Total/Avg/Best/Worst Rarity, Rarity Score, etc.) and the bottom “Current Session … points” panel.
+
+Replace both with one Stats card:
+
+Desktop/Tablet
++-------------------------------------------------+
+|                   STATS                         |
+|                                                 |
+|   [ BIG SCORE ]                                 |
+|    27                                           |
+|    (Session Score)                              |
+|                                                 |
+|   -------------------------------------------   |
+|   Correct: 1   •   Incorrect: 0   •   Left: 8   |
+|                                                 |
+|   Best: 7   •   Avg: 7.0                        |
++-------------------------------------------------+
+
+Mobile
++----------------------+
+|       STATS          |
+|  [ BIG SCORE ]       |
+|   27                 |
+|   (Session Score)    |
+|----------------------|
+| Correct: 1           |
+| Incorrect: 0         |
+| Left: 8              |
+|----------------------|
+| Best: 7  •  Avg: 7.0 |
++----------------------+
+
+
+Data
+
+sessionScore = sum of per-guess (1–10) scores.
+
+correct, incorrect, guessesLeft.
+
+bestPerGuess (1–10 int), avgPerGuess (one decimal, correct guesses only). Hide Best/Avg row if none yet.
+
+Acceptance
+
+Only the new Stats card appears. No old rarity fields anywhere.
+
+Big score increases by 1–10 on correct; 0 on wrong.
+
+7) Share & play the same grid
+
+Keep Share/Save to generate URL /grid/<seed> (prefer this route; don’t mix with /shared/).
+
+Add “Play a Shared Grid” input (textbox + Load button) near Generate.
+
+Behavior
+
+If a full URL is pasted, extract <seed>; if a bare seed, accept it directly.
+
+Visiting /grid/<seed> renders that exact grid immediately.
+
+Invalid seed → inline error: “That shared grid link is invalid.”
+
+Acceptance
+
+Copy link, paste in another browser, same grid renders.
+
+The input makes it obvious where to paste.
+
+8) Global rules (unchanged)
+
+Team requirement = ≥1 game for that team in any season (RS or playoffs).
+
+Stat/Award requirement = career-wide unless explicitly “season” or “game.”
+
+50/40/90 = per-season with FGA≥300, 3PA≥82, FTA≥125.
+
+Leaders = RS only, per-game, ≥58% GP, ties allowed.
+
+Other Top Answers = team AND criterion (intersection).
+
+Grids must be solvable = every cell has ≥1 valid player before display.
+
+Quick regression checklist
+
+Upload league → headers show logos, not emojis.
+
+Correct guess → per-guess score in [1..10] only.
+
+Wrong guess → 0.
+
+Modal wording matches type; colors correct; parentheses show right values.
+
+Old rarity panels are gone; only the new Stats card appears.
+
+Share link /grid/<seed> opens the same grid; input can load by URL or seed.
+
+If you want, I can also provide a quick “find & remove legacy 0–100” grep list the agent can run to ensure nothing is multiplying/dividing scores behind the scenes.
+
+You said:
+Why this was incorrect
+Kevin Knox played for the New York Knicks but not the Led League in Scoring.
+
+
+also this language is still screwed up
+ChatGPT said:
+Thought for 13s
+
+You’re right—that sentence is still wrong because it’s plugging the raw label (“Led League in Scoring”) into a team-style template. Here’s an exact, code-ready spec to fix the modal sentence builder so it always uses the right wording.
+
+Fix: Incorrect modal language (sentence builder v2)
+Inputs (from your validation)
+type CellSpec =
+  | { kind: "team"; teamId: number; teamName: string }
+  | { kind: "ach";  achId: string;  achLabel: string };
+
+type Eval = {
+  playerName: string;
+  row: CellSpec;
+  col: CellSpec;
+  teamPass: boolean;       // true if played ≥1 game for the team cell (RS or PO)
+  critPass: boolean;       // true if meets the achievement cell
+  // if both cells are teams, treat "critPass" as the pass for the column team
+  // Optional precomputed stat strings for parentheses (per earlier spec 4.B):
+  parenthTeam?: string;    // e.g., "(2 seasons)"
+  parenthCrit?: string;    // e.g., "(30.1 PPG)" or "(1,620)"
+};
+
+Color classes
+
+Use CSS classes (no emojis):
+.ok { color: #3fbf5a; } (green)
+.bad { color: #ff5757; } (red)
+
+Phrase table (do not use raw labels)
+
+Map each achievement to a verb phrase pair: positive/negative.
+
+const PHRASES: Record<string, { pos: (p?:string)=>string; neg: (p?:string)=>string }> = {
+  // Career totals
+  "TOT_20000_PTS": { pos: ()=>"had 20,000+ career points",   neg: ()=>"did not have 20,000+ career points" },
+  "TOT_10000_REB": { pos: ()=>"had 10,000+ career rebounds",  neg: ()=>"did not have 10,000+ career rebounds" },
+  "TOT_5000_AST":  { pos: ()=>"had 5,000+ career assists",    neg: ()=>"did not have 5,000+ career assists" },
+  "TOT_2000_STL":  { pos: ()=>"had 2,000+ career steals",     neg: ()=>"did not have 2,000+ career steals" },
+  "TOT_1500_BLK":  { pos: ()=>"had 1,500+ career blocks",     neg: ()=>"did not have 1,500+ career blocks" },
+  "TOT_2000_3PM":  { pos: ()=>"made 2,000+ career threes",    neg: ()=>"did not make 2,000+ career threes" },
+
+  // Season averages
+  "AVG_30_PPG":    { pos: ()=>"averaged 30+ PPG in a season",  neg: ()=>"did not average 30+ PPG in a season" },
+  "AVG_10_APG":    { pos: ()=>"averaged 10+ APG in a season",  neg: ()=>"did not average 10+ APG in a season" },
+  "AVG_15_RPG":    { pos: ()=>"averaged 15+ RPG in a season",  neg: ()=>"did not average 15+ RPG in a season" },
+  "AVG_3_BPG":     { pos: ()=>"averaged 3+ BPG in a season",   neg: ()=>"did not average 3+ BPG in a season" },
+  "AVG_2p5_SPG":   { pos: ()=>"averaged 2.5+ SPG in a season", neg: ()=>"did not average 2.5+ SPG in a season" },
+  "SEAS_504090":   { pos: ()=>"recorded a 50/40/90 season",    neg: ()=>"did not record a 50/40/90 season" },
+
+  // League leaders (per-season leaders index!)
+  "LED_PTS":       { pos: ()=>"led the league in scoring",     neg: ()=>"did not lead the league in scoring" },
+  "LED_REB":       { pos: ()=>"led the league in rebounds",    neg: ()=>"did not lead the league in rebounds" },
+  "LED_AST":       { pos: ()=>"led the league in assists",     neg: ()=>"did not lead the league in assists" },
+  "LED_STL":       { pos: ()=>"led the league in steals",      neg: ()=>"did not lead the league in steals" },
+  "LED_BLK":       { pos: ()=>"led the league in blocks",      neg: ()=>"did not lead the league in blocks" },
+
+  // Game feats
+  "FEAT_50PTS":    { pos: ()=>"scored 50+ points in a game",   neg: ()=>"did not score 50+ points in a game" },
+  "FEAT_20REB":    { pos: ()=>"grabbed 20+ rebounds in a game",neg: ()=>"did not grab 20+ rebounds in a game" },
+  "FEAT_20AST":    { pos: ()=>"dished 20+ assists in a game",  neg: ()=>"did not dish 20+ assists in a game" },
+  "FEAT_10_3PM":   { pos: ()=>"made 10+ threes in a game",     neg: ()=>"did not make 10+ threes in a game" },
+  "FEAT_TRIPLE":   { pos: ()=>"recorded a triple-double",      neg: ()=>"did not record a triple-double" },
+
+  // Awards
+  "AWD_MVP":       { pos: ()=>"won MVP",                        neg: ()=>"did not win MVP" },
+  "AWD_DPOY":      { pos: ()=>"won Defensive Player of the Year", neg: ()=>"did not win Defensive Player of the Year" },
+  "AWD_ROY":       { pos: ()=>"won Rookie of the Year",         neg: ()=>"did not win Rookie of the Year" },
+  "AWD_6MOY":      { pos: ()=>"won Sixth Man of the Year",      neg: ()=>"did not win Sixth Man of the Year" },
+  "AWD_MIP":       { pos: ()=>"won Most Improved Player",       neg: ()=>"did not win Most Improved Player" },
+  "AWD_FMVP":      { pos: ()=>"won Finals MVP",                 neg: ()=>"did not win Finals MVP" },
+
+  // Selections / champs
+  "SEL_ALLNBA":    { pos: ()=>"made an All-League team",        neg: ()=>"did not make an All-League team" },
+  "SEL_ALLDEF":    { pos: ()=>"made an All-Defensive team",     neg: ()=>"did not make an All-Defensive team" },
+  "SEL_ALLSTAR":   { pos: ()=>"was an All-Star",                neg: ()=>"was not an All-Star" },
+  "SEL_ALLSTAR_35":{ pos: ()=>"made an All-Star team at age 35+", neg: ()=>"did not make an All-Star team at age 35+" },
+  "CHAMPION":      { pos: ()=>"won an NBA championship",        neg: ()=>"did not win an NBA championship" },
+  "HOF":           { pos: ()=>"made the Hall of Fame",          neg: ()=>"did not make the Hall of Fame" },
+
+  // Draft / career meta
+  "DRAFT_1OA":     { pos: ()=>"was a first overall pick",       neg: ()=>"was not a first overall pick" },
+  "DRAFT_FIRST":   { pos: ()=>"was a first-round pick",         neg: ()=>"was not a first-round pick" },
+  "DRAFT_SECOND":  { pos: ()=>"was a second-round pick",        neg: ()=>"was not a second-round pick" },
+  "UNDRAFTED":     { pos: ()=>"was undrafted",                  neg: ()=>"was not undrafted" },
+  "CAREER_15Y":    { pos: ()=>"played 15+ seasons",             neg: ()=>"did not play 15+ seasons" },
+  "ONLY_ONE_TEAM": { pos: ()=>"played only on one team",        neg: ()=>"did not play only on one team" },
+};
+
+Phrase builders
+function teamPos(teamName: string){ return `played for the ${teamName}`; }
+function teamNeg(teamName: string){ return `did not play for the ${teamName}`; }
+
+function achPos(achId: string){ return PHRASES[achId]?.pos() ?? "met the criterion"; }
+function achNeg(achId: string){ return PHRASES[achId]?.neg() ?? "did not meet the criterion"; }
+
+Parentheses placement
+
+Append the parenthetical only to the criterion clause (never to the team clause).
+Use the parenthCrit string you already compute per our earlier spec (totals, best season avg, leader years, etc.).
+
+Team-vs-team special case (both cells teams)
+
+If both cells are teams:
+
+If both failed →
+"<span class='bad'>${p} played for neither the ${A} nor the ${B}</span>."
+
+If both passed →
+"<span class='ok'>${p} played for both the ${A} and the ${B}</span>."
+
+If one passed, one failed →
+"<span class='ok'>${p} ${teamPos(passTeam)}</span> but <span class='bad'>${teamNeg(failTeam)}</span>."
+
+Mixed cases (team + achievement)
+function buildIncorrectSentence(e: Eval): string {
+  const p = e.playerName;
+  const row = e.row, col = e.col;
+  const isTeamRow = row.kind === "team";
+  const teamCell  = isTeamRow ? row : col;      // whichever is the team
+  const achCell   = isTeamRow ? col : row;      // whichever is the achievement
+
+  // Team vs Team handled elsewhere
+  if (row.kind==="team" && col.kind==="team"){
+    // use special-case block above (return the correct string)
+  }
+
+  // Build clauses
+  const teamClause = e.teamPass
+    ? `<span class="ok">${p} ${teamPos(teamCell.teamName)}</span>`
+    : `<span class="bad">${p} ${teamNeg(teamCell.teamName)}</span>`;
+
+  const achClause = e.critPass
+    ? `<span class="ok">${achPos((achCell as any).achId)}${e.parenthCrit ? " " + e.parenthCrit : ""}</span>`
+    : `<span class="bad">${achNeg((achCell as any).achId)}${e.parenthCrit ? " " + e.parenthCrit : ""}</span>`;
+
+  // Order: if team passed and ach failed, use “… but …”
+  if (e.teamPass && !e.critPass) return `${teamClause} but ${achClause}.`;
+  if (!e.teamPass && e.critPass) return `${teamClause} but ${achClause}.`;
+  if (!e.teamPass && !e.critPass) return `${teamClause} and ${achClause}.`;
+  // (If both passed, this sentence isn’t used for incorrect guesses)
+  return `${teamClause} and ${achClause}.`;
+}
+
+Example fixes
+
+Your Kevin Knox example (Team + Leader)
+Current wrong: “played for the Knicks but not the Led League in Scoring.”
+Correct with builder:
+“Kevin Knox played for the New York Knicks (green) but did not lead the league in scoring (30.1 PPG) (red).”
+(The parenthetical here is an example best-season PPG if he failed; use your computed parenthCrit.)
+
+Anthony Davis (Draft + All-Star)
+“Anthony Davis was a first overall pick” (green) “but was not an All-Star (0×)” (red).
+(If he was an All-Star, flip colors and show (N×).)
+
+Team–Team both fail
+“Kevin Knox played for neither the Portland Trail Blazers nor the Los Angeles Lakers.” (red)
+
+Don’ts (guardrails)
+
+❌ Do not interpolate raw labels like “Led League in Scoring” into a team-style sentence.
+
+❌ Do not omit the “lead the league in …” phrasing for leader achievements.
+
+❌ Do not attach parentheticals to the team clause—only to the criterion clause.
+
+If you paste this spec to the agent and have them replace the existing sentence generation with this sentence builder v2, the “Kevin Knox … Led League in Scoring” language bug will be gone, and all other criterion sentences will be correct and consistent.

@@ -76,35 +76,30 @@ export default function Home() {
     enabled: !!currentSessionId,
   });
 
-  // Calculate stats for Stats component
+  // Calculate stats for Stats component - per spec point 6
   const calculateStats = () => {
     if (!session?.answers) {
       return {
+        sessionScore: 0,
         correct: 0,
         incorrect: 0,
-        guessesLeft: 9,
-        totalRarity: 0,
-        avgRarity: 0,
-        best: 0,
-        worst: 0,
-        rarityScore: 0
+        guessesLeft: 9
       };
     }
 
     const answers = Object.values(session.answers);
     const correct = answers.filter(a => a.correct).length;
     const incorrect = answers.filter(a => !a.correct).length;
-    const correctRarities = answers.filter(a => a.correct).map(a => a.rarity || 0);
+    const correctAnswers = answers.filter(a => a.correct);
+    const perGuessScores = correctAnswers.map(a => a.perGuessScore || 0);
     
     return {
+      sessionScore: session.score || 0, // Sum of 1-10 scores per spec
       correct,
       incorrect,
       guessesLeft: 9 - answers.length,
-      totalRarity: correctRarities.reduce((sum, rarity) => sum + rarity, 0),
-      avgRarity: correctRarities.length > 0 ? Math.round(correctRarities.reduce((sum, rarity) => sum + rarity, 0) / correctRarities.length) : 0,
-      best: correctRarities.length > 0 ? Math.max(...correctRarities) : 0,
-      worst: correctRarities.length > 0 ? Math.min(...correctRarities) : 0,
-      rarityScore: session.score || 0
+      bestPerGuess: perGuessScores.length > 0 ? Math.max(...perGuessScores) : undefined,
+      avgPerGuess: perGuessScores.length > 0 ? perGuessScores.reduce((sum, score) => sum + score, 0) / perGuessScores.length : undefined
     };
   };
 
@@ -143,14 +138,12 @@ export default function Home() {
           {hasLeague && (
             <>
               <Stats
+                sessionScore={statsData.sessionScore}
                 correct={statsData.correct}
                 incorrect={statsData.incorrect}
                 guessesLeft={statsData.guessesLeft}
-                totalRarity={statsData.totalRarity}
-                avgRarity={statsData.avgRarity}
-                best={statsData.best}
-                worst={statsData.worst}
-                rarityScore={statsData.rarityScore}
+                bestPerGuess={statsData.bestPerGuess}
+                avgPerGuess={statsData.avgPerGuess}
               />
               
               <GameGrid 

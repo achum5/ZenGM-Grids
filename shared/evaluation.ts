@@ -203,19 +203,19 @@ function describeAxis(type: AxisType, label: string, passed: boolean, player?: P
     return passed ? `recorded a 50/40/90 season${parentheses}` : `did not record a 50/40/90 season${parentheses}`;
   }
   if (/led\s+league.*scoring/i.test(label)) {
-    return passed ? "led the league in scoring" : "did not lead the league in scoring";
+    return passed ? `led the league in scoring${parentheses}` : `did not lead the league in scoring${parentheses}`;
   }
   if (/led\s+league.*rebounds/i.test(label)) {
-    return passed ? "led the league in rebounds" : "did not lead the league in rebounds";
+    return passed ? `led the league in rebounds${parentheses}` : `did not lead the league in rebounds${parentheses}`;
   }
   if (/led\s+league.*assists/i.test(label)) {
-    return passed ? "led the league in assists" : "did not lead the league in assists";
+    return passed ? `led the league in assists${parentheses}` : `did not lead the league in assists${parentheses}`;
   }
   if (/led\s+league.*steals/i.test(label)) {
-    return passed ? "led the league in steals" : "did not lead the league in steals";
+    return passed ? `led the league in steals${parentheses}` : `did not lead the league in steals${parentheses}`;
   }
   if (/led\s+league.*blocks/i.test(label)) {
-    return passed ? "led the league in blocks" : "did not lead the league in blocks";
+    return passed ? `led the league in blocks${parentheses}` : `did not lead the league in blocks${parentheses}`;
   }
   if (/50\+.*game|scored\s+50/i.test(label)) {
     return passed ? "scored 50+ in a game" : "did not score 50+ in a game";
@@ -275,7 +275,7 @@ function describeAxis(type: AxisType, label: string, passed: boolean, player?: P
 
 export function buildIncorrectMessage(playerName: string, evaluation: EvaluationResult): string {
   // Determine if we have team vs team case by checking if both labels are team names (no achievement keywords)
-  const achievementKeywords = ['PPG', 'APG', 'RPG', 'MVP', 'All-Star', 'Champion', 'Finals', 'Points', 'Rebounds', 'Assists', 'Blocks', 'Steals', 'Draft', 'Rookie', 'Hall of Fame', 'season', 'career', 'game', 'Overall', 'Round'];
+  const achievementKeywords = ['PPG', 'APG', 'RPG', 'MVP', 'All-Star', 'Champion', 'Finals', 'Points', 'Rebounds', 'Assists', 'Blocks', 'Steals', 'Draft', 'Rookie', 'Hall of Fame', 'season', 'career', 'game', 'Overall', 'Round', 'Led League'];
   const teamLabelIsAchievement = achievementKeywords.some(keyword => evaluation.teamLabel.includes(keyword));
   const critLabelIsAchievement = achievementKeywords.some(keyword => evaluation.critLabel.includes(keyword));
   
@@ -293,26 +293,30 @@ export function buildIncorrectMessage(playerName: string, evaluation: Evaluation
   const L = describeAxis(detailed.leftType, detailed.leftLabel, detailed.leftPass, evaluation.player);
   const R = describeAxis(detailed.rightType, detailed.rightLabel, detailed.rightPass, evaluation.player);
 
+  // Add color styling based on pass/fail per spec
+  const colorL = detailed.leftPass ? `<span class="text-green-600">${L}</span>` : `<span class="text-red-600">${L}</span>`;
+  const colorR = detailed.rightPass ? `<span class="text-green-600">${R}</span>` : `<span class="text-red-600">${R}</span>`;
+
   // Special case: team vs team per spec point 7
   if (detailed.leftType === "team" && detailed.rightType === "team") {
     if (!detailed.leftPass && !detailed.rightPass) {
-      return `${playerName} played for neither the ${detailed.leftLabel} nor the ${detailed.rightLabel}.`;
+      return `<span class="text-red-600">${playerName} played for neither the ${detailed.leftLabel} nor the ${detailed.rightLabel}</span>.`;
     } else if (!detailed.leftPass && detailed.rightPass) {
-      return `${playerName} played for the ${detailed.rightLabel} but not the ${detailed.leftLabel}.`;
+      return `${playerName} <span class="text-green-600">played for the ${detailed.rightLabel}</span> but <span class="text-red-600">did not play for the ${detailed.leftLabel}</span>.`;
     } else if (detailed.leftPass && !detailed.rightPass) {
-      return `${playerName} played for the ${detailed.leftLabel} but not the ${detailed.rightLabel}.`;
+      return `${playerName} <span class="text-green-600">played for the ${detailed.leftLabel}</span> but <span class="text-red-600">did not play for the ${detailed.rightLabel}</span>.`;
     }
   }
 
-  // Standard cases with natural language per spec 4.A  
+  // Standard cases with natural language and colors per spec 4.A  
   if (!detailed.leftPass && detailed.rightPass) {
-    return `${playerName} ${R} but ${L}.`;
+    return `${playerName} ${colorR} but ${colorL}.`;
   }
   if (detailed.leftPass && !detailed.rightPass) {
-    return `${playerName} ${L} but ${R}.`;
+    return `${playerName} ${colorL} but ${colorR}.`;
   }
   if (!detailed.leftPass && !detailed.rightPass) {
-    return `${playerName} ${L} and ${R}.`;
+    return `${playerName} ${colorL} and ${colorR}.`;
   }
   
   // Safety fallback
