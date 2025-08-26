@@ -299,7 +299,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
                       <PlayerCellInfo 
                         playerName={answer.player}
                         isCorrect={!!isCorrect}
-                        rarity={answer.rarity || 0}
+                        score={answer.score || 0}
                         rank={answer.rank || 0}
                         eligibleCount={answer.eligibleCount || 0}
                         cellCriteria={game ? {

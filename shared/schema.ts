@@ -31,7 +31,7 @@ export const games = pgTable("games", {
 export const gameSessions = pgTable("game_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   gameId: varchar("game_id").notNull().references(() => games.id),
-  answers: jsonb("answers").$type<{ [key: string]: { player: string; correct: boolean; quality?: number; rarity?: number; rank?: number; eligibleCount?: number; perGuessScore?: number } }>().notNull().default({}),
+  answers: jsonb("answers").$type<{ [key: string]: { player: string; correct: boolean; score: number; rank?: number; eligibleCount?: number } }>().notNull().default({}),
   score: integer("score").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
   createdAt: text("created_at").notNull().default(sql`NOW()`),

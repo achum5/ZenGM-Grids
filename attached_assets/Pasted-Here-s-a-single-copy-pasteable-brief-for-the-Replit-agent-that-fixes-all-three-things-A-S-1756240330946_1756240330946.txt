@@ -1,0 +1,267 @@
+Here’s a single, copy-pasteable brief for the Replit agent that fixes all three things:
+
+* **(A) Scoring MUST be 1–10 (not 0–100)**
+* **(B) Add a visible place to paste/play a shared grid link**
+* **(C) Fix the modal sentence builder bugs (“did not play for the Led League in Scoring”, double period, etc.)**
+
+---
+
+# A) Overhaul scoring to **exactly 1–10**
+
+## A1. Remove all 0–100 code paths
+
+1. **Delete/disable** any code that:
+
+   * Returns or stores a “rarity %” or a 0–100 score.
+   * Later divides/multiplies by 10 to convert.
+   * Computes “Rarity Score”, “Total/Avg/Best/Worst Rarity”.
+2. Search & remove calls/vars like: `rarity`, `percentile`, `score100`, `normalize(…0,100…)`, “rarityScore”, “rarityPercent”.
+
+## A2. Single source of truth
+
+Create this function and use it **everywhere** a per-guess score is needed (server side):
+
+```ts
+// inputs computed at guess time, per CELL
+// freq    = how many times THIS player has been picked for THIS cell (today)
+// maxFreq = max pick count among ALL eligible players for THIS cell (today)
+// eligibleCount = number of valid players for THIS cell
+export function perGuessScore(freq: number, maxFreq: number, eligibleCount: number): number {
+  const f  = Math.max(0, freq) + 1;            // smoothing
+  const fm = Math.max(f, maxFreq) + 1;         // guard
+
+  // base in [1..10]: rarer -> closer to 10
+  let s = 1 + 9 * (1 - Math.log(f) / Math.log(fm));
+
+  // tiny pool fairness boost (≤ +2.5%)
+  const poolAdj = 0.025 * (1 - 1 / Math.max(1, eligibleCount));
+  s *= (1 + poolAdj);
+
+  // hard clamp & integerize
+  s = Math.max(1, Math.min(10, Math.round(s)));
+  return s;                                     // <-- ALWAYS integer 1..10 for correct
+}
+```
+
+* **Wrong guess** gets **0**.
+* **Correct guess** MUST call `perGuessScore` and use its return **as-is** (no scaling).
+
+## A3. Data it needs at guess time
+
+* `eligiblePlayers = getEligiblePlayers(rowSpec, colSpec)` (intersection: **team ∧ criterion**).
+* `freq(p)` from your per-cell pick counter (reset daily).
+* `maxFreq = max(freq(q))` for `q ∈ eligiblePlayers`.
+* `eligibleCount = eligiblePlayers.length`.
+
+## A4. Contract changes (enforced)
+
+* API response for a correct guess: `{ perGuessScore: <int 1..10> }` (no percentage).
+* DB: store the **integer 1..10** only.
+* UI: render that integer directly (no bars/percent).
+
+## A5. Runtime guard (dev)
+
+Add a one-line assert where the score is computed and before persisting:
+
+```ts
+if (score < 0 || score > 10) { 
+  console.error("🚨 INVALID perGuessScore", {freq, maxFreq, eligibleCount, score}); 
+  throw new Error("Invalid perGuessScore"); 
+}
+```
+
+## A6. Quick QA examples
+
+* First ever pick in cell (`maxFreq=0`): score = **10**.
+* `freq=25, maxFreq=30, eligibleCount=60` → score ≈ **2–3**.
+* `freq=3, maxFreq=30, eligibleCount=40` → score ≈ **9–10**.
+
+---
+
+# B) Add a “Play a Shared Grid” input
+
+## B1. Keep share URL format
+
+* Use **`/grid/<seed>`** for shared grids (standardize on this; stop using `/shared/…`).
+
+## B2. New UI controls (next to Generate)
+
+* **Text input** placeholder: `Paste shared grid link or seed`
+* **Button**: `Load`
+* Behavior:
+
+  * If the user pastes a **full URL**, extract `<seed>` after `/grid/`.
+  * If it’s just a token, treat it as `<seed>`.
+  * Navigate to `/grid/<seed>` and render that exact grid.
+
+## B3. Route behavior
+
+* Visiting `/grid/<seed>` should **immediately** render those exact headers (no extra click).
+* Invalid seed → small inline error under the input:
+  `That shared grid link is invalid.`
+
+---
+
+# C) Fix modal sentence builder (language & formatting)
+
+Your current bugs:
+
+* “**did not play for the Led League in Scoring**” → using **team** phrasing for an **achievement**.
+* Double period `..`
+* Team–team and mixed cases not handled cleanly.
+
+## C1. Inputs you already have
+
+```ts
+type CellSpec =
+  | { kind: "team"; teamId: number; teamName: string }
+  | { kind: "ach";  achId: string;  achLabel: string };
+
+type Eval = {
+  playerName: string;
+  row: CellSpec;
+  col: CellSpec;
+  teamPass: boolean;      // passes the TEAM cell (≥1 game RS/PO)
+  critPass: boolean;      // passes the ACHIEVEMENT cell
+  parenthCrit?: string;   // formatted numbers in () for the criterion (see below)
+};
+```
+
+## C2. Color classes (no emoji)
+
+* `.ok { color: var(--green-600); }`
+* `.bad{ color: var(--red-600); }`
+
+## C3. Phrase table (achievement-specific wording)
+
+**Never** insert raw labels like “Led League in Scoring” into team templates.
+
+```ts
+const PHRASES: Record<string, {pos:()=>string; neg:()=>string}> = {
+  // totals
+  TOT_20000_PTS:{pos:()=> "had 20,000+ career points",  neg:()=> "did not have 20,000+ career points"},
+  TOT_10000_REB:{pos:()=> "had 10,000+ career rebounds", neg:()=> "did not have 10,000+ career rebounds"},
+  TOT_5000_AST:{pos:()=> "had 5,000+ career assists",    neg:()=> "did not have 5,000+ career assists"},
+  TOT_2000_STL:{pos:()=> "had 2,000+ career steals",     neg:()=> "did not have 2,000+ career steals"},
+  TOT_1500_BLK:{pos:()=> "had 1,500+ career blocks",     neg:()=> "did not have 1,500+ career blocks"},
+  TOT_2000_3PM:{pos:()=> "made 2,000+ career threes",    neg:()=> "did not make 2,000+ career threes"},
+  // season averages
+  AVG_30_PPG:  {pos:()=> "averaged 30+ PPG in a season",  neg:()=> "did not average 30+ PPG in a season"},
+  AVG_10_APG:  {pos:()=> "averaged 10+ APG in a season",  neg:()=> "did not average 10+ APG in a season"},
+  AVG_15_RPG:  {pos:()=> "averaged 15+ RPG in a season",  neg:()=> "did not average 15+ RPG in a season"},
+  AVG_3_BPG:   {pos:()=> "averaged 3+ BPG in a season",   neg:()=> "did not average 3+ BPG in a season"},
+  AVG_2p5_SPG: {pos:()=> "averaged 2.5+ SPG in a season", neg:()=> "did not average 2.5+ SPG in a season"},
+  SEAS_504090: {pos:()=> "recorded a 50/40/90 season",    neg:()=> "did not record a 50/40/90 season"},
+  // leaders
+  LED_PTS:     {pos:()=> "led the league in scoring",     neg:()=> "did not lead the league in scoring"},
+  LED_REB:     {pos:()=> "led the league in rebounds",    neg:()=> "did not lead the league in rebounds"},
+  LED_AST:     {pos:()=> "led the league in assists",     neg:()=> "did not lead the league in assists"},
+  LED_STL:     {pos:()=> "led the league in steals",      neg:()=> "did not lead the league in steals"},
+  LED_BLK:     {pos:()=> "led the league in blocks",      neg:()=> "did not lead the league in blocks"},
+  // feats
+  FEAT_50PTS:  {pos:()=> "scored 50+ points in a game",   neg:()=> "did not score 50+ points in a game"},
+  FEAT_20REB:  {pos:()=> "grabbed 20+ rebounds in a game",neg:()=> "did not grab 20+ rebounds in a game"},
+  FEAT_20AST:  {pos:()=> "dished 20+ assists in a game",  neg:()=> "did not dish 20+ assists in a game"},
+  FEAT_10_3PM: {pos:()=> "made 10+ threes in a game",     neg:()=> "did not make 10+ threes in a game"},
+  FEAT_TRIPLE: {pos:()=> "recorded a triple-double",      neg:()=> "did not record a triple-double"},
+  // awards/selections/champs
+  AWD_MVP:     {pos:()=> "won MVP",                        neg:()=> "did not win MVP"},
+  AWD_DPOY:    {pos:()=> "won Defensive Player of the Year", neg:()=> "did not win Defensive Player of the Year"},
+  AWD_ROY:     {pos:()=> "won Rookie of the Year",         neg:()=> "did not win Rookie of the Year"},
+  AWD_6MOY:    {pos:()=> "won Sixth Man of the Year",      neg:()=> "did not win Sixth Man of the Year"},
+  AWD_MIP:     {pos:()=> "won Most Improved Player",       neg:()=> "did not win Most Improved Player"},
+  AWD_FMVP:    {pos:()=> "won Finals MVP",                 neg:()=> "did not win Finals MVP"},
+  SEL_ALLNBA:  {pos:()=> "made an All-League team",        neg:()=> "did not make an All-League team"},
+  SEL_ALLDEF:  {pos:()=> "made an All-Defensive team",     neg:()=> "did not make an All-Defensive team"},
+  SEL_ALLSTAR: {pos:()=> "was an All-Star",                neg:=> "was not an All-Star"},
+  SEL_ALLSTAR_35:{pos:()=> "made an All-Star team at age 35+", neg:()=> "did not make an All-Star team at age 35+"},
+  CHAMPION:    {pos:()=> "won an NBA championship",        neg:()=> "did not win an NBA championship"},
+  HOF:         {pos:=> "made the Hall of Fame",            neg:()=> "did not make the Hall of Fame"},
+  // draft/meta
+  DRAFT_1OA:   {pos:()=> "was a first overall pick",       neg:()=> "was not a first overall pick"},
+  DRAFT_FIRST: {pos:()=> "was a first-round pick",         neg:()=> "was not a first-round pick"},
+  DRAFT_SECOND:{pos:()=> "was a second-round pick",        neg:()=> "was not a second-round pick"},
+  UNDRAFTED:   {pos:()=> "was undrafted",                  neg:()=> "was not undrafted"},
+  CAREER_15Y:  {pos:()=> "played 15+ seasons",             neg:()=> "did not play 15+ seasons"},
+  ONLY_ONE_TEAM:{pos:()=> "played only on one team",       neg:()=> "did not play only on one team"},
+};
+```
+
+Helpers:
+
+```ts
+const teamPos = (name:string)=>`played for the ${name}`;
+const teamNeg = (name:string)=>`did not play for the ${name}`;
+const achPos  = (id:string)=>PHRASES[id]?.pos() ?? "met the criterion";
+const achNeg  = (id:string)=>PHRASES[id]?.neg() ?? "did not meet the criterion";
+```
+
+## C4. Sentence builder (final)
+
+```ts
+export function buildIncorrectSentence(e: Eval): string {
+  const p = e.playerName;
+
+  // Team vs team
+  if (e.row.kind==="team" && e.col.kind==="team") {
+    const A = e.row.teamName, B = e.col.teamName;
+    if (!e.teamPass && !e.critPass)
+      return `<span class="bad">${p} played for neither the ${A} nor the ${B}</span>.`;
+    if (e.teamPass && e.critPass)
+      return `<span class="ok">${p} played for both the ${A} and the ${B}</span>.`;
+    const pass = e.teamPass ? A : B;
+    const fail = e.teamPass ? B : A;
+    return `<span class="ok">${p} ${teamPos(pass)}</span> but <span class="bad">${p} ${teamNeg(fail)}</span>.`;
+  }
+
+  // Mixed (team + achievement)
+  const teamCell = (e.row.kind==="team") ? e.row : e.col;
+  const achCell  = (e.row.kind==="ach")  ? e.row : e.col;
+
+  const teamClause = e.teamPass
+    ? `<span class="ok">${p} ${teamPos(teamCell.teamName)}</span>`
+    : `<span class="bad">${p} ${teamNeg(teamCell.teamName)}</span>`;
+
+  const critClause = e.critPass
+    ? `<span class="ok">${achPos(achCell.achId)}${e.parenthCrit ? " " + e.parenthCrit : ""}</span>`
+    : `<span class="bad">${achNeg(achCell.achId)}${e.parenthCrit ? " " + e.parenthCrit : ""}</span>`;
+
+  const joiner = (e.teamPass !== e.critPass) ? " but " : " and ";
+  return teamClause + joiner + critClause + ".";
+}
+```
+
+* **Parentheses** (`e.parenthCrit`) attach **only** to the criterion clause.
+* One **single** trailing period; no `..`.
+
+---
+
+## Targeted fixes for your examples
+
+* **“Zaccharie Risacher … did not play for the Led League in Scoring”**
+  → After builder v2:
+  `Zaccharie Risacher <span class="bad">did not lead the league in scoring (best 21.4 PPG)</span> and <span class="bad">did not lead the league in steals (best 1.7 SPG)</span>.`
+  *(Exact parentheses depend on your computed bests.)*
+
+* **“Tommy Brooks … had 10,000+ rebounds but did not play for the Led League in Scoring”**
+  → After fix (Team+Achievement):
+  `Tommy Brooks <span class="ok">had 10,000+ career rebounds (10,412)</span> but <span class="bad">did not lead the league in scoring (best 28.6 PPG)</span>.`
+
+* **“Lonzo Ball Sr. … played for the Pelicans but did not play for the Suns..” (double period)**
+  → After fix:
+  `Lonzo Ball Sr. <span class="ok">played for the New Orleans Pelicans</span> but <span class="bad">did not play for the Phoenix Suns</span>.`
+
+---
+
+### Acceptance checklist (for you to verify)
+
+* A correct guess **always** returns **1–10**, never 0 or >10.
+* No 0–100 scaling code remains anywhere.
+* UI Stats use the new 1–10 integer scores only.
+* A visible **“Play a Shared Grid”** field exists; pasting a link or seed loads `/grid/<seed>`.
+* Modal sentences:
+
+  * Use **achievement phrasing** for achievements (“led the league…”, “was an All-Star…”, etc.).
+  * Use **team phrasing** only for teams.
+  * Team–team uses “**played for neither … nor …**” when both fail.
+  * **No double periods**; parentheses attach only to the criterion clause.

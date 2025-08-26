@@ -11,7 +11,7 @@ interface PlayerProfileModalProps {
   onOpenChange: (open: boolean) => void;
   columnCriteria?: GridCriteria;
   rowCriteria?: GridCriteria;
-  rarity?: number;
+  score?: number;
   rank?: number;
   eligibleCount?: number;
   isCorrect?: boolean;
@@ -40,43 +40,25 @@ function getRarityColor(rarity: number): string {
   return "text-red-500";
 }
 
-// Component to display colored incorrect message per spec 4.A
+// Component to display colored incorrect message with proper HTML rendering
 function IncorrectMessageDisplay({ playerName, evaluation }: { playerName: string, evaluation: EvaluationResult }) {
   const message = buildIncorrectMessage(playerName, evaluation);
   
-  // Split message into parts for coloring - simple approach for now
-  // Green for correct parts, red for incorrect parts
-  const parts = message.split(' but ');
-  if (parts.length === 2) {
-    // Handle "Player X did Y but did not Z" format
-    const [correctPart, incorrectPart] = parts;
-    return (
-      <p className="text-gray-200">
-        <span className="text-green-400">{correctPart}</span>
-        <span> but </span>
-        <span className="text-red-400">{incorrectPart}</span>
-      </p>
-    );
-  }
+  // Convert CSS classes to Tailwind classes for proper styling
+  const processedMessage = message
+    .replace(/class="ok"/g, 'class="text-green-400"')
+    .replace(/class="bad"/g, 'class="text-red-400"');
   
-  const andParts = message.split(' and ');
-  if (andParts.length === 2) {
-    // Handle "Player X did not Y and did not Z" format - both red
-    return (
-      <p className="text-red-400">{message}</p>
-    );
-  }
-  
-  // Handle "neither...nor" format - all red
-  if (message.includes('neither') && message.includes('nor')) {
-    return <p className="text-red-400">{message}</p>;
-  }
-  
-  // Default fallback
-  return <p className="text-gray-200">{message}</p>;
+  // Render the HTML with proper styling
+  return (
+    <div 
+      className="text-gray-200" 
+      dangerouslySetInnerHTML={{ __html: processedMessage }}
+    />
+  );
 }
 
-export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount, isCorrect = true, evaluation }: PlayerProfileModalProps) {
+export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, score, rank, eligibleCount, isCorrect = true, evaluation }: PlayerProfileModalProps) {
   if (!player) return null;
 
   // Fetch top players for this cell - show for both correct and incorrect
@@ -126,18 +108,18 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
 
           {/* Rarity Section for correct answers OR Why this was incorrect for wrong answers */}
           {isCorrect ? (
-            (rarity !== undefined && rank !== undefined && eligibleCount !== undefined) && (
+            (score !== undefined && rank !== undefined && eligibleCount !== undefined) && (
               <div className="bg-slate-700 rounded-lg p-4">
-                <h3 className="font-semibold text-purple-300 mb-2">Rarity</h3>
+                <h3 className="font-semibold text-purple-300 mb-2">Score</h3>
                 <div className="space-y-2">
-                  <div className={`text-lg font-bold ${getRarityColor(rarity || 0)}`}>
-                    {getRarityText(rarity || 0)}
+                  <div className={`text-lg font-bold text-green-400`}>
+                    {score} / 10 points
                   </div>
                   <div className="text-sm text-gray-300">
-                    Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
+                    {eligibleCount} eligible players for this cell
                   </div>
                   <div className="text-xs text-gray-400">
-                    1 = rarest · {eligibleCount} = most common
+                    Score based on pick frequency and rarity
                   </div>
                 </div>
               </div>

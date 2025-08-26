@@ -1814,51 +1814,21 @@ app.get("/api/debug/matches", async (req, res) => {
       
 
 
-      // Calculate rarity using the same logic as "Other Top Answers"
-      const players = await storage.getPlayers();
-      const foundPlayer = players.find(p => p.name.toLowerCase() === player.toLowerCase());
-      const playerQuality = foundPlayer?.quality || 50;
-      
-      let rarityPercent = 0;
-      let playerRank = 0;
+      // Get eligible count for scoring calculation
       let eligibleCount = 0;
       
       if (isCorrect) {
-        // Use new eligibility system to get the same unsliced WS-sorted list as "Other Top Answers"
+        // Get eligible players for per-guess scoring calculation
+        const players = await storage.getPlayers();
         const colCriteria = game.columnCriteria[col];
         const rowCriteria = game.rowCriteria[row];
         
         const eligibilityChecker = new EligibilityChecker(players);
         const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria);
-        
-        // Sort by Win Shares DESCENDING - this creates the fullList that "Other Top Answers" uses
-        const fullList = eligibilityChecker.sortByWinShares(eligiblePlayers);
-        
-        const N = fullList.length;
-        const idx = fullList.findIndex(p => p.name.toLowerCase() === player.toLowerCase());
-        
-        // Debug logging
-        console.debug("fullList size", N);
-        console.debug("picked idx", idx, "player", player);
-        
-        if (idx >= 0) {
-          playerRank = idx + 1; // rank starts from 1
-          eligibleCount = N;
-          
-          if (N === 1) {
-            rarityPercent = 50;
-          } else {
-            // Fixed formula: rarity = round(100 * (rank - 1) / (eligibleCount - 1))
-            // rank = 1 (highest WS, most common) → rarity = 0
-            // rank = N (lowest WS, rarest) → rarity = 100
-            rarityPercent = Math.round(100 * (playerRank - 1) / (eligibleCount - 1));
-          }
-          
-          console.debug("rank", playerRank, "rarity", rarityPercent, "out of", eligibleCount);
-        }
+        eligibleCount = eligiblePlayers.length;
       }
 
-      // Implement per-guess scoring system per spec point 5
+      // Per-guess scoring system (1-10 integers only)
       let scoreIncrease = 0;
       if (isCorrect) {
         // Record pick frequency for scoring
@@ -1872,6 +1842,12 @@ app.get("/api/debug/matches", async (req, res) => {
         // Calculate per-guess score using spec formula
         const { perGuessScore } = await import("@shared/schema");
         scoreIncrease = perGuessScore(playerPickFreq, maxFreq, eligibleCount);
+        
+        // Runtime guard per spec A5
+        if (scoreIncrease < 1 || scoreIncrease > 10) {
+          console.error("🚨 INVALID perGuessScore", {freq: playerPickFreq, maxFreq, eligibleCount, score: scoreIncrease});
+          throw new Error("Invalid perGuessScore");
+        }
       }
 
       // Update session with the answer
@@ -1880,11 +1856,9 @@ app.get("/api/debug/matches", async (req, res) => {
         [cellKey]: { 
           player, 
           correct: isCorrect, 
-          quality: playerQuality, 
-          rarity: rarityPercent, 
-          rank: playerRank, 
-          eligibleCount,
-          perGuessScore: scoreIncrease
+          score: scoreIncrease,
+          rank: isCorrect ? 1 : undefined,
+          eligibleCount: isCorrect ? eligibleCount : undefined
         }
       };
 
@@ -1920,9 +1894,7 @@ app.get("/api/debug/matches", async (req, res) => {
         session: updatedSession,
         isCorrect,
         correctPlayers: isCorrect ? [] : sortedCorrectPlayers, // Show sorted correct players when wrong
-        rarity: rarityPercent,
-        rank: playerRank,
-        eligibleCount: eligibleCount
+        score: scoreIncrease
       });
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid answer data" });
