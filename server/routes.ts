@@ -201,7 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
       
       // Try to process league-level achievements (will mostly be empty due to no league data)
-      await processLeagueLevelAchievements({}, mutablePlayers);
+      // Legacy function call removed - now using new EVALS system
       
       // Update storage with any changes
       console.log("Updating players with league-level achievements...");
@@ -380,174 +380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return {hallOfFamers: hof, hofSeasonTidMap: seasonTidToHOF};
   }
 
-  function applyRemainingAchievements(players: any[], ix: any) {
-    console.log("🎯 Applying remaining 10 achievements...");
-    const byPid = new Map(players.map(p => [p.pid, p]));
-    const add = (pid: number, label: string) => {
-      const p = byPid.get(pid); 
-      if (!p) return;
-      p.achievements ??= [];
-      if (!p.achievements.includes(label)) p.achievements.push(label);
-    };
-
-    // Season leaders (5)
-    let leaderCounts = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0 };
-    for (const [, sets] of ix.leadersBySeason) {
-      for (const pid of sets.ppg) { add(pid, "Led League in Scoring"); leaderCounts.ppg++; }
-      for (const pid of sets.rpg) { add(pid, "Led League in Rebounds"); leaderCounts.rpg++; }
-      for (const pid of sets.apg) { add(pid, "Led League in Assists"); leaderCounts.apg++; }
-      for (const pid of sets.spg) { add(pid, "Led League in Steals"); leaderCounts.spg++; }
-      for (const pid of sets.bpg) { add(pid, "Led League in Blocks"); leaderCounts.bpg++; }
-    }
-    console.log("🏆 League leaders applied:", leaderCounts);
-
-    // All-Star selection + Age 35+
-    let allStarCount = 0, age35Count = 0;
-    for (const [season, set] of ix.allStarsBySeason) {
-      for (const pid of set) {
-        add(pid, "All-Star"); // Match what eligibility checker expects
-        allStarCount++;
-        const p = byPid.get(pid);
-        const bornYear = p?.born?.year ?? 0;
-        if (bornYear && (season - bornYear) >= 35) {
-          add(pid, "Made All-Star Team at Age 35+");
-          age35Count++;
-        }
-      }
-    }
-    console.log(`🌟 All-Stars: ${allStarCount}, Age 35+: ${age35Count}`);
-
-    // Champions (NBA Champion + Champion alias)
-    let champCount = 0;
-    for (const p of players) {
-      for (const s of p.stats ?? []) {
-        if ((s.gp ?? 0) <= 0) continue;
-        const champTid = ix.championsBySeason.get(s.season);
-        if (champTid != null && s.tid === champTid) {
-          add(p.pid, "NBA Champion");
-          add(p.pid, "Champion");
-          champCount++;
-          break;
-        }
-      }
-    }
-    console.log(`🏆 Champions: ${champCount}`);
-
-    // Game-level achievements from playerFeats
-    let gameFeatsCount = { "50pts": 0, "20reb": 0, "20ast": 0, "10threes": 0, "tripleDbl": 0 };
-    for (const p of players) {
-      const feats = p.feats ?? [];
-      for (const feat of feats) {
-        // 50+ points
-        if ((feat.pts ?? 0) >= 50) {
-          add(p.pid, "Scored 50+ in a Game");
-          gameFeatsCount["50pts"]++;
-        }
-        // 20+ rebounds  
-        if (((feat.orb ?? 0) + (feat.drb ?? 0)) >= 20) {
-          add(p.pid, "20+ Rebounds in a Game");
-          gameFeatsCount["20reb"]++;
-        }
-        // 20+ assists
-        if ((feat.ast ?? 0) >= 20) {
-          add(p.pid, "20+ Assists in a Game");
-          gameFeatsCount["20ast"]++;
-        }
-        // 10+ threes
-        if ((feat.tp ?? 0) >= 10) {
-          add(p.pid, "10+ Threes in a Game");
-          gameFeatsCount["10threes"]++;
-        }
-        // Triple-double (10+ in 3 categories)
-        const stats = [feat.pts ?? 0, (feat.orb ?? 0) + (feat.drb ?? 0), feat.ast ?? 0, feat.stl ?? 0, feat.blk ?? 0];
-        if (stats.filter(s => s >= 10).length >= 3) {
-          add(p.pid, "Triple-Double in a Game");
-          gameFeatsCount["tripleDbl"]++;
-        }
-      }
-    }
-    console.log(`🎯 Game feats: 50pts=${gameFeatsCount["50pts"]}, 20reb=${gameFeatsCount["20reb"]}, 20ast=${gameFeatsCount["20ast"]}, 10threes=${gameFeatsCount["10threes"]}, tripleDbl=${gameFeatsCount["tripleDbl"]}`);
-
-    // Awards from league data
-    let awardCounts = { mvp: 0, dpoy: 0, roy: 0, smoy: 0, mip: 0, fmvp: 0 };
-    for (const award of ix.league?.awards ?? []) {
-      const pid = award.pid;
-      if (!pid) continue;
-      
-      switch (award.type) {
-        case "mvp":
-          add(pid, "MVP Winner");
-          awardCounts.mvp++;
-          break;
-        case "dpoy":
-          add(pid, "Defensive Player of the Year");
-          awardCounts.dpoy++;
-          break;
-        case "roy":
-          add(pid, "Rookie of the Year");
-          awardCounts.roy++;
-          break;
-        case "smoy":
-          add(pid, "Sixth Man of the Year");
-          awardCounts.smoy++;
-          break;
-        case "mip":
-          add(pid, "Most Improved Player");
-          awardCounts.mip++;
-          break;
-        case "finals_mvp":
-        case "fmvp":
-          add(pid, "Finals MVP");
-          awardCounts.fmvp++;
-          break;
-      }
-    }
-    console.log(`🏅 Awards: MVP=${awardCounts.mvp}, DPOY=${awardCounts.dpoy}, ROY=${awardCounts.roy}, 6MOY=${awardCounts.smoy}, MIP=${awardCounts.mip}, FMVP=${awardCounts.fmvp}`);
-
-    // Team achievements (All-League, All-Defensive)
-    let teamAchievements = { allLeague: 0, allDefensive: 0 };
-    for (const p of players) {
-      for (const award of p.awards ?? []) {
-        if (award.type === "All-League First Team" || award.type === "All-League Second Team" || award.type === "All-League Third Team") {
-          add(p.pid, "All-League Team");
-          teamAchievements.allLeague++;
-        }
-        if (award.type === "All-Defensive First Team" || award.type === "All-Defensive Second Team") {
-          add(p.pid, "All-Defensive Team");
-          teamAchievements.allDefensive++;
-        }
-      }
-    }
-    console.log(`🛡️ Team achievements: All-League=${teamAchievements.allLeague}, All-Defensive=${teamAchievements.allDefensive}`);
-
-    // Hall of Fame
-    let hofCount = 0;
-    for (const pid of ix.hallOfFamers ?? []) {
-      add(pid, "Hall of Fame");
-      hofCount++;
-    }
-    console.log(`🏛️ Hall of Fame: ${hofCount}`);
-
-    // Teammate of All-Time Greats (different person on same team-season)
-    let teammateCount = 0;
-    for (const p of players) {
-      let ok = false;
-      for (const s of p.stats ?? []) {
-        if ((s.gp ?? 0) <= 0) continue;
-        const key = `${s.season}:${s.tid}`;
-        const hofSet = ix.hofSeasonTidMap.get(key);
-        if (hofSet && (hofSet.size > 1 || !hofSet.has(p.pid))) { 
-          ok = true; 
-          break; 
-        }
-      }
-      if (ok) {
-        add(p.pid, "Teammate of All-Time Greats");
-        teammateCount++;
-      }
-    }
-    console.log(`🤝 Teammates of ATGs: ${teammateCount}`);
-  }
+  // Legacy function removed - replaced by new EVALS system
 
   // 3) Evaluator must use the leaders index for the right key
   function ledLeague(pid: number, key: LeaderKey, leadersBySeason: Map<number, any>) {
@@ -578,7 +411,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     LedBLK: { label: "Led League in Blocks",   key: "bpg" as LeaderKey },
   } as const;
 
-  async function processLeagueLevelAchievements(leagueData: any, players: any[]) {
+  // Legacy processLeagueLevelAchievements function removed - replaced by new EVALS system
+  async function processLeagueLevelAchievements_DEPRECATED(leagueData: any, players: any[]) {
     console.log("🔍 Processing league-level achievements...");
     console.log("League data keys:", Object.keys(leagueData || {}));
     
@@ -769,7 +603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     // 🚀 APPLY THE REMAINING 10 ACHIEVEMENTS (ChatGPT guide)
-    applyRemainingAchievements(players, ix);
+    // Legacy function call removed - achievements now applied by new EVALS system during upload
     
     console.log("League-level achievement processing complete.");
   }
@@ -1244,19 +1078,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Old legacy code - no longer needed with new EVALS system
         console.log("🔧 Legacy code skipped - using new EVALS system");
-      }
-      
-      // DEBUG: Verify PIDs exist before saving (ChatGPT's suggestion)
-      // Add self-test for false leader detection
-      const namesToPids = new Map<string, number>();
-      for (const p of validatedPlayers) {
-        if (p.pid !== undefined && p.name) {
-          namesToPids.set(p.name, p.pid);
-        }
-      }
-      if (namesToPids.size > 0) {
-        console.log("🔧 Running false leader self-test...");
-        // This will be defined when processLeagueLevelAchievements runs
       }
 
       console.log("🔧 APPLY: about to save players. sample:", {
@@ -1807,8 +1628,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const achievementCriteria = rowCriteria_item.type === "achievement" ? rowCriteria_item : colCriteria;
         const achievementId = getAchievementId(achievementCriteria.label);
         
-        if (achievementId && ACH_LEADERS[achievementId as keyof typeof ACH_LEADERS]) {
-          const key = ACH_LEADERS[achievementId as keyof typeof ACH_LEADERS].key;
+        // Legacy ACH_LEADERS lookup replaced by new EVALS system
+        if (achievementId && EVALS[achievementId]) {
+          // Achievement evaluation is now handled dynamically
           const bogus = eligiblePlayers.filter(p => {
             const pid = p.pid;
             if (pid === undefined) return false;
