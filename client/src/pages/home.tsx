@@ -190,7 +190,11 @@ export default function Home() {
           )}
           
           <div className="bg-white dark:bg-slate-800 rounded-lg">
-            <GameStats stats={stats} />
+            <GameStats 
+              stats={stats} 
+              currentSessionScore={session?.score || 0}
+              isGameActive={!!currentSessionId}
+            />
           </div>
         </div>
       </main>

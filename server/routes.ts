@@ -1523,13 +1523,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         if (gridIsValid(correctAnswers)) {
+          // Generate seed for stable URLs per spec point 2
+          const seed = Math.random().toString(36).substring(2, 15);
+          
           const gameData = insertGameSchema.parse({
             columnCriteria,
             rowCriteria,
             correctAnswers,
+            seed,
+            isShared: false,
+            shareableUrl: null,
           });
 
           const newGame = await storage.createGame(gameData);
+          console.log("DEBUG: Created game with seed:", seed);
           return res.json(newGame);
         }
       }
@@ -1591,6 +1598,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Get game error:", error);
       res.status(500).json({ message: "Failed to retrieve game" });
+    }
+  });
+
+  // Share grid functionality per spec point 2
+  app.post("/api/games/:id/share", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const game = await storage.getGame(id);
+      
+      if (!game) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+
+      // Generate shareable URL
+      const shareUrl = `${req.protocol}://${req.get('host')}/shared/${game.seed}`;
+      
+      // Update game with sharing info
+      const sharedGame = await storage.updateGame(id, {
+        isShared: true,
+        shareableUrl: shareUrl
+      });
+
+      res.json({ shareUrl, game: sharedGame });
+    } catch (error: any) {
+      console.error("Share game error:", error);
+      res.status(500).json({ message: error.message || "Failed to share game" });
+    }
+  });
+
+  // Get shared grid by seed per spec point 2
+  app.get("/api/games/shared/:seed", async (req, res) => {
+    try {
+      const { seed } = req.params;
+      const game = await storage.getGameBySeed(seed);
+      
+      if (!game || !game.isShared) {
+        return res.status(404).json({ message: "Shared game not found" });
+      }
+
+      res.json(game);
+    } catch (error: any) {
+      console.error("Get shared game error:", error);
+      res.status(500).json({ message: error.message || "Failed to retrieve shared game" });
     }
   });
 
@@ -1808,13 +1858,37 @@ app.get("/api/debug/matches", async (req, res) => {
         }
       }
 
+      // Implement per-guess scoring system per spec point 5
+      let scoreIncrease = 0;
+      if (isCorrect) {
+        // Record pick frequency for scoring
+        await storage.recordPickFrequency(player, `${session.gameId}_${cellKey}`);
+        
+        // Get pick frequencies for this cell today
+        const cellPickFreqs = await storage.getPickFrequencies(`${session.gameId}_${cellKey}`);
+        const playerPickFreq = cellPickFreqs.find(f => f.playerName === player)?.pickCount || 1;
+        const maxFreq = Math.max(...cellPickFreqs.map(f => f.pickCount), 1);
+        
+        // Calculate per-guess score using spec formula
+        const { perGuessScore } = await import("@shared/schema");
+        scoreIncrease = perGuessScore(playerPickFreq, maxFreq, eligibleCount);
+      }
+
       // Update session with the answer
       const updatedAnswers = {
         ...session.answers,
-        [cellKey]: { player, correct: isCorrect, quality: playerQuality, rarity: rarityPercent, rank: playerRank, eligibleCount }
+        [cellKey]: { 
+          player, 
+          correct: isCorrect, 
+          quality: playerQuality, 
+          rarity: rarityPercent, 
+          rank: playerRank, 
+          eligibleCount,
+          perGuessScore: scoreIncrease
+        }
       };
 
-      const newScore = session.score + (isCorrect ? 1 : 0);
+      const newScore = session.score + scoreIncrease;
       const totalAnswers = Object.keys(updatedAnswers).length;
       const isCompleted = totalAnswers === 9;
 

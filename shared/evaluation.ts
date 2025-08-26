@@ -14,7 +14,23 @@ export function evaluatePlayerAnswer(
   columnCriteria: GridCriteria,
   rowCriteria: GridCriteria
 ): EvaluationResult {
-  // Determine which is team and which is criterion
+  // Handle team vs team case first per spec point 7
+  if (columnCriteria.type === "team" && rowCriteria.type === "team") {
+    const colTeamPass = didPlayForTeam(player, columnCriteria.value);
+    const rowTeamPass = didPlayForTeam(player, rowCriteria.value);
+    const correct = colTeamPass && rowTeamPass;
+    
+    return {
+      correct,
+      teamPass: colTeamPass,
+      critPass: rowTeamPass,
+      teamLabel: columnCriteria.label,
+      critLabel: rowCriteria.label,
+      player
+    };
+  }
+  
+  // Standard team vs achievement case
   const teamCriteria = columnCriteria.type === "team" ? columnCriteria : rowCriteria;
   const criteriaCriteria = columnCriteria.type === "achievement" ? columnCriteria : rowCriteria;
   
@@ -28,7 +44,7 @@ export function evaluatePlayerAnswer(
     critPass,
     teamLabel: teamCriteria.label,
     critLabel: criteriaCriteria.label,
-    player // Include player data for stat values
+    player
   };
 }
 
@@ -45,58 +61,81 @@ export function meetsCriterion(player: Player, criterion: string): boolean {
 
 type AxisType = "team" | "stat";
 
-// Helper function to get actual stat values for a player
-function getActualStatValue(player: Player | undefined, label: string): string | null {
-  if (!player || !player.stats || !Array.isArray(player.stats)) return null;
+// Formatting helpers per spec
+function fmtInt(n: number): string { return n.toLocaleString("en-US"); }
+function fmt1(n: number): string { return (Math.round(n * 10) / 10).toFixed(1); }
+function pct(n: number): string { return fmt1(100 * n) + "%"; }
+
+// Helper function to get exact stat values with proper formatting per spec 4.B.2
+function getStatParentheses(player: Player | undefined, label: string, passed: boolean): string {
+  if (!player || !player.stats || !Array.isArray(player.stats)) return "";
   
   const regularSeasonStats = player.stats.filter((season: any) => !season.playoffs);
+  if (regularSeasonStats.length === 0) return "";
   
-  // Career totals
+  // 4.B.2(a) Career totals
   if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
     const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.pts || 0), 0);
-    return total.toLocaleString();
+    return `(${fmtInt(total)})`;
   }
   if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
-    const total = regularSeasonStats.reduce((sum: number, season: any) => sum + ((season.orb || 0) + (season.drb || 0)), 0);
-    return total.toLocaleString();
+    const total = regularSeasonStats.reduce((sum: number, season: any) => {
+      const reb = season.trb !== undefined ? season.trb : (season.orb || 0) + (season.drb || 0);
+      return sum + reb;
+    }, 0);
+    return `(${fmtInt(total)})`;
   }
   if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
     const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.ast || 0), 0);
-    return total.toLocaleString();
+    return `(${fmtInt(total)})`;
   }
   if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
     const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.stl || 0), 0);
-    return total.toLocaleString();
+    return `(${fmtInt(total)})`;
   }
   if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
     const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.blk || 0), 0);
-    return total.toLocaleString();
+    return `(${fmtInt(total)})`;
   }
   if (/2,000\+?\s*made\s+threes/i.test(label)) {
     const total = regularSeasonStats.reduce((sum: number, season: any) => sum + (season.tp || 0), 0);
-    return total.toLocaleString();
+    return `(${fmtInt(total)})`;
   }
   
-  // Season highs
+  // 4.B.2(b) Season averages  
   if (/30\+?\s*ppg|averaged\s+30/i.test(label)) {
-    const maxPpg = Math.max(...regularSeasonStats.map((s: any) => s.ppg || 0));
-    return maxPpg > 0 ? maxPpg.toFixed(1) : "0.0";
+    const seasonsWithGames = regularSeasonStats.filter((s: any) => (s.gp || 0) >= 1);
+    if (seasonsWithGames.length === 0) return "";
+    const maxPpg = Math.max(...seasonsWithGames.map((s: any) => (s.pts || 0) / (s.gp || 1)));
+    return `(${fmt1(maxPpg)} PPG)`;
   }
   if (/10\+?\s*apg|averaged.*10.*assists/i.test(label)) {
-    const maxApg = Math.max(...regularSeasonStats.map((s: any) => s.apg || 0));
-    return maxApg > 0 ? maxApg.toFixed(1) : "0.0";
+    const seasonsWithGames = regularSeasonStats.filter((s: any) => (s.gp || 0) >= 1);
+    if (seasonsWithGames.length === 0) return "";
+    const maxApg = Math.max(...seasonsWithGames.map((s: any) => (s.ast || 0) / (s.gp || 1)));
+    return `(${fmt1(maxApg)} APG)`;
   }
   if (/15\+?\s*rpg|averaged.*15.*rebounds/i.test(label)) {
-    const maxRpg = Math.max(...regularSeasonStats.map((s: any) => s.rpg || 0));
-    return maxRpg > 0 ? maxRpg.toFixed(1) : "0.0";
+    const seasonsWithGames = regularSeasonStats.filter((s: any) => (s.gp || 0) >= 1);
+    if (seasonsWithGames.length === 0) return "";
+    const maxRpg = Math.max(...seasonsWithGames.map((s: any) => {
+      const reb = s.trb !== undefined ? s.trb : (s.orb || 0) + (s.drb || 0);
+      return reb / (s.gp || 1);
+    }));
+    return `(${fmt1(maxRpg)} RPG)`;
   }
   
-  // Team count for "Only One Team"
+  // 4.B.2(k) Career meta
   if (/only\s+one\s+team/i.test(label)) {
-    return player.teams?.length?.toString() || "0";
+    const teamCount = player.teams?.length || 0;
+    return `(${teamCount} team${teamCount !== 1 ? 's' : ''})`;
+  }
+  if (/15\+?\s*seasons|played.*15.*seasons/i.test(label)) {
+    const seasonCount = regularSeasonStats.filter((s: any) => (s.gp || 0) >= 1).length;
+    return `(${seasonCount} season${seasonCount !== 1 ? 's' : ''})`;
   }
   
-  return null;
+  return "";
 }
 
 interface DetailedEvaluation {
@@ -110,47 +149,49 @@ interface DetailedEvaluation {
 }
 
 function describeAxis(type: AxisType, label: string, passed: boolean, player?: Player): string {
+  const parentheses = passed ? "" : " " + getStatParentheses(player, label, passed);
+  
   // Teams
   if (type === "team") {
-    return passed ? `played for the ${label}` : `didn't play for the ${label}`;
+    return passed ? `played for the ${label}` : `did not play for the ${label}`;
   }
 
   // Stats/Achievements - natural language templates for all supported criteria
   if (/first\s+overall\s+pick|#1\s+overall/i.test(label)) {
-    return passed ? "was a first overall pick" : "was not a first overall pick";
+    return passed ? `was a first overall pick${parentheses}` : `was not a first overall pick${parentheses}`;
   }
   if (/first\s+round\s+pick/i.test(label)) {
-    return passed ? "was a first-round pick" : "was not a first-round pick";
+    return passed ? `was a first-round pick${parentheses}` : `was not a first-round pick${parentheses}`;
   }
   if (/2nd\s+round\s+pick|second\s+round/i.test(label)) {
-    return passed ? "was a 2nd round pick" : "was not a 2nd round pick";
+    return passed ? `was a second-round pick${parentheses}` : `was not a second-round pick${parentheses}`;
   }
   if (/20,000\+?\s*(career\s+)?points/i.test(label)) {
-    return passed ? "had 20,000+ career points" : "did not have 20,000+ career points";
+    return passed ? `had 20,000+ career points${parentheses}` : `did not have 20,000+ career points${parentheses}`;
   }
   if (/10,000\+?\s*(career\s+)?rebounds/i.test(label)) {
-    return passed ? "had 10,000+ career rebounds" : "did not have 10,000+ career rebounds";
+    return passed ? `had 10,000+ career rebounds${parentheses}` : `did not have 10,000+ career rebounds${parentheses}`;
   }
   if (/5,000\+?\s*(career\s+)?assists/i.test(label)) {
-    return passed ? "had 5,000+ career assists" : "did not have 5,000+ career assists";
+    return passed ? `had 5,000+ career assists${parentheses}` : `did not have 5,000+ career assists${parentheses}`;
   }
   if (/2,000\+?\s*(career\s+)?steals/i.test(label)) {
-    return passed ? "had 2,000+ career steals" : "did not have 2,000+ career steals";
+    return passed ? `had 2,000+ career steals${parentheses}` : `did not have 2,000+ career steals${parentheses}`;
   }
   if (/1,500\+?\s*(career\s+)?blocks/i.test(label)) {
-    return passed ? "had 1,500+ career blocks" : "did not have 1,500+ career blocks";
+    return passed ? `had 1,500+ career blocks${parentheses}` : `did not have 1,500+ career blocks${parentheses}`;
   }
   if (/2,000\+?\s*made\s+threes/i.test(label)) {
-    return passed ? "made 2,000+ career threes" : "did not make 2,000+ career threes";
+    return passed ? `made 2,000+ career threes${parentheses}` : `did not make 2,000+ career threes${parentheses}`;
   }
   if (/30\+?\s*ppg|averaged\s+30/i.test(label)) {
-    return passed ? "averaged 30+ PPG in a season" : "did not average 30+ PPG in a season";
+    return passed ? `averaged 30+ PPG in a season${parentheses}` : `did not average 30+ PPG in a season${parentheses}`;
   }
   if (/10\+?\s*apg|averaged.*10.*assists/i.test(label)) {
-    return passed ? "averaged 10+ APG in a season" : "did not average 10+ APG in a season";
+    return passed ? `averaged 10+ APG in a season${parentheses}` : `did not average 10+ APG in a season${parentheses}`;
   }
   if (/15\+?\s*rpg|averaged.*15.*rebounds/i.test(label)) {
-    return passed ? "averaged 15+ RPG in a season" : "did not average 15+ RPG in a season";
+    return passed ? `averaged 15+ RPG in a season${parentheses}` : `did not average 15+ RPG in a season${parentheses}`;
   }
   if (/3\+?\s*bpg|averaged.*3.*blocks/i.test(label)) {
     return passed ? "averaged 3+ BPG in a season" : "did not average 3+ BPG in a season";
@@ -159,7 +200,7 @@ function describeAxis(type: AxisType, label: string, passed: boolean, player?: P
     return passed ? "averaged 2.5+ SPG in a season" : "did not average 2.5+ SPG in a season";
   }
   if (/50\/40\/90/i.test(label)) {
-    return passed ? "shot 50/40/90 in a season" : "did not shoot 50/40/90 in a season";
+    return passed ? `recorded a 50/40/90 season${parentheses}` : `did not record a 50/40/90 season${parentheses}`;
   }
   if (/led\s+league.*scoring/i.test(label)) {
     return passed ? "led the league in scoring" : "did not lead the league in scoring";
@@ -222,22 +263,21 @@ function describeAxis(type: AxisType, label: string, passed: boolean, player?: P
     return passed ? "won a championship" : "did not win a championship";
   }
   if (/15\+?\s*seasons|played.*15.*seasons/i.test(label)) {
-    return passed ? "played 15+ seasons" : "did not play 15+ seasons";
+    return passed ? `played 15+ seasons${parentheses}` : `did not play 15+ seasons${parentheses}`;
   }
   if (/only\s+one\s+team/i.test(label)) {
-    return passed ? "played for only one team" : "did not play for only one team";
+    return passed ? `played for only one team${parentheses}` : `did not play for only one team${parentheses}`;
   }
 
   // Fallback for any unmatched criteria
-  return passed ? `met "${label}"` : `did not meet "${label}"`;
+  return passed ? `met "${label}"${parentheses}` : `did not meet "${label}"${parentheses}`;
 }
 
 export function buildIncorrectMessage(playerName: string, evaluation: EvaluationResult): string {
-  const ok = (b: boolean) => (b ? "✅" : "❌");
-  
-  // Convert to detailed evaluation format  
-  const teamCriteria = evaluation.teamLabel;
-  const critCriteria = evaluation.critLabel;
+  // Determine if we have team vs team case by checking if both labels are team names (no achievement keywords)
+  const achievementKeywords = ['PPG', 'APG', 'RPG', 'MVP', 'All-Star', 'Champion', 'Finals', 'Points', 'Rebounds', 'Assists', 'Blocks', 'Steals', 'Draft', 'Rookie', 'Hall of Fame', 'season', 'career', 'game', 'Overall', 'Round'];
+  const teamLabelIsAchievement = achievementKeywords.some(keyword => evaluation.teamLabel.includes(keyword));
+  const critLabelIsAchievement = achievementKeywords.some(keyword => evaluation.critLabel.includes(keyword));
   
   // Determine axis types and create detailed eval
   const detailed: DetailedEvaluation = {
@@ -245,22 +285,34 @@ export function buildIncorrectMessage(playerName: string, evaluation: Evaluation
     leftPass: evaluation.teamPass,
     rightPass: evaluation.critPass,
     leftType: "team",
-    rightType: "stat", 
-    leftLabel: teamCriteria,
-    rightLabel: critCriteria
+    rightType: (!teamLabelIsAchievement && !critLabelIsAchievement) ? "team" : "stat", 
+    leftLabel: evaluation.teamLabel,
+    rightLabel: evaluation.critLabel
   };
   
   const L = describeAxis(detailed.leftType, detailed.leftLabel, detailed.leftPass, evaluation.player);
   const R = describeAxis(detailed.rightType, detailed.rightLabel, detailed.rightPass, evaluation.player);
 
+  // Special case: team vs team per spec point 7
+  if (detailed.leftType === "team" && detailed.rightType === "team") {
+    if (!detailed.leftPass && !detailed.rightPass) {
+      return `${playerName} played for neither the ${detailed.leftLabel} nor the ${detailed.rightLabel}.`;
+    } else if (!detailed.leftPass && detailed.rightPass) {
+      return `${playerName} played for the ${detailed.rightLabel} but not the ${detailed.leftLabel}.`;
+    } else if (detailed.leftPass && !detailed.rightPass) {
+      return `${playerName} played for the ${detailed.leftLabel} but not the ${detailed.rightLabel}.`;
+    }
+  }
+
+  // Standard cases with natural language per spec 4.A  
   if (!detailed.leftPass && detailed.rightPass) {
-    return `${playerName} ${R} (${ok(true)}) but ${L} (${ok(false)}).`;
+    return `${playerName} ${R} but ${L}.`;
   }
   if (detailed.leftPass && !detailed.rightPass) {
-    return `${playerName} ${L} (${ok(true)}) but ${R} (${ok(false)}).`;
+    return `${playerName} ${L} but ${R}.`;
   }
   if (!detailed.leftPass && !detailed.rightPass) {
-    return `${playerName} ${L} (${ok(false)}) and ${R} (${ok(false)}).`;
+    return `${playerName} ${L} and ${R}.`;
   }
   
   // Safety fallback

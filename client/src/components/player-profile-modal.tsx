@@ -3,7 +3,7 @@ import type { Player, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { useQuery } from "@tanstack/react-query";
 import type { EvaluationResult } from "@shared/evaluation";
-import { buildIncorrectMessage } from "@shared/evaluation";
+import { buildIncorrectMessage, evaluatePlayerAnswer } from "@shared/evaluation";
 
 interface PlayerProfileModalProps {
   player: Player | null;
@@ -38,6 +38,42 @@ function getRarityColor(rarity: number): string {
   if (rarity >= 25) return "text-orange-400";
   if (rarity >= 10) return "text-red-400";
   return "text-red-500";
+}
+
+// Component to display colored incorrect message per spec 4.A
+function IncorrectMessageDisplay({ playerName, evaluation }: { playerName: string, evaluation: EvaluationResult }) {
+  const message = buildIncorrectMessage(playerName, evaluation);
+  
+  // Split message into parts for coloring - simple approach for now
+  // Green for correct parts, red for incorrect parts
+  const parts = message.split(' but ');
+  if (parts.length === 2) {
+    // Handle "Player X did Y but did not Z" format
+    const [correctPart, incorrectPart] = parts;
+    return (
+      <p className="text-gray-200">
+        <span className="text-green-400">{correctPart}</span>
+        <span> but </span>
+        <span className="text-red-400">{incorrectPart}</span>
+      </p>
+    );
+  }
+  
+  const andParts = message.split(' and ');
+  if (andParts.length === 2) {
+    // Handle "Player X did not Y and did not Z" format - both red
+    return (
+      <p className="text-red-400">{message}</p>
+    );
+  }
+  
+  // Handle "neither...nor" format - all red
+  if (message.includes('neither') && message.includes('nor')) {
+    return <p className="text-red-400">{message}</p>;
+  }
+  
+  // Default fallback
+  return <p className="text-gray-200">{message}</p>;
 }
 
 export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria, rowCriteria, rarity, rank, eligibleCount, isCorrect = true, evaluation }: PlayerProfileModalProps) {
@@ -110,9 +146,9 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             evaluation && (
               <div className="bg-slate-700 rounded-lg p-4">
                 <h3 className="font-semibold text-red-300 mb-2">Why this was incorrect</h3>
-                <p className="explain font-semibold text-sm text-gray-200">
-                  {buildIncorrectMessage(player.name, evaluation)}
-                </p>
+                <div className="explain font-semibold text-sm">
+                  <IncorrectMessageDisplay playerName={player.name} evaluation={evaluation} />
+                </div>
               </div>
             )
           )}
