@@ -1500,58 +1500,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }))
           ];
         } else {
-          // 2% chance: Fallback to mixed approach with available data
-          const selectedTeams = sample(teams, Math.min(4, teams.length));
-          const availableAchievements = sample(achievements, Math.min(2, achievements.length));
+          // Fallback: Ensure 3x3 grid regardless of available achievements
+          console.log(`⚠️  Using fallback grid generation with ${achievements.length} achievements`);
           
-          if (selectedTeams.length >= 3 && availableAchievements.length >= 1) {
+          if (teams.length >= 6) {
+            // Use 6 different teams for a full 3x3 teams grid
+            const selectedTeams = sample(teams, 6);
             columnCriteria = selectedTeams.slice(0, 3).map(team => ({
               label: team,
               type: "team",
               value: team,
             }));
+            rowCriteria = selectedTeams.slice(3, 6).map(team => ({
+              label: team,
+              type: "team",
+              value: team,
+            }));
+          } else if (teams.length >= 3) {
+            // Use available teams and pad with whatever we have
+            const selectedTeams = sample(teams, Math.min(6, teams.length));
+            columnCriteria = selectedTeams.slice(0, 3).map(team => ({
+              label: team,
+              type: "team", 
+              value: team,
+            }));
             
-            const rowTeams = selectedTeams.slice(3, Math.min(4, selectedTeams.length));
-            const neededAchievements = Math.max(1, 3 - rowTeams.length);
-            const selectedRowAchievements = achievements.length > 0 ? sample(achievements, neededAchievements) : [];
+            // For rows, use remaining teams and achievements
+            rowCriteria = [];
+            let remainingTeams = selectedTeams.slice(3);
             
-            rowCriteria = [
-              ...rowTeams.map(team => ({
-                label: team,
-                type: "team",
-                value: team,
-              })),
-              ...selectedRowAchievements.map(achievement => ({
-                label: achievement,
-                type: "achievement",
-                value: achievement,
-              }))
-            ];
-            
-            // Ensure we always have exactly 3 row criteria
-            while (rowCriteria.length < 3 && achievements.length > 0) {
-              const extraAchievement = sample(achievements.filter(a => !rowCriteria.some(r => r.value === a)), 1)[0];
-              if (extraAchievement) {
+            // Add remaining teams first
+            remainingTeams.forEach(team => {
+              if (rowCriteria.length < 3) {
                 rowCriteria.push({
-                  label: extraAchievement,
-                  type: "achievement",
-                  value: extraAchievement,
+                  label: team,
+                  type: "team",
+                  value: team,
                 });
+              }
+            });
+            
+            // Fill remaining slots with achievements or repeat teams
+            while (rowCriteria.length < 3) {
+              if (achievements.length > 0) {
+                const availableAchievements = achievements.filter(a => !rowCriteria.some(r => r.value === a));
+                const achievement = availableAchievements.length > 0 
+                  ? availableAchievements[0] 
+                  : achievements[0]; // Use first achievement if no unique ones left
+                
+                if (achievement) {
+                  rowCriteria.push({
+                    label: achievement,
+                    type: "achievement",
+                    value: achievement,
+                  });
+                } else {
+                  // Use team if no achievements available
+                  const team = sample(teams, 1)[0];
+                  rowCriteria.push({
+                    label: team,
+                    type: "team",
+                    value: team,
+                  });
+                }
               } else {
-                break;
+                // Use more teams (can repeat)
+                const team = sample(teams, 1)[0];
+                rowCriteria.push({
+                  label: team,
+                  type: "team",
+                  value: team,
+                });
               }
             }
           }
         }
 
-        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria, globalIndices!);
-        
-        // Log successful grid generation
-        if (attempt === 0) {
-          console.log("Generated grid with criteria:");
-          console.log("Columns:", columnCriteria.map(c => `${c.label} (${c.type})`));
-          console.log("Rows:", rowCriteria.map(r => `${r.label} (${r.type})`));
+        // Ensure we always have exactly 3x3 grid
+        if (columnCriteria.length !== 3 || rowCriteria.length !== 3) {
+          console.log(`❌ Grid generation failed: ${columnCriteria.length}x${rowCriteria.length}, retrying...`);
+          continue;
         }
+        
+        console.log(`✅ Generated ${columnCriteria.length}x${rowCriteria.length} grid on attempt ${attempt + 1}`);
+        console.log("Columns:", columnCriteria.map(c => `${c.label} (${c.type})`));
+        console.log("Rows:", rowCriteria.map(r => `${r.label} (${r.type})`));
+
+        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria, globalIndices!);
 
         if (gridIsValid(correctAnswers)) {
           const gameData = insertGameSchema.parse({
