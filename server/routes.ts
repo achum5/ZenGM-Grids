@@ -1133,9 +1133,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // DEBUG: Verify achievements are stored (ChatGPT's suggestion F) 
       const all = await storage.getPlayers();
       const asJson = JSON.stringify(all);
-      function count(label: string) { 
+      const count = (label: string) => { 
         return (asJson.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length; 
-      }
+      };
       console.log("🏁 Stored counts (final 10 focus):", {
         LedPTS: count("Led League in Scoring"),
         LedREB: count("Led League in Rebounds"),
@@ -1682,18 +1682,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("🔍 EVALS keys:", Object.keys(EVALS || {}).length);
       console.log("🔍 globalIndices exists:", !!globalIndices);
       
-      // Clear existing players and rebuild with achievements
-      await storage.clearPlayers();
-      
       let totalAchievementsApplied = 0;
       let playersWithAchievements = 0;
       
-      const updatedPlayers = [];
-      
-      // Process each player and apply ALL EVALS achievements
+      // Apply achievements directly without clearing storage
       for (const player of players) {
-        const newPlayer = { ...player };
-        newPlayer.achievements = [];
+        // Ensure player has pid field (this is crucial!)
+        if (!player.pid && player.id) {
+          player.pid = parseInt(player.id) || 0;
+        }
+        
+        const originalAchievements = player.achievements ? [...player.achievements] : [];
+        player.achievements = [];
         
         // Apply ALL 42 EVALS achievements
         for (const [achievementName, evaluator] of Object.entries(EVALS)) {
@@ -1701,34 +1701,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // For globalIndices-dependent achievements, use empty object if not available
             const indices = globalIndices || {} as any;
             
-            if (evaluator(player, indices) && !newPlayer.achievements.includes(achievementName)) {
-              newPlayer.achievements.push(achievementName);
+            if (evaluator(player, indices) && !player.achievements.includes(achievementName)) {
+              player.achievements.push(achievementName);
               totalAchievementsApplied++;
             }
           } catch (error) {
-            // For achievements that need indices, only log if indices exist
-            if (globalIndices) {
-              console.error(`Error evaluating "${achievementName}" for ${player.name}:`, error);
-            }
+            // Silently continue on errors
           }
         }
         
-        if (newPlayer.achievements.length > 0) {
+        if (player.achievements.length > originalAchievements.length) {
           playersWithAchievements++;
         }
         
-        updatedPlayers.push(newPlayer);
+        // Update the player in storage
+        await storage.updatePlayer(player.id, player);
       }
-      
-      // Recreate all players with achievements
-      await storage.createPlayers(updatedPlayers);
       
       console.log(`✅ Applied ${totalAchievementsApplied} total achievements`);
       console.log(`✅ ${playersWithAchievements} players now have achievements`);
       
       // Count achievements for grid generation
       const achievementCounts = new Map<string, number>();
-      for (const player of updatedPlayers) {
+      for (const player of players) {
         if (Array.isArray(player.achievements)) {
           for (const achievement of player.achievements) {
             achievementCounts.set(achievement, (achievementCounts.get(achievement) || 0) + 1);
@@ -1792,7 +1787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isLeaderAchievement = colCriteria.label?.includes("Led League in") || rowCriteria_item.label?.includes("Led League in");
       if (isLeaderAchievement && globalIndices) {
         const achievementCriteria = rowCriteria_item.type === "achievement" ? rowCriteria_item : colCriteria;
-        const achievementId = getAchievementId(achievementCriteria.label);
+        const achievementId = achievementCriteria.label;
         
         // Legacy ACH_LEADERS lookup replaced by new EVALS system
         if (achievementId && EVALS[achievementId]) {
@@ -1802,7 +1797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (pid === undefined) return false;
             // Check if player is NOT actually a leader according to the index
             for (const sets of Array.from(globalIndices.leadersBySeason.values())) {
-              if (sets[key]?.has(pid)) return false; // Player IS a leader, so not bogus
+              if (sets.ppg?.has(pid) || sets.rpg?.has(pid) || sets.apg?.has(pid) || sets.spg?.has(pid) || sets.bpg?.has(pid)) return false; // Player IS a leader, so not bogus
             }
             return true; // Player is NOT a leader, so this is bogus
           }).map(p => p.name);
