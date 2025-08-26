@@ -1,0 +1,306 @@
+Enable the 23 Missing Achievements (Leaders, Awards, Feats, All-Star, Champions, ATGs)
+0) Ground rules (why 19/42 persists)
+
+Do not use p.achievements.includes("…") for eligibility, population, or other answers. Those labels can be missing or stale.
+
+Always compute from a single Indices object + EVALS at grid time.
+
+1) Build all indices once per upload (or cache on first grid)
+
+Create a module server/indices.ts and export buildIndices(league):
+
+// server/indices.ts
+export type LeaderKey = "ppg" | "rpg" | "apg" | "spg" | "bpg";
+export type Indices = {
+  numGamesBySeason: Map<number, number>;
+  careerTotals: Map<number, { pts:number, trb:number, ast:number, stl:number, blk:number, tp:number }>;
+  leadersBySeason: Map<number, Record<LeaderKey, Set<number>>>;
+  awards: {
+    mvp:Set<number>, dpoy:Set<number>, roy:Set<number>, smoy:Set<number>, mip:Set<number>, finalsMvp:Set<number>,
+    allLeague:Set<number>, allDefensive:Set<number>
+  };
+  allStarsBySeason: Map<number, Set<number>>;
+  championsBySeason: Map<number, number>;
+  hallOfFamers: Set<number>;
+  hofSeasonTidMap: Map<string, Set<number>>;   // `${season}:${tid}` → set of HOF pids
+  featsByPid: Map<number, any[]>;              // normalized game feats
+};
+
+const EPS = 1e-9;
+const seasonMinGames = (n:Map<number,number>, season:number) => Math.ceil((n.get(season) ?? 82) * 0.58);
+
+export function buildIndices(league:any): Indices {
+  // 1) season length
+  const numGamesBySeason = new Map<number,number>();
+  for (const row of league.gameAttributes?.numGames ?? []) {
+    if (typeof row?.season === "number") numGamesBySeason.set(row.season, row.numGames ?? row.value ?? 82);
+  }
+
+  // 2) career totals (REGULAR SEASON only); REB = ORB+DRB
+  const careerTotals = new Map<number, any>();
+  for (const p of league.players ?? []) {
+    let pts=0, ast=0, stl=0, blk=0, tp=0, orb=0, drb=0;
+    for (const s of p.stats ?? []) {
+      if (s.playoffs) continue;
+      pts+=s.pts??0; ast+=s.ast??0; stl+=s.stl??0; blk+=s.blk??0; tp+=s.tp??0;
+      orb+=s.orb??0; drb+=s.drb??0;
+    }
+    careerTotals.set(p.pid, { pts, ast, stl, blk, tp, trb: orb+drb });
+  }
+
+  // 3) leaders by season (per-game, min games, ties ok)
+  const bySeason = new Map<number, Array<{pid:number, s:any}>>();
+  for (const p of league.players ?? []) {
+    if (typeof p.pid !== "number") continue;
+    for (const s of p.stats ?? []) {
+      if (s.playoffs) continue;
+      const arr = bySeason.get(s.season) ?? [];
+      arr.push({ pid:p.pid, s });
+      bySeason.set(s.season, arr);
+    }
+  }
+  const leadersBySeason = new Map<number, any>();
+  for (const [season, arr] of bySeason) {
+    const MIN = seasonMinGames(numGamesBySeason, season);
+    let max = { ppg:-Infinity, rpg:-Infinity, apg:-Infinity, spg:-Infinity, bpg:-Infinity };
+    const rows = arr.map(({pid, s})=>{
+      const gp=s.gp??0, ok=gp>=MIN;
+      const ppg=(s.pts??0)/(gp||1);
+      const rpg=((s.orb??0)+(s.drb??0))/(gp||1);
+      const apg=(s.ast??0)/(gp||1);
+      const spg=(s.stl??0)/(gp||1);
+      const bpg=(s.blk??0)/(gp||1);
+      if (ok){ max.ppg=Math.max(max.ppg,ppg); max.rpg=Math.max(max.rpg,rpg); max.apg=Math.max(max.apg,apg); max.spg=Math.max(max.spg,spg); max.bpg=Math.max(max.bpg,bpg); }
+      return {pid, ok, ppg, rpg, apg, spg, bpg};
+    });
+    const set = (k:LeaderKey)=> new Set(rows.filter(r=>r.ok && r[k] >= (max as any)[k]-EPS).map(r=>r.pid));
+    leadersBySeason.set(season, { ppg:set("ppg"), rpg:set("rpg"), apg:set("apg"), spg:set("spg"), bpg:set("bpg") });
+  }
+
+  // 4) awards + teams of year
+  const awards = { mvp:new Set<number>(), dpoy:new Set<number>(), roy:new Set<number>(), smoy:new Set<number>(), mip:new Set<number>(), finalsMvp:new Set<number>(), allLeague:new Set<number>(), allDefensive:new Set<number>() };
+  for (const a of league.awards ?? []) {
+    a.mvp?.pid && awards.mvp.add(a.mvp.pid);
+    a.dpoy?.pid && awards.dpoy.add(a.dpoy.pid);
+    a.roy?.pid && awards.roy.add(a.roy.pid);
+    a.smoy?.pid && awards.smoy.add(a.smoy.pid);
+    a.mip?.pid && awards.mip.add(a.mip.pid);
+    a.finalsMvp?.pid && awards.finalsMvp.add(a.finalsMvp.pid);
+    for (const t of a.allLeague ?? []) for (const pl of t.players ?? []) awards.allLeague.add(pl.pid);
+    for (const t of a.allDefensive ?? []) for (const pl of t.players ?? []) awards.allDefensive.add(pl.pid);
+  }
+
+  // 5) all-stars
+  const allStarsBySeason = new Map<number, Set<number>>();
+  for (const AS of league.allStars ?? []) {
+    const set = allStarsBySeason.get(AS.season) ?? new Set<number>();
+    for (const tm of AS.teams ?? []) {
+      const list = tm.roster ?? tm.players ?? [];
+      for (const it of list) {
+        const pid = typeof it === "number" ? it : (it?.pid ?? it?.p?.pid);
+        if (typeof pid === "number") set.add(pid);
+      }
+    }
+    allStarsBySeason.set(AS.season, set);
+  }
+
+  // 6) champions by season (finals)
+  const championsBySeason = new Map<number, number>();
+  for (const ps of league.playoffSeries ?? []) {
+    const last = (ps.series ?? [])[ (ps.series?.length ?? 1) - 1 ] ?? [];
+    let champTid:number|undefined;
+    for (const ser of last) {
+      const hw=ser?.home?.won ?? 0, aw=ser?.away?.won ?? 0;
+      if (hw>=4 || aw>=4) { champTid = hw>aw ? ser.home.tid : ser.away.tid; break; }
+    }
+    if (!champTid && last[0]) {
+      const s=last[0]; champTid=(s.home?.won??0)>(s.away?.won??0)?s.home.tid:s.away.tid;
+    }
+    if (typeof champTid === "number") championsBySeason.set(ps.season, champTid);
+  }
+
+  // 7) HOF sets + teammate-of-ATGs helper
+  const hallOfFamers = new Set<number>();
+  for (const e of league.events ?? []) if (e.type === "hallOfFame") for (const pid of e.pids ?? []) hallOfFamers.add(pid);
+  const hofSeasonTidMap = new Map<string, Set<number>>();
+  for (const p of league.players ?? []) {
+    if (!hallOfFamers.has(p.pid)) continue;
+    for (const s of p.stats ?? []) {
+      if ((s.gp ?? 0) <= 0) continue;
+      const key = `${s.season}:${s.tid}`;
+      const set = hofSeasonTidMap.get(key) ?? new Set<number>();
+      set.add(p.pid);
+      hofSeasonTidMap.set(key, set);
+    }
+  }
+
+  // 8) game feats per pid (normalize)
+  const featsByPid = new Map<number, any[]>();
+  for (const f of league.playerFeats ?? []) {
+    const pid = f.pid ?? f.playerID ?? f.player?.pid;
+    const s   = f.stats ?? f.s ?? f;
+    if (typeof pid !== "number") continue;
+    (featsByPid.get(pid) ?? featsByPid.set(pid, []).get(pid)!).push(s);
+  }
+
+  return { numGamesBySeason, careerTotals, leadersBySeason, awards, allStarsBySeason, championsBySeason, hallOfFamers, hofSeasonTidMap, featsByPid };
+}
+
+
+⚠️ Keep REB = ORB + DRB everywhere (fixes Jokić-type bugs).
+
+2) Evaluators (EVALS) for all 42
+
+Put in server/evals.ts. Every achievement ID must map to a function (p, ix) => boolean. Leaders, awards, feats, all-star, champions, ATGs are the missing 23 — wire them here.
+
+// server/evals.ts
+import type { Indices, LeaderKey } from "./indices";
+
+const ledLeague = (pid:number, key:LeaderKey, leadersBySeason:Indices["leadersBySeason"]) => {
+  for (const sets of leadersBySeason.values()) if (sets[key]?.has(pid)) return true;
+  return false;
+};
+
+const didPlayForTeam = (p:any, tid:number)=> (p.stats ?? []).some((s:any)=> (s.gp??0)>0 && s.tid===tid);
+
+export const EVALS: Record<string,(p:any, ix:Indices, ctx?:{teamId?:number})=>boolean> = {
+  // — Career totals (already working) —
+  "20,000+ Career Points": (p,ix)=> (ix.careerTotals.get(p.pid)?.pts ?? 0) >= 20000,
+  "10,000+ Career Rebounds": (p,ix)=> (ix.careerTotals.get(p.pid)?.trb ?? 0) >= 10000,
+  "5,000+ Career Assists": (p,ix)=> (ix.careerTotals.get(p.pid)?.ast ?? 0) >= 5000,
+  "2,000+ Career Steals": (p,ix)=> (ix.careerTotals.get(p.pid)?.stl ?? 0) >= 2000,
+  "1,500+ Career Blocks": (p,ix)=> (ix.careerTotals.get(p.pid)?.blk ?? 0) >= 1500,
+  "2,000+ Made Threes": (p,ix)=> (ix.careerTotals.get(p.pid)?.tp  ?? 0) >= 2000,
+
+  // — Season averages —
+  "Averaged 30+ PPG in a Season": (p,ix)=> (p.stats ?? []).some((s:any)=> !s.playoffs && (s.gp??0)>=Math.ceil((ix.numGamesBySeason.get(s.season)??82)*0.58) && (s.pts??0)/(s.gp||1) >= 30 - 1e-9),
+  "Averaged 10+ APG in a Season": (p,ix)=> (p.stats ?? []).some((s:any)=> !s.playoffs && (s.gp??0)>=Math.ceil((ix.numGamesBySeason.get(s.season)??82)*0.58) && (s.ast??0)/(s.gp||1) >= 10 - 1e-9),
+  "Averaged 15+ RPG in a Season": (p,ix)=> (p.stats ?? []).some((s:any)=> !s.playoffs && (s.gp??0)>=Math.ceil((ix.numGamesBySeason.get(s.season)??82)*0.58) && ((s.orb??0)+(s.drb??0))/(s.gp||1) >= 15 - 1e-9),
+  "Averaged 3+ BPG in a Season":  (p,ix)=> (p.stats ?? []).some((s:any)=> !s.playoffs && (s.gp??0)>=Math.ceil((ix.numGamesBySeason.get(s.season)??82)*0.58) && (s.blk??0)/(s.gp||1) >= 3 - 1e-9),
+  "Averaged 2.5+ SPG in a Season":(p,ix)=> (p.stats ?? []).some((s:any)=> !s.playoffs && (s.gp??0)>=Math.ceil((ix.numGamesBySeason.get(s.season)??82)*0.58) && (s.stl??0)/(s.gp||1) >= 2.5 - 1e-9),
+  "Shot 50/40/90 in a Season":   (p,ix)=> (p.stats ?? []).some((s:any)=> !s.playoffs && (s.fga??0)>=300 && (s.tpa??0)>=82 && (s.fta??0)>=125 && (s.fg/(s.fga||1))>=0.5-1e-9 && (s.tp/(s.tpa||1))>=0.4-1e-9 && (s.ft/(s.fta||1))>=0.9-1e-9),
+
+  // — Leaders (5 missing) —
+  "Led League in Scoring":  (p,ix)=> ledLeague(p.pid, "ppg", ix.leadersBySeason),
+  "Led League in Rebounds": (p,ix)=> ledLeague(p.pid, "rpg", ix.leadersBySeason),
+  "Led League in Assists":  (p,ix)=> ledLeague(p.pid, "apg", ix.leadersBySeason),
+  "Led League in Steals":   (p,ix)=> ledLeague(p.pid, "spg", ix.leadersBySeason),
+  "Led League in Blocks":   (p,ix)=> ledLeague(p.pid, "bpg", ix.leadersBySeason),
+
+  // — Game feats (5 missing) —
+  "Scored 50+ in a Game":       (p,ix)=> (ix.featsByPid.get(p.pid) ?? []).some(f=> (f.pts ?? 0) >= 50),
+  "Triple-Double in a Game":    (p,ix)=> (ix.featsByPid.get(p.pid) ?? []).some(f=> (f.td ?? 0) > 0 || [f.pts??0, (f.orb??0)+(f.drb??0), f.ast??0, f.stl??0, f.blk??0].filter(v=>v>=10).length >= 3),
+  "20+ Rebounds in a Game":     (p,ix)=> (ix.featsByPid.get(p.pid) ?? []).some(f=> (f.orb ?? 0) + (f.drb ?? 0) >= 20),
+  "20+ Assists in a Game":      (p,ix)=> (ix.featsByPid.get(p.pid) ?? []).some(f=> (f.ast ?? 0) >= 20),
+  "10+ Threes in a Game":       (p,ix)=> (ix.featsByPid.get(p.pid) ?? []).some(f=> (f.tp  ?? 0) >= 10),
+
+  // — Awards (6 missing) —
+  "MVP Winner":                 (p,ix)=> ix.awards.mvp.has(p.pid),
+  "Defensive Player of the Year":(p,ix)=> ix.awards.dpoy.has(p.pid),
+  "Rookie of the Year":         (p,ix)=> ix.awards.roy.has(p.pid),
+  "Sixth Man of the Year":      (p,ix)=> ix.awards.smoy.has(p.pid),
+  "Most Improved Player":       (p,ix)=> ix.awards.mip.has(p.pid),
+  "Finals MVP":                 (p,ix)=> ix.awards.finalsMvp.has(p.pid),
+
+  // — Team achievements (2 missing) —
+  "All-League Team":            (p,ix)=> ix.awards.allLeague.has(p.pid),
+  "All-Defensive Team":         (p,ix)=> ix.awards.allDefensive.has(p.pid),
+
+  // — All-Star / Champions / ATGs (5 missing) —
+  "All-Star Selection":         (p,ix)=> { for (const set of ix.allStarsBySeason.values()) if (set.has(p.pid)) return true; return false; },
+  "Made All-Star Team at Age 35+": (p,ix)=> {
+    const born = p.born?.year ?? 0;
+    for (const [season,set] of ix.allStarsBySeason) if (set.has(p.pid) && season - born >= 35) return true;
+    return false;
+  },
+  "NBA Champion":               (p,ix)=> (p.stats ?? []).some((s:any)=> (s.gp??0)>0 && ix.championsBySeason.get(s.season) === s.tid),
+  "Champion":                   (p,ix)=> (p.stats ?? []).some((s:any)=> (s.gp??0)>0 && ix.championsBySeason.get(s.season) === s.tid),
+  "Teammate of All-Time Greats (dynamic)": (p,ix)=> (p.stats ?? []).some((s:any)=> (s.gp??0)>0 && (()=>{ const key=`${s.season}:${s.tid}`; const set=ix.hofSeasonTidMap.get(key); return set && (set.size>1 || !set.has(p.pid)); })()),
+  
+  // — Career meta & draft (already working elsewhere, keep here for consistency) —
+  "Played 15+ Seasons":         (p)=> new Set((p.stats??[]).filter((s:any)=>!s.playoffs && (s.gp??0)>0).map((s:any)=>s.season)).size >= 15,
+  "#1 Overall Draft Pick":      (p)=> p.draft?.round===1 && p.draft?.pick===1,
+  "Undrafted Player":           (p)=> (p.draft?.round??0)<=0 || (p.draft?.pick??0)<=0 || (p.draft?.tid??-1)<0,
+  "First Round Pick":           (p)=> p.draft?.round===1,
+  "2nd Round Pick":             (p)=> p.draft?.round===2,
+  "Only One Team":              (p)=> { const tids=new Set<number>(); for (const s of p.stats??[]) if ((s.gp??0)>0) tids.add(s.tid); return tids.size===1; },
+  "Hall of Fame":               (p,ix)=> ix.hallOfFamers.has(p.pid),
+};
+
+3) Make the grid and “Other Top Answers” call EVALS, not strings
+
+In games/generate and guess validation code:
+
+// population counts
+function populationByCriterion(players:any[], ix:Indices, id:string) {
+  let n=0; for (const p of players) if (EVALS[id](p, ix)) n++; return n;
+}
+
+// eligible pool (your “must have ≥1” rule)
+const ELIGIBLE = ACHIEVEMENT_IDS.filter(id => populationByCriterion(players, ix, id) >= 1);
+
+// cell eligibility + other answers
+function eligibleForCell(p:any, row:CellSpec, col:CellSpec, ix:Indices) {
+  const teamCell = row.kind==="team" ? row : col;
+  const critCell = row.kind==="achievement" ? row : col;
+  return didPlayForTeam(p, teamCell.teamId) && EVALS[critCell.achievementId](p, ix);
+}
+
+const otherAnswers = players.filter(q => q.pid !== chosen.pid && eligibleForCell(q, row, col, ix)).slice(0,10);
+
+
+This alone will make the 23 “missing” achievements show up in grids even if you never persist strings.
+
+4) Diagnostics you can trust (prove 42/42)
+
+Add a dev endpoint or log that prints evaluator-based counts (not string-based):
+
+function printEvalPopulations(players:any[], ix:Indices) {
+  const out: Record<string, number> = {};
+  for (const id of ACHIEVEMENT_IDS) out[id] = populationByCriterion(players, ix, id);
+  console.table(out);
+  const works = Object.values(out).filter(n=>n>0).length;
+  console.log(`✅ Evaluator-populated achievements working: ${works}/${ACHIEVEMENT_IDS.length}`);
+}
+
+
+Call after upload (post-save) or before first grid. This number should jump from 19/42 → ~42/42 on your future league.
+
+Also keep a one-off audit to catch the Tiny-type issue:
+
+function assertNotLeader(pid:number, key:LeaderKey, name:string, ix:Indices) {
+  const ok = EVALS["Led League in Blocks"]; // example
+  console.log(ledLeague(pid, "bpg", ix.leadersBySeason) ? `⚠️ ${name} listed as bpg leader` : `✅ ${name} not bpg leader`);
+}
+
+5) Where to call this (to avoid “fails silently”)
+
+In /api/upload after parsing the league JSON:
+
+Normalize players preserving pid.
+
+const ix = buildIndices(leagueData);
+
+await storage.replacePlayers(validatedPlayers); ← save players first
+
+Cache ix in memory (e.g., globalThis._ix = ix;) or rebuild on grid requests from the uploaded JSON cached on disk.
+
+Immediately call printEvalPopulations(await storage.getPlayers(), ix);
+
+Remove any reliance on applyRemainingAchievements for logic. It’s optional to decorate player.achievements for display only.
+
+6) Acceptance
+
+Console shows ✅ Evaluator-populated achievements working: 42/42 (or 41/42 if you intentionally exclude the Easter egg).
+
+Grid sampling shows leaders, awards, game feats, All-Star, Champions, ATGs.
+
+“Other Top Answers” is always team ∧ criterion (no false positives).
+
+Tiny Archibald never appears in Led League in Blocks unless he truly led BPG in a season with min games.
+
+Why your console still says 19/42
+
+Those counts are from strings on players. The strings never got updated (and don’t need to). Switching to EVALS + indices for population, eligibility, and “other answers” resolves the remaining 23 immediately and robustly.
+
+If you hit any TS/Node errors applying this, paste the error line. I’ll adjust the snippets to your exact file layout.

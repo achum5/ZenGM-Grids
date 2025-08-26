@@ -7,45 +7,41 @@ import { z } from "zod";
 import { gunzip } from "zlib";
 import { promisify } from "util";
 import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria, type Player } from "@shared/schema";
-import { EligibilityChecker, buildLeadersBySeason, EVALS, auditLeaders, ACH_LEADERS } from "./eligibility";
+import { buildIndices, type Indices } from './indices';
+import { EVALS, populationByCriterion, meetsCriteria } from './evals';
 import { sampleUniform } from "@shared/utils/rng";
 
 const gunzipAsync = promisify(gunzip);
 
-// Global indices for leader evaluations
-let globalIndices: { leadersBySeason: Map<number, Record<string, Set<number>>> } | null = null;
+// Global indices for all evaluations
+let globalIndices: Indices | null = null;
 
 // Helper functions for team checks and other logic
 function didPlayForTeam(player: Player, teamName: string): boolean {
   return player.teams.includes(teamName);
 }
 
-function getAchievementId(label: string): string | null {
-  for (const [id, config] of Object.entries(ACH_LEADERS)) {
-    if (config.label === label) return id;
+// Helper function to check if player meets specific criteria using new EVALS system
+function checkPlayerCriteria(player: Player, criteria: any, indices: Indices): boolean {
+  if (criteria.type === 'team') {
+    return player.teams?.includes(criteria.value) ?? false;
   }
-  return null;
+  
+  if (criteria.type === 'achievement') {
+    const evaluator = EVALS[criteria.value];
+    if (!evaluator) return false;
+    return evaluator(player, indices);
+  }
+  
+  return false;
 }
 
-function eligibleForCell(p: Player, row: any, col: any, ix: any): boolean {
-  const teamCriteria = row.type === "team" ? row : col;
-  const achievementCriteria = row.type === "achievement" ? row : col;
+function eligibleForCell(p: Player, row: any, col: any, ix: Indices): boolean {
+  // Both column and row criteria must be met
+  const columnMatch = checkPlayerCriteria(p, col, ix);
+  const rowMatch = checkPlayerCriteria(p, row, ix);
   
-  const teamPass = didPlayForTeam(p, teamCriteria.value);
-  
-  // CRITICAL: Use EVALS with indices, never p.achievements.includes()
-  let critPass = false;
-  if (achievementCriteria.type === "achievement") {
-    const achievementId = getAchievementId(achievementCriteria.label);
-    if (achievementId && EVALS[achievementId] && ix) {
-      critPass = EVALS[achievementId](p, ix);
-    } else {
-      // Fallback for non-leader achievements
-      critPass = p.achievements.includes(achievementCriteria.label);
-    }
-  }
-  
-  return teamPass && critPass;
+  return columnMatch && rowMatch;
 }
 
 // Use uniform sampling for fairness
@@ -56,9 +52,9 @@ function sample<T>(arr: T[], n: number): T[] {
 function buildCorrectAnswers(
   players: any[],
   columnCriteria: { value: string; type: string }[],
-  rowCriteria: { value: string; type: string }[]
+  rowCriteria: { value: string; type: string }[],
+  indices: Indices
 ) {
-  const eligibilityChecker = new EligibilityChecker(players);
   const out: Record<string, string[]> = {};
   
   for (let r = 0; r < rowCriteria.length; r++) {
@@ -66,8 +62,10 @@ function buildCorrectAnswers(
       const colCriteria = columnCriteria[c];
       const rowCriteria_item = rowCriteria[r];
       
-      // Use new eligibility system - decoupled team/achievement logic
-      const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
+      // Use new eligibility system with proper indices
+      const eligiblePlayers = players.filter(p => 
+        eligibleForCell(p, rowCriteria_item, colCriteria, indices)
+      );
       const names = eligiblePlayers.map(p => p.name);
       
       out[`${r}_${c}`] = names; // keep underscore key format
@@ -1126,24 +1124,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
         
-        // Process league-level data for comprehensive achievements
-        console.log("🚀 About to process league-level achievements...");
+        // Build comprehensive indices for all achievements
+        console.log("🚀 Building indices for all 42 achievements...");
         console.log("isJson:", isJson, "data exists:", !!data);
         console.log("Players array length:", players.length);
         
         if (isJson && data) {
-          console.log("✅ Calling processLeagueLevelAchievements...");
+          console.log("✅ Building indices from league data...");
           console.log("🔍 League data keys:", Object.keys(data));
           console.log("🔍 Awards array length:", data.awards?.length || 0);
           console.log("🔍 Events array length:", data.events?.length || 0);
-          await processLeagueLevelAchievements(data, players);
+          console.log("🔍 PlayerFeats array length:", data.playerFeats?.length || 0);
+          
+          // Build comprehensive indices for all achievements
+          globalIndices = buildIndices(data);
+          console.log("✅ Built indices successfully!");
+          console.log("🔧 Leaders by season:", globalIndices.leadersBySeason.size);
+          console.log("🔧 All-Stars by season:", globalIndices.allStarsBySeason.size);
+          console.log("🔧 Champions by season:", globalIndices.championsBySeason.size);
+          console.log("🔧 Hall of Famers:", globalIndices.hallOfFamers.size);
+          console.log("🔧 MVP winners:", globalIndices.awards.mvp.size);
+          console.log("🔧 Game feats:", globalIndices.featsByPid.size);
         } else {
-          console.log("❌ Skipping league-level processing - isJson:", isJson, "data:", !!data);
-          // TEMPORARY: Force call with existing data to test
-          if (players.length > 0) {
-            console.log("🔧 TEMP: Forcing league-level processing with available data...");
-            await processLeagueLevelAchievements(data || {}, players);
-          }
+          console.log("❌ No league data available for comprehensive indices");
         }
       } else {
         return res.status(400).json({ message: "Unsupported file format. Please upload JSON or gzipped league files only." });
@@ -1239,35 +1242,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // Build the leaders index
-        const leadersBySeason = buildLeadersBySeason(leagueData, numGamesBySeason);
-        globalIndices = { leadersBySeason };
-        
-        console.log(`🔧 Built leaders index: ${leadersBySeason.size} seasons`);
-        let totalLeaders = 0;
-        for (const [season, leaders] of Array.from(leadersBySeason.entries())) {
-          totalLeaders += leaders.ppg?.size ?? 0;
-          totalLeaders += leaders.rpg?.size ?? 0;
-          totalLeaders += leaders.apg?.size ?? 0;
-          totalLeaders += leaders.spg?.size ?? 0;
-          totalLeaders += leaders.bpg?.size ?? 0;
-        }
-        console.log(`🔧 Total leader entries: ${totalLeaders}`);
-        
-        // Build indices for achievements  
-        const indices = {
-          leadersBySeason,
-          allStarsBySeason: buildAllStarsBySeason(leagueData),
-          championsBySeason: buildChampionsBySeason(leagueData),
-          ...buildHOFMaps(leagueData),
-          league: leagueData // Pass full league data for awards and other processing
-        };
-        
-        // Apply all achievements using the indices
-        applyRemainingAchievements(validatedPlayers, indices);
-        
-        // C) Audit for false leaders 
-        auditLeaders(validatedPlayers, globalIndices, ["Tiny Archibald"]);
+        // Old legacy code - no longer needed with new EVALS system
+        console.log("🔧 Legacy code skipped - using new EVALS system");
       }
       
       // DEBUG: Verify PIDs exist before saving (ChatGPT's suggestion)
@@ -1371,42 +1347,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Generate a new game grid
   app.post("/api/games/generate", async (req, res) => {
-    console.log("🚨 GRID GENERATION STARTED - This should always appear");
+    console.log("🚨 GRID GENERATION STARTED - Using new EVALS system");
     try {
-      console.log("🔧 TESTING: Running league-level processing during grid generation...");
-      
       const players = await storage.getPlayers();
       
-      // TEMPORARY: Force league-level processing on existing players to test
-      if (players.length > 0) {
-        console.log("🔧 TEMP: Processing league achievements on existing players...");
-        const mutablePlayers = players.map(p => ({
-          ...p,
-          achievements: [...p.achievements],
-          careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
-          quality: p.quality ?? 50, // Ensure non-null
-          stats: p.stats ?? undefined // Fix null stats
-        }));
-        
-        await processLeagueLevelAchievements({}, mutablePlayers);
-        
-        // Update storage if achievements were added
-        let hadChanges = false;
-        for (let i = 0; i < mutablePlayers.length; i++) {
-          if (mutablePlayers[i].achievements.length !== players[i].achievements.length) {
-            hadChanges = true;
-            break;
-          }
-        }
-        
-        if (hadChanges) {
-          console.log("🔧 Detected changes, updating storage...");
-          await storage.clearPlayers();
-          for (const player of mutablePlayers) {
-            await storage.createPlayer(player);
-          }
-          console.log("🔧 Storage updated with league-level achievements");
-        }
+      // Ensure we have global indices for evaluation
+      if (!globalIndices) {
+        return res.status(400).json({ 
+          message: "No league data available. Please upload a league file first to enable all achievements." 
+        });
       }
       
       if (players.length === 0) {
@@ -1535,14 +1484,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Debug: Log all achievements found in players
       console.log("All unique achievements in player data:", Array.from(allAchievements).sort());
       
-      // Debug: Check each achievement in our master list
+      // Use new EVALS system to check achievement availability
       const availableAchievements = ACHIEVEMENTS.filter(ach => {
-        const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
-        const isAvailable = allAchievements.includes(ach) && playersWithAchievement >= 2;
+        const evaluator = EVALS[ach];
+        if (!evaluator) {
+          console.log(`❌ Achievement "${ach}" has no evaluator in EVALS system`);
+          return false;
+        }
         
-        if (!allAchievements.includes(ach)) {
-          console.log(`❌ Achievement "${ach}" not found in any player data`);
-        } else if (playersWithAchievement < 2) {
+        const playersWithAchievement = players.filter(p => evaluator(p, globalIndices!)).length;
+        const isAvailable = playersWithAchievement >= 2;
+        
+        if (playersWithAchievement < 2) {
           console.log(`⚠️  Achievement "${ach}" found but only ${playersWithAchievement} players have it (need ≥2)`);
         } else {
           console.log(`✅ Achievement "${ach}" available with ${playersWithAchievement} players`);
@@ -1735,7 +1688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
+        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria, globalIndices!);
         
         // Log successful grid generation
         if (attempt === 0) {
@@ -1773,7 +1726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           value: team,
         }));
         
-        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
+        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria, globalIndices!);
         
         if (Object.values(correctAnswers).every(list => list && list.length > 0)) {
           const gameData = insertGameSchema.parse({
