@@ -6,6 +6,8 @@ export interface IStorage {
   createPlayer(player: InsertPlayer): Promise<Player>;
   createPlayers(players: InsertPlayer[]): Promise<Player[]>;
   getPlayers(): Promise<Player[]>;
+  getAllPlayers(): Promise<Player[]>;
+  updatePlayer(id: string, updates: Partial<Player>): Promise<Player>;
   searchPlayers(query: string): Promise<Player[]>;
   
   // Game operations
@@ -59,6 +61,19 @@ export class MemStorage implements IStorage {
 
   async getPlayers(): Promise<Player[]> {
     return Array.from(this.players.values());
+  }
+
+  async getAllPlayers(): Promise<Player[]> {
+    return Array.from(this.players.values());
+  }
+
+  async updatePlayer(id: string, updates: Partial<Player>): Promise<Player> {
+    const player = this.players.get(id);
+    if (!player) throw new Error(`Player with id ${id} not found`);
+    
+    const updatedPlayer = { ...player, ...updates };
+    this.players.set(id, updatedPlayer);
+    return updatedPlayer;
   }
 
   async searchPlayers(query: string): Promise<Player[]> {

@@ -1661,6 +1661,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Search players
+  // Re-evaluate achievements for existing players
+  app.post("/api/players/reevaluate-achievements", async (req, res) => {
+    try {
+      console.log("🔄 RE-EVALUATING ACHIEVEMENTS FOR EXISTING PLAYERS");
+      
+      const players = await storage.getPlayers();
+      if (players.length === 0) {
+        return res.status(400).json({ message: "No players found. Upload a league file first." });
+      }
+      
+      console.log(`📊 Found ${players.length} existing players`);
+      
+      if (!globalIndices) {
+        return res.status(400).json({ 
+          message: "No league data available. Upload a league file to generate indices first." 
+        });
+      }
+      
+      console.log("🎯 Re-applying all EVALS achievements with existing league data...");
+      let totalAchievementsApplied = 0;
+      let playersUpdated = 0;
+      
+      for (const player of players) {
+        const initialCount = Array.isArray(player.achievements) ? player.achievements.length : 0;
+        player.achievements = player.achievements || [];
+        
+        // Clear existing achievements except "Undrafted Player" to avoid duplicates
+        const undraftedOnly = player.achievements.includes("Undrafted Player");
+        player.achievements = undraftedOnly ? ["Undrafted Player"] : [];
+        
+        // Apply all EVALS achievements
+        for (const [achievementName, evaluator] of Object.entries(EVALS)) {
+          try {
+            if (evaluator(player, globalIndices) && !player.achievements.includes(achievementName)) {
+              player.achievements.push(achievementName);
+            }
+          } catch (error) {
+            console.error(`Error evaluating achievement "${achievementName}" for player ${player.name}:`, error);
+          }
+        }
+        
+        const newCount = player.achievements.length;
+        if (newCount > initialCount) {
+          totalAchievementsApplied += (newCount - initialCount);
+          playersUpdated++;
+        }
+        
+        // Update the player in storage
+        await storage.updatePlayer(player.id, player);
+      }
+      
+      console.log(`✅ Applied ${totalAchievementsApplied} achievements across ${playersUpdated} players`);
+      
+      // Verify achievements are now available
+      const achievementCounts = new Map<string, number>();
+      for (const player of players) {
+        if (Array.isArray(player.achievements)) {
+          for (const achievement of player.achievements) {
+            achievementCounts.set(achievement, (achievementCounts.get(achievement) || 0) + 1);
+          }
+        }
+      }
+      
+      const availableAchievements = Array.from(achievementCounts.entries())
+        .filter(([_, count]) => count >= 2)
+        .map(([achievement, count]) => ({ achievement, count }))
+        .sort((a, b) => b.count - a.count);
+      
+      console.log(`🎉 ${availableAchievements.length} achievements now available for grid generation`);
+      
+      res.json({ 
+        message: "Successfully re-evaluated achievements",
+        achievementsApplied: totalAchievementsApplied,
+        playersUpdated,
+        availableAchievements: availableAchievements.length,
+        topAchievements: availableAchievements.slice(0, 10)
+      });
+    } catch (error: any) {
+      console.error("Re-evaluation error:", error);
+      res.status(500).json({ message: error.message || "Failed to re-evaluate achievements" });
+    }
+  });
+
   app.get("/api/players/search", async (req, res) => {
     try {
       const { q } = searchQuerySchema.parse(req.query);
