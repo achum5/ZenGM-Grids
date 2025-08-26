@@ -1,0 +1,68 @@
+Overall goal
+Simplify the page UI and show a single running Score near the grid. Do not change any other gameplay behavior.
+
+⸻
+
+1) Remove the two stats sections entirely
+	•	Top “Stats” section (the one that shows Correct, Incorrect, Guesses Left, Total Rarity, Avg Rarity, Rarity Score):
+	•	Remove it from the page so it does not render at all and leaves no empty space.
+	•	Bottom “Session Stats” section (the one with Grids Completed, Average Score, Best Score, Success Rate):
+	•	Remove it from the page so it does not render at all and leaves no empty space.
+	•	Ensure neither section is mounted in the DOM and they do not occupy any height or padding on desktop or mobile.
+
+⸻
+
+2) Remove the “Immaculate Grid” title text
+	•	Delete the “Immaculate Grid” heading above the board.
+	•	Do not leave an empty header or leftover spacing.
+
+⸻
+
+3) Add a live Score readout near the grid
+
+Placement
+	•	Add a small text readout that says “Score:” in the top-left of the grid area, specifically in the empty space between the column labels (top) and the row labels (left).
+	•	It should sit visually in that corner without overlapping tiles and without pushing the grid out of alignment.
+	•	Keep it inside the same container as the grid so it stays “attached” to the board on all screen sizes.
+
+Display behavior
+	•	The label should read exactly: Score: followed by a value.
+	•	Initial state: show no value after “Score:” (blank), not 0.
+The value appears only after the first scoring event.
+	•	Updates: as the user earns points, the value updates immediately.
+	•	New grid: when a new grid is generated, reset back to blank after “Score:”.
+
+Scoring rule (single source of truth)
+	•	Score = sum of the rarity values for all currently correct, filled squares on the board.
+	•	Only add points for squares that resolve as correct and have a rarity value.
+Incorrect guesses do not change the score.
+	•	If a user clears or changes a tile, the score must always reflect the current set of correct tiles (no double-counting, no leftover points).
+	•	If persistence restores a partially completed board, recompute the score from the current board state on load (do not rely on a stale total).
+	•	Display the number as a plain integer (no decimals). Thousands separators are not required.
+
+Accessibility & responsiveness
+	•	The score readout should be readable on mobile and desktop and should not block any clickable tiles.
+	•	Mark it as a polite live region so screen readers announce changes without being intrusive.
+
+⸻
+
+4) Do not change anything else
+	•	Keep all existing game logic, tile behavior, rarity calculations per square, and the “Generate New Grid” button as they are.
+	•	The only visible changes are:
+	•	Top “Stats” section is gone.
+	•	Bottom “Session Stats” section is gone.
+	•	“Immaculate Grid” title is gone.
+	•	A Score: readout appears in the grid’s top-left corner and updates as described.
+
+⸻
+
+5) Acceptance checklist (use this to verify)
+	1.	On page load with a fresh grid:
+	•	No top “Stats” section.
+	•	No bottom “Session Stats” section.
+	•	No “Immaculate Grid” title.
+	•	“Score:” is visible with no number after it.
+	2.	After a first correct square with a rarity value (e.g., 12), the readout shows “Score: 12”.
+	3.	After another correct square with rarity 7, it shows “Score: 19” (12 + 7).
+	4.	If a correct tile is cleared or replaced, the score immediately reflects the current sum (no double-counting).
+	5.	After clicking Generate New Grid, the readout resets to “Score:” with a blank value.

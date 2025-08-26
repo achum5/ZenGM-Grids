@@ -32,6 +32,14 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Calculate current score from correct answers with rarity values
+  const getCurrentScore = () => {
+    if (!session?.answers) return 0;
+    
+    const correctAnswers = Object.values(session.answers).filter(answer => answer.correct);
+    return correctAnswers.reduce((total, answer) => total + (answer.rarity || 0), 0);
+  };
+
   const { data: game } = useQuery<Game>({
     queryKey: ["/api/games", gameId],
     enabled: !!gameId,
@@ -201,17 +209,19 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
 
   return (
     <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-4 sm:p-8 rounded-xl shadow-sm">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
-        <div className="text-gray-900 dark:text-white">
-          <h2 className="text-xl sm:text-2xl font-bold">Immaculate Grid</h2>
-        </div>
-      </div>
 
       {/* Game Grid */}
       <div className="grid grid-cols-4 gap-1 sm:gap-2 max-w-sm sm:max-w-2xl mx-auto">
-        {/* Top-left empty cell */}
-        <div className="aspect-square"></div>
+        {/* Top-left cell with Score display */}
+        <div className="aspect-square flex items-start justify-start p-1">
+          <div 
+            className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300"
+            aria-live="polite"
+            data-testid="score-display"
+          >
+            Score:{session && Object.values(session.answers || {}).some(a => a.correct) ? ` ${getCurrentScore()}` : ''}
+          </div>
+        </div>
         
         {/* Column headers */}
         {game.columnCriteria.map((criteria, index) => (

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { FileUpload } from "@/components/file-upload";
 import { GameGrid } from "@/components/game-grid";
-import { GameStats } from "@/components/game-stats";
-import { Stats } from "@/components/stats";
 import { RulesModal } from "@/components/rules-modal";
 import { Button } from "@/components/ui/button";
 import { HelpCircle, RotateCcw, Play, Loader2 } from "lucide-react";
@@ -20,9 +18,6 @@ export default function Home() {
   const [teamData, setTeamData] = useState<TeamInfo[] | null>(null);
   const { toast } = useToast();
 
-  const { data: stats } = useQuery<SessionStats>({
-    queryKey: ["/api/sessions/stats"],
-  });
 
   // Generate new grid mutation
   const generateGameMutation = useMutation({
@@ -52,7 +47,7 @@ export default function Home() {
       // Always reset state for new grid without page reload
       setCurrentGameId(game.id);
       setCurrentSessionId(null);
-      setCurrentScore(0);
+      setCurrentScore(0); // Reset score display
     }
   };
 
@@ -76,39 +71,6 @@ export default function Home() {
     enabled: !!currentSessionId,
   });
 
-  // Calculate stats for Stats component
-  const calculateStats = () => {
-    if (!session?.answers) {
-      return {
-        correct: 0,
-        incorrect: 0,
-        guessesLeft: 9,
-        totalRarity: 0,
-        avgRarity: 0,
-        best: 0,
-        worst: 0,
-        rarityScore: 0
-      };
-    }
-
-    const answers = Object.values(session.answers);
-    const correct = answers.filter(a => a.correct).length;
-    const incorrect = answers.filter(a => !a.correct).length;
-    const correctRarities = answers.filter(a => a.correct).map(a => a.rarity || 0);
-    
-    return {
-      correct,
-      incorrect,
-      guessesLeft: 9 - answers.length,
-      totalRarity: correctRarities.reduce((sum, rarity) => sum + rarity, 0),
-      avgRarity: correctRarities.length > 0 ? Math.round(correctRarities.reduce((sum, rarity) => sum + rarity, 0) / correctRarities.length) : 0,
-      best: correctRarities.length > 0 ? Math.max(...correctRarities) : 0,
-      worst: correctRarities.length > 0 ? Math.min(...correctRarities) : 0,
-      rarityScore: session.score || 0
-    };
-  };
-
-  const statsData = calculateStats();
   const hasLeague = Boolean(teamData);
 
   return (
@@ -142,16 +104,6 @@ export default function Home() {
           
           {hasLeague && (
             <>
-              <Stats
-                correct={statsData.correct}
-                incorrect={statsData.incorrect}
-                guessesLeft={statsData.guessesLeft}
-                totalRarity={statsData.totalRarity}
-                avgRarity={statsData.avgRarity}
-                best={statsData.best}
-                worst={statsData.worst}
-                rarityScore={statsData.rarityScore}
-              />
               
               <GameGrid 
                 gameId={currentGameId}
@@ -189,9 +141,6 @@ export default function Home() {
             </>
           )}
           
-          <div className="bg-white dark:bg-slate-800 rounded-lg">
-            <GameStats stats={stats} />
-          </div>
         </div>
       </main>
       <RulesModal open={showRules} onOpenChange={setShowRules} />
