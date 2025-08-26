@@ -1,0 +1,87 @@
+1) Sections and title (already removed)
+	•	The top “Stats” block and bottom “Session Stats” block have been removed successfully. Keep them removed with no leftover space.
+	•	Remove/keep removed the “Immaculate Grid” title above the board with no leftover gap.
+
+⸻
+
+2) Score block (top-left of the board)
+	•	Placement: Inside the grid wrapper, anchored in the empty top-left corner between the row/column labels. Must not push or overlap the grid.
+	•	Layout: Two lines
+	•	Line 1: Score: (large)
+	•	Line 2: numeric value (large)
+	•	Initial state: Show Score: with the value blank until the first points are earned.
+	•	Definition: Score = sum of rarity values of all currently correct, filled squares. Recompute on every tile resolve/change; reset to blank on Generate New Grid.
+	•	Sizing: Both lines scale from current tile size with sensible min/max clamps; big and readable on mobile, tasteful on desktop.
+	•	A11y: Polite live region so updates are announced.
+
+Done when: It’s large, two lines, always in that corner, updates instantly, and resets to blank on new grid—across all window sizes.
+
+⸻
+
+3) Rarity badge inside each square (top-right)
+	•	Position: Pin inside the top-right corner with an inset that scales with tile size. Never clips outside the tile.
+	•	Size: Badge scales as a fraction of tile width (min/max clamps). Badge text scales with the badge.
+	•	Avatar safe-zone: Keep the face clear—reserve space under the badge and nudge/scale the avatar slightly toward center/left if needed so the badge never blocks the face.
+	•	Layering/interaction: Above the image, below any focus ring; must not block tile taps/clicks.
+	•	Dynamic: Recalculate badge size/offset on mount, on avatar image load, and on any resize/orientation change.
+
+Done when: The badge is always proportionate, sits cleanly in the corner, and never covers the face—on any screen.
+
+⸻
+
+4) Player names — formatting + dynamic fit order (no hyphenation)
+
+Parsing & tokens
+	•	Split full name into:
+	•	firstName = first token (keep punctuation like De’, O’).
+	•	lastNameFull = everything after the first space, treated as a single last-name string (preserve particles like “de la”, apostrophes, hyphens exactly as typed).
+	•	Render tokens:
+	•	First token as F. (first initial + period).
+	•	Last-name token as lastNameFull.
+	•	Never auto-hyphenate and never break mid-word. Ellipsis may appear only at the end of the last name.
+
+Dynamic fit order (apply in this exact sequence):
+	1.	One-line, full: Try to fit “F. Lastname” on one line at the current fluid font size.
+	2.	Two-line, full: If it doesn’t fit, try two lines:
+	•	Line 1: F.
+	•	Line 2: full Lastname (wrapping only at spaces within multi-word last names; never mid-word).
+	3.	One-line, truncated: If still not fitting, keep F. intact and truncate only the last name with an end ellipsis until the single line fits.
+	4.	Two-line, truncated: If still not fitting, keep F. on line 1 and truncate the last name on line 2 with an end ellipsis (wrapping only at spaces).
+
+Edge-case fallback: If at minimum readable size even F. can’t fit, show F. only (no overflow).
+
+Sizing & placement
+	•	Base font size is fluid from tile width with min/max clamps.
+	•	Name block sits in the bottom band of the tile, centered, with consistent vertical padding.
+	•	Must never overlap the avatar or the top-right badge.
+
+Reflow triggers
+	•	Re-measure and re-fit names on:
+	•	window resize and orientation change,
+	•	grid mount/unmount,
+	•	avatar image load,
+	•	grid regeneration.
+	•	Choose the best option (1→2→3→4) each time based on the actual tile width/height (not just viewport).
+
+Done when:
+	•	Large tiles typically show “F. Lastname” on one line.
+	•	Smaller tiles automatically choose two-line full, then one-line truncated, then two-line truncated—as needed—without mid-word breaks or auto-hyphenation, and with clean alignment.
+
+⸻
+
+5) Responsiveness, measurement, and performance
+	•	Use the tile’s computed size as the single source of truth for:
+	•	Score block font sizes,
+	•	Name font sizes and fit decisions,
+	•	Badge size/offset and avatar safe-zone adjustments.
+	•	Recalculate on all events above; debounce re-measure/re-fit by ~50ms to avoid jitter.
+	•	No flicker; no layout jumps.
+
+⸻
+
+6) Final acceptance checklist
+	•	Stats, Session Stats, and “Immaculate Grid” title are absent with no leftover space.
+	•	Score block: big, two lines, top-left of board; blank initially; correct total; resets on new grid; responsive.
+	•	Rarity badge: top-right inside each square; proportionate; never covers the face; responsive.
+	•	Names: follow the dynamic order (1-line full → 2-line full → 1-line truncated → 2-line truncated), no hyphenation, truncate only at the end of the last name.
+	•	Everything reflows perfectly on any window size/zoom/orientation with no overlap or jitter.

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
@@ -39,7 +39,6 @@ const teamAbbreviations: { [key: string]: string } = {
   "Milwaukee Bucks": "MIL",
   "Minnesota Timberwolves": "MIN",
   "New Orleans Pelicans": "NOL",
-  // Custom team mapping for uploaded league files  
   "Columbus Crush": "CLB",
   "St. Louis Spirit": "STL",
   "Sacramento Royalty": "SAC",
@@ -54,8 +53,6 @@ const teamAbbreviations: { [key: string]: string } = {
   "Toronto Raptors": "TOR",
   "Utah Jazz": "UTA",
   "Washington Wizards": "WAS",
-  
-  // Historical/Relocated Teams
   "Seattle SuperSonics": "SEA",
   "New Jersey Nets": "NJN",
   "Charlotte Bobcats": "CHA",
@@ -71,24 +68,18 @@ const teamAbbreviations: { [key: string]: string } = {
 };
 
 function getTeamAbbr(teamName: string, teamData?: TeamInfo[]): string {
-  // First check if we have authentic team data from uploaded file
   if (teamData) {
     const teamInfo = teamData.find(t => t.name === teamName);
     if (teamInfo?.abbrev) {
       return teamInfo.abbrev;
     }
   }
-  
-  // Fallback to comprehensive mapping, then generate from first 3 letters
   return teamAbbreviations[teamName] || teamName.substring(0, 3).toUpperCase();
 }
 
 // Function to get rarity color as a gradient from red (0) to green (100)
 function getRarityColor(rarity: number): string {
-  // Clamp rarity between 0 and 100
   const clamped = Math.max(0, Math.min(100, rarity));
-  
-  // Red to green gradient: red at 0, green at 100
   if (clamped >= 90) return "bg-green-600";
   if (clamped >= 75) return "bg-green-500";
   if (clamped >= 60) return "bg-yellow-500";
@@ -98,20 +89,75 @@ function getRarityColor(rarity: number): string {
   return "bg-red-600";
 }
 
-// Function to get rarity text based on user's tier specifications
-function getRarityText(rarity: number): string {
-  if (rarity >= 90) return "Ultra rare";
-  if (rarity >= 75) return "Very rare";
-  if (rarity >= 60) return "Rare";
-  if (rarity >= 40) return "Notable";
-  if (rarity >= 25) return "Common";
-  if (rarity >= 10) return "Very common";
-  return "Ultra common";
+interface NameFitResult {
+  mode: 'one-line-full' | 'two-line-full' | 'one-line-truncated' | 'two-line-truncated' | 'minimal';
+  lines: string[];
 }
 
-export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, eligibleCount, cellCriteria, candidateCount, teamData, columnCriteria, rowCriteria }: PlayerCellInfoProps) {
-  const [showExpanded, setShowExpanded] = useState(false);
+function formatPlayerName(fullName: string, containerWidth: number, containerHeight: number): NameFitResult {
+  const nameParts = fullName.trim().split(/\s+/);
+  if (nameParts.length === 0) return { mode: 'minimal', lines: [''] };
+  
+  const firstName = nameParts[0];
+  const firstInitial = firstName.charAt(0) + '.';
+  const lastNameFull = nameParts.slice(1).join(' ');
+  
+  // Estimate available space (rough calculation based on container size)
+  const baseFontSize = Math.max(10, Math.min(14, containerWidth * 0.08));
+  const estimateWidth = (text: string) => text.length * baseFontSize * 0.6;
+  const maxWidth = containerWidth * 0.9;
+  
+  // Try fitting modes in order
+  
+  // 1. One-line full: "F. Lastname"
+  const oneLineFull = `${firstInitial} ${lastNameFull}`;
+  if (estimateWidth(oneLineFull) <= maxWidth) {
+    return { mode: 'one-line-full', lines: [oneLineFull] };
+  }
+  
+  // 2. Two-line full: "F." on line 1, "Lastname" on line 2
+  if (estimateWidth(firstInitial) <= maxWidth && estimateWidth(lastNameFull) <= maxWidth) {
+    return { mode: 'two-line-full', lines: [firstInitial, lastNameFull] };
+  }
+  
+  // 3. One-line truncated: "F. Lastna..."
+  const availableForLastName = maxWidth - estimateWidth(firstInitial + ' ');
+  if (availableForLastName > estimateWidth('...')) {
+    const maxLastNameChars = Math.floor(availableForLastName / (baseFontSize * 0.6)) - 3;
+    if (maxLastNameChars > 0) {
+      const truncatedLastName = lastNameFull.substring(0, maxLastNameChars) + '...';
+      return { mode: 'one-line-truncated', lines: [`${firstInitial} ${truncatedLastName}`] };
+    }
+  }
+  
+  // 4. Two-line truncated: "F." on line 1, "Lastna..." on line 2
+  if (estimateWidth(firstInitial) <= maxWidth) {
+    const maxLastNameChars = Math.floor(maxWidth / (baseFontSize * 0.6)) - 3;
+    if (maxLastNameChars > 0) {
+      const truncatedLastName = lastNameFull.substring(0, maxLastNameChars) + '...';
+      return { mode: 'two-line-truncated', lines: [firstInitial, truncatedLastName] };
+    }
+  }
+  
+  // 5. Minimal fallback: just "F."
+  return { mode: 'minimal', lines: [firstInitial] };
+}
+
+export default function PlayerCellInfo({ 
+  playerName, 
+  isCorrect, 
+  rarity, 
+  rank, 
+  eligibleCount, 
+  cellCriteria, 
+  candidateCount, 
+  teamData, 
+  columnCriteria, 
+  rowCriteria 
+}: PlayerCellInfoProps) {
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [containerSize, setContainerSize] = useState({ width: 100, height: 100 });
+  const containerRef = useRef<HTMLDivElement>(null);
   
   const { data: players = [] } = useQuery<Player[]>({
     queryKey: ["/api/players/search", playerName],
@@ -123,10 +169,39 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
 
   const player = players.find(p => p.name === playerName);
 
+  // Measure container size
+  useEffect(() => {
+    const measureContainer = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerSize({ width: rect.width, height: rect.height });
+      }
+    };
+
+    measureContainer();
+    
+    const resizeObserver = new ResizeObserver(measureContainer);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    window.addEventListener('resize', measureContainer);
+    window.addEventListener('orientationchange', measureContainer);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', measureContainer);
+      window.removeEventListener('orientationchange', measureContainer);
+    };
+  }, []);
+
   if (!player) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-center p-2">
-        <div className="text-sm font-bold text-white mb-1 leading-tight">
+      <div 
+        ref={containerRef}
+        className="w-full h-full flex flex-col items-center justify-center text-center relative"
+      >
+        <div className="text-sm font-bold text-white leading-tight">
           {playerName}
         </div>
         <div className="text-xs text-white opacity-80">
@@ -136,178 +211,87 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
     );
   }
 
-  // Extract career stats from BBGM data - show simplified player info
-  let careerStats = { ppg: 0, rpg: 0, apg: 0, seasons: 0 };
-  let peakSeason = { season: '', ovr: 0, ppg: 0, rpg: 0, apg: 0 };
+  // Calculate responsive sizes
+  const badgeSize = Math.max(16, Math.min(24, containerSize.width * 0.15));
+  const faceSize = Math.max(40, Math.min(80, containerSize.width * 0.6));
+  const nameFormat = formatPlayerName(playerName, containerSize.width, containerSize.height);
   
-  if (player.stats && Array.isArray(player.stats)) {
-    let bestOvr = 0;
-    let totalSeasons = player.stats.length;
-    
-    // Find peak season by overall rating
-    player.stats.forEach((season: any) => {
-      const ovr = season.ovr || 0;
-      
-      if (ovr > bestOvr) {
-        bestOvr = ovr;
-        peakSeason = {
-          season: season.season?.toString() || '',
-          ovr: ovr,
-          ppg: 0, // Will estimate from attributes
-          rpg: 0,
-          apg: 0
-        };
-      }
-    });
-    
-    // Use peak overall rating as main indicator instead of calculated stats
-    if (totalSeasons > 0) {
-      careerStats = {
-        ppg: 0, // Not calculating complex stats
-        rpg: 0,
-        apg: 0,
-        seasons: totalSeasons
-      };
-    }
-  }
+  // Calculate avatar positioning to avoid badge overlap
+  const avatarOffset = isCorrect ? { marginTop: badgeSize * 0.3, marginLeft: -badgeSize * 0.2 } : {};
 
-  // Get primary team for this cell context
-  const primaryTeam = cellCriteria ? 
-    (player.teams.includes(cellCriteria.column) ? cellCriteria.column : 
-     player.teams.includes(cellCriteria.row) ? cellCriteria.row : 
-     player.teams[0]) : player.teams[0];
-     
-  // Get years with primary team
-  const teamYears = player.years?.find(y => y.team === primaryTeam);
-  const yearRange = teamYears ? `${teamYears.start}–${teamYears.end}` : '';
-  
-  // Format all teams with years - show each team stint separately
-  const allTeamsFormatted = player.years?.map(y => 
-    `${getTeamAbbr(y.team, teamData)} (${y.start}–${y.end})`
-  ).join(', ') || player.teams.map(team => getTeamAbbr(team, teamData)).join(', ');
+  return (
+    <>
+      <div 
+        ref={containerRef}
+        className="w-full h-full flex flex-col items-center justify-between text-center relative cursor-pointer overflow-hidden"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowProfileModal(true);
+        }}
+      >
+        {/* Rarity badge - top-right, only for correct answers */}
+        {isCorrect && (
+          <div 
+            className="absolute top-1 right-1 z-20"
+            style={{
+              width: `${badgeSize}px`,
+              height: `${badgeSize}px`,
+            }}
+          >
+            <div 
+              className={`${getRarityColor(rarity)} text-white font-bold rounded flex items-center justify-center w-full h-full`}
+              style={{
+                fontSize: `${Math.max(8, badgeSize * 0.4)}px`,
+              }}
+            >
+              {rarity}
+            </div>
+          </div>
+        )}
 
-  // Count major accolades
-  const accolades = {
-    mvp: player.achievements?.filter(a => a === "MVP").length || 0,
-    fmvp: player.achievements?.filter(a => a === "Finals MVP").length || 0,
-    allStar: player.achievements?.filter(a => a === "All Star").length || 0,
-    champ: player.achievements?.filter(a => a === "League Champ").length || 0,
-    dpoy: player.achievements?.filter(a => a === "Defensive Player of the Year").length || 0,
-    roy: player.achievements?.filter(a => a === "Rookie of the Year").length || 0
-  };
-
-  // Format accolades string
-  const accoladeItems = [];
-  if (accolades.mvp > 0) accoladeItems.push(`${accolades.mvp}× MVP`);
-  if (accolades.fmvp > 0) accoladeItems.push(`${accolades.fmvp}× FMVP`);
-  if (accolades.allStar > 0) accoladeItems.push(`${accolades.allStar}× AS`);
-  if (accolades.champ > 0) accoladeItems.push(`${accolades.champ}× Champ`);
-  if (accolades.dpoy > 0) accoladeItems.push(`${accolades.dpoy}× DPOY`);
-  if (accolades.roy > 0) accoladeItems.push(`ROY`);
-  
-  const accoladesStr = accoladeItems.slice(0, 4).join(' • ');
-
-  if (!isCorrect) {
-    return (
-      <>
+        {/* Player Face - adjusted position for badge clearance */}
         <div 
-          className="w-full h-full flex flex-col items-center justify-between text-center p-0.5 cursor-pointer overflow-visible relative"
-          onClick={(e) => {
-            console.log('Wrong tile clicked for player:', playerName);
-            e.preventDefault();
-            e.stopPropagation();
-            setShowProfileModal(true);
+          className="flex items-center justify-center flex-shrink-0"
+          style={{
+            ...avatarOffset,
+            marginBottom: '8px',
           }}
         >
-        {/* Rarity chip hidden for incorrect answers */}
-        {/* Player Face */}
-        <div className="flex items-center justify-center mb-1 flex-shrink-0 w-full h-full">
-          <div className="flex items-center justify-center">
-            <PlayerFace 
-              face={player.face}
-              imageUrl={player.imageUrl}
-              size={70} 
-              className="rounded-full overflow-hidden"
-              teams={player.teams}
-              currentTeam={player.years?.[player.years.length - 1]?.team}
-            />
-          </div>
+          <PlayerFace 
+            face={player.face}
+            imageUrl={player.imageUrl}
+            size={faceSize}
+            className="rounded-full overflow-hidden"
+            teams={player.teams}
+            currentTeam={player.years?.[player.years.length - 1]?.team}
+          />
         </div>
         
-        {/* Player name - ALWAYS VISIBLE with stronger background */}
-        <div className="text-sm sm:text-base font-semibold text-white leading-tight mb-1 text-center px-1 w-full flex-shrink-0 min-h-[2em] flex items-center justify-center bg-black bg-opacity-75 rounded shadow-lg border border-gray-600">
-          <span className="block text-center w-full text-shadow" title={playerName}>
-            {(() => {
-              const maxLength = 14; // Adjust based on cell width
-              if (playerName.length <= maxLength) {
-                return playerName;
-              }
-              
-              const nameParts = playerName.split(' ');
-              if (nameParts.length >= 2) {
-                const firstInitial = nameParts[0][0] + '.';
-                // Handle suffixes like Jr., Sr., III, etc.
-                const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
-                let lastName = nameParts[nameParts.length - 1];
-                
-                // If the last part is a suffix, use the second-to-last part as the last name
-                if (suffixes.includes(lastName) && nameParts.length >= 3) {
-                  lastName = nameParts[nameParts.length - 2];
-                }
-                
-                const truncatedName = firstInitial + ' ' + lastName;
-                
-                if (truncatedName.length <= maxLength) {
-                  return truncatedName;
-                } else {
-                  const availableSpace = maxLength - firstInitial.length - 4; // -4 for space and "..."
-                  return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
-                }
-              }
-              
-              return playerName.substring(0, maxLength - 3) + '...';
-            })()}
-          </span>
+        {/* Player name with dynamic fitting */}
+        <div 
+          className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-80 text-white text-center rounded border border-gray-600 flex flex-col items-center justify-center"
+          style={{
+            padding: '4px 2px',
+            minHeight: nameFormat.lines.length === 1 ? '24px' : '32px',
+          }}
+        >
+          {nameFormat.lines.map((line, index) => (
+            <div 
+              key={index}
+              className="font-bold leading-tight"
+              style={{
+                fontSize: `${Math.max(10, Math.min(14, containerSize.width * 0.08))}px`,
+                lineHeight: '1.1',
+              }}
+              title={playerName}
+            >
+              {line}
+            </div>
+          ))}
         </div>
-        
-        {/* Player name for incorrect squares - ALWAYS VISIBLE */}
-        <div className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-75 text-white text-center py-1 px-1 rounded shadow-lg border border-gray-600">
-          <div className="text-xs sm:text-sm font-bold leading-tight" title={playerName}>
-            {(() => {
-              const maxLength = 16; // Slightly more space for incorrect squares
-              if (playerName.length <= maxLength) {
-                return playerName;
-              }
-              
-              const nameParts = playerName.split(' ');
-              if (nameParts.length >= 2) {
-                const firstInitial = nameParts[0][0] + '.';
-                // Handle suffixes like Jr., Sr., III, etc.
-                const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
-                let lastName = nameParts[nameParts.length - 1];
-                
-                // If the last part is a suffix, use the second-to-last part as the last name
-                if (suffixes.includes(lastName) && nameParts.length >= 3) {
-                  lastName = nameParts[nameParts.length - 2];
-                }
-                
-                const truncatedName = firstInitial + ' ' + lastName;
-                
-                if (truncatedName.length <= maxLength) {
-                  return truncatedName;
-                } else {
-                  const availableSpace = maxLength - firstInitial.length - 4;
-                  return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
-                }
-              }
-              
-              return playerName.substring(0, maxLength - 3) + '...';
-            })()}
-          </div>
-        </div>
-
       </div>
-      
+    
       <PlayerProfileModal 
         player={player}
         open={showProfileModal}
@@ -323,173 +307,6 @@ export default function PlayerCellInfo({ playerName, isCorrect, rarity, rank, el
           undefined
         }
       />
-      </>
-    );
-  }
-
-  if (showExpanded) {
-    return (
-      <div 
-        className="w-full h-full bg-slate-900 text-white text-xs leading-tight cursor-pointer overflow-y-auto overscroll-contain"
-        onClick={() => setShowExpanded(false)}
-        onWheel={(e) => e.stopPropagation()}
-        style={{ pointerEvents: 'auto', scrollBehavior: 'auto', padding: '8px 8px 4px 8px' }}
-      >
-        {/* Player Face and Identity */}
-        <div className="flex flex-col items-center mb-2">
-          <PlayerFace 
-            face={player.face}
-            imageUrl={player.imageUrl}
-            size={40} 
-            className="rounded-full overflow-hidden mb-1"
-          />
-          <div className="font-semibold text-center text-sm">
-            {playerName}
-          </div>
-        </div>
-        
-        {/* All Teams */}
-        <div className="text-center mb-2 text-blue-300 text-xs leading-relaxed">
-          <div className="font-semibold mb-1">Teams:</div>
-          <div className="space-y-1 max-h-20 overflow-y-auto">
-            {player.years?.map((teamYear, idx) => (
-              <div key={`${teamYear.team}-${teamYear.start}`} className="block">
-                {getTeamAbbr(teamYear.team, teamData)} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
-              </div>
-            )) || player.teams.map((team, idx) => (
-              <div key={team} className="block">
-                {getTeamAbbr(team, teamData)}
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        {/* Criteria badges */}
-        <div className="text-center mb-1 text-blue-300">
-          {cellCriteria && (
-            <div>
-              {cellCriteria.column} × {cellCriteria.row} ✓
-            </div>
-          )}
-        </div>
-        
-        {/* Candidate count */}
-        <div className="text-center mb-1 text-yellow-300">
-          {candidateCount || 0} valid answers for this cell
-        </div>
-        
-        {/* Career info */}
-        <div className="text-center mb-1">
-          Career: {careerStats.seasons} seasons • Peak {peakSeason.ovr} OVR ({peakSeason.season})
-        </div>
-        
-        {/* Career Stats */}
-        {careerStats.seasons > 0 && (
-          <div className="text-center mb-2 text-white">
-            <div className="font-semibold mb-1">Career Stats:</div>
-            <div className="text-xs space-y-0.5">
-              <div>{careerStats.seasons} seasons played</div>
-              {peakSeason.season && (
-                <div>Peak: {peakSeason.season} — {peakSeason.ovr} OVR</div>
-              )}
-              {peakSeason.ppg > 0 && (
-                <div>Best: {peakSeason.ppg.toFixed(1)} PPG, {peakSeason.rpg.toFixed(1)} RPG, {peakSeason.apg.toFixed(1)} APG</div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {/* Accolades */}
-        {accoladesStr && (
-          <div className="text-center text-green-300">
-            {accoladesStr}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Compact view with face and name
-  return (
-    <>
-      <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center p-0.5 cursor-pointer overflow-visible relative"
-        onClick={(e) => {
-          console.log('Correct tile clicked for player:', playerName);
-          e.preventDefault();
-          e.stopPropagation();
-          setShowProfileModal(true);
-        }}
-      >
-      {/* Rarity indicator for correct answers */}
-      <div className="absolute top-1 right-1 z-10">
-        <div className={`${getRarityColor(rarity)} text-white text-xs font-bold px-1 py-0.5 rounded min-w-[20px] text-center`}>
-          {rarity}
-        </div>
-      </div>
-      {/* Player Face */}
-      <div className="flex items-center justify-center mb-2 flex-shrink-0 w-full h-full">
-        <div className="flex items-center justify-center">
-          <PlayerFace 
-            face={player.face}
-            imageUrl={player.imageUrl}
-            size={70} 
-            className="rounded-full overflow-hidden"
-            teams={player.teams}
-            currentTeam={player.years?.[player.years.length - 1]?.team}
-          />
-        </div>
-      </div>
-      
-      {/* Player name for correct squares - ALWAYS VISIBLE */}
-      <div className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-75 text-white text-center py-1 px-1 rounded shadow-lg border border-gray-600">
-        <div className="text-xs sm:text-sm font-bold leading-tight" title={playerName}>
-          {(() => {
-            const maxLength = 16; // Adjust for correct squares
-            if (playerName.length <= maxLength) {
-              return playerName;
-            }
-            
-            const nameParts = playerName.split(' ');
-            if (nameParts.length >= 2) {
-              const firstInitial = nameParts[0][0] + '.';
-              // Handle suffixes like Jr., Sr., III, etc.
-              const suffixes = ['Jr.', 'Sr.', 'Jr', 'Sr', 'II', 'III', 'IV', 'V'];
-              let lastName = nameParts[nameParts.length - 1];
-              
-              // If the last part is a suffix, use the second-to-last part as the last name
-              if (suffixes.includes(lastName) && nameParts.length >= 3) {
-                lastName = nameParts[nameParts.length - 2];
-              }
-              
-              const truncatedName = firstInitial + ' ' + lastName;
-              
-              if (truncatedName.length <= maxLength) {
-                return truncatedName;
-              } else {
-                const availableSpace = maxLength - firstInitial.length - 4;
-                return firstInitial + ' ' + lastName.substring(0, availableSpace) + '...';
-              }
-            }
-            
-            return playerName.substring(0, maxLength - 3) + '...';
-          })()}
-        </div>
-      </div>
-      
-
-    </div>
-    
-    <PlayerProfileModal 
-      player={player}
-      open={showProfileModal}
-      onOpenChange={setShowProfileModal}
-      columnCriteria={columnCriteria}
-      rowCriteria={rowCriteria}
-      rarity={rarity}
-      rank={rank}
-      eligibleCount={eligibleCount}
-    />
     </>
   );
 }
