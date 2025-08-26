@@ -1,0 +1,130 @@
+“Why this was incorrect” Language
+
+A) Core rule for the sentence
+
+For a wrong guess at the intersection of two categories A and B, build the message from these rules:
+	1.	Compute whether the player satisfies each category: meetsA and meetsB.
+	2.	Compose the sentence using the smallest, clearest statement:
+
+	•	If meetsA and not meetsB:
+{Player} {affirm(A)} but {neg(B)}.
+	•	If meetsB and not meetsA:
+{Player} {affirm(B)} but {neg(A)}.
+	•	If neither is met:
+{Player} {neg(A)} and {neg(B)}.
+
+Use sentence case, include thousands separators (e.g., 5,000+), keep the “+” symbol from the category labels, and use correct articles (“a/an”) and prepositions.
+
+Example (Mike Conley):
+“Mike Conley had 5,000+ career assists but was not a second-round pick.”
+
+⸻
+
+B) Phrase dictionary per category
+
+Use these affirmative and negative phrases exactly. (Only swap the stat/award/team names as appropriate.)
+
+Career totals
+	•	20,000+ Career Points → affirm: had 20,000+ career points; neg: did not have 20,000+ career points
+	•	10,000+ Career Rebounds → had 10,000+ career rebounds / did not have 10,000+ career rebounds
+	•	5,000+ Career Assists → had 5,000+ career assists / did not have 5,000+ career assists
+	•	2,000+ Career Steals → had 2,000+ career steals / did not have 2,000+ career steals
+	•	1,500+ Career Blocks → had 1,500+ career blocks / did not have 1,500+ career blocks
+	•	2,000+ Made Threes → made 2,000+ career threes / did not make 2,000+ career threes
+
+Season averages / efficiency
+	•	Averaged 30+ PPG in a Season → averaged 30+ PPG in a season / did not average 30+ PPG in any season
+	•	Averaged 10+ APG in a Season → averaged 10+ APG in a season / did not average 10+ APG in any season
+	•	Averaged 15+ RPG in a Season → averaged 15+ RPG in a season / did not average 15+ RPG in any season
+	•	Averaged 3+ BPG in a Season → averaged 3+ BPG in a season / did not average 3+ BPG in any season
+	•	Averaged 2.5+ SPG in a Season → averaged 2.5+ SPG in a season / did not average 2.5+ SPG in any season
+	•	Shot 50/40/90 in a Season → recorded a 50/40/90 season / never recorded a 50/40/90 season
+
+Draft status / career length
+	•	#1 Overall Draft Pick → was the No. 1 overall pick / was not the No. 1 overall pick
+	•	First Round Pick → was a first-round pick / was not a first-round pick
+	•	2nd Round Pick → was a second-round pick / was not a second-round pick
+	•	Undrafted Player → went undrafted / was drafted
+	•	Played 15+ Seasons → played at least 15 NBA seasons / did not play at least 15 NBA seasons
+	•	Only One Team → spent their entire NBA career with one franchise / did not spend their entire NBA career with one franchise
+
+League-leading (any season)
+	•	Led League in Scoring → led the league in scoring at least once / never led the league in scoring
+	•	Led League in Rebounds → led the league in rebounds at least once / never led the league in rebounds
+	•	Led League in Assists → led the league in assists at least once / never led the league in assists
+	•	Led League in Steals → led the league in steals at least once / never led the league in steals
+	•	Led League in Blocks → led the league in blocks at least once / never led the league in blocks
+
+Single-game feats
+	•	Scored 50+ in a Game → scored 50+ points in a game / never scored 50+ points in a game
+	•	Triple-Double in a Game → recorded a triple-double / never recorded a triple-double
+	•	20+ Rebounds in a Game → grabbed 20+ rebounds in a game / never grabbed 20+ rebounds in a game
+	•	20+ Assists in a Game → dished 20+ assists in a game / never dished 20+ assists in a game
+	•	10+ Threes in a Game → made 10+ threes in a game / never made 10+ threes in a game
+
+Awards / teams
+	•	All-Star Selection → was an All-Star / was not an All-Star
+	•	MVP Winner → won MVP / never won MVP
+	•	Defensive Player of the Year → won Defensive Player of the Year / never won Defensive Player of the Year
+	•	Rookie of the Year → won Rookie of the Year / never won Rookie of the Year
+	•	Sixth Man of the Year → won Sixth Man of the Year / never won Sixth Man of the Year
+	•	Most Improved Player → won Most Improved Player / never won Most Improved Player
+	•	Finals MVP → won Finals MVP / never won Finals MVP
+	•	All-League Team → made an All-NBA Team / never made an All-NBA Team
+	•	All-Defensive Team → made an All-Defensive Team / never made an All-Defensive Team
+	•	NBA Champion → won an NBA championship / never won an NBA championship
+	•	Made All-Star Team at Age 35+ → made an All-Star Team at age 35 or older / never made an All-Star Team at age 35 or older
+	•	Champion → If this is the same as NBA Champion, alias it to the same phrasing above. If different, use: won a championship / never won a championship.
+	•	Hall of Fame → is in the Hall of Fame / is not in the Hall of Fame
+
+Team/franchise tiles (for completeness)
+	•	{Team Name} → affirm: played for the {Team Name}; neg: never played for the {Team Name}
+
+⸻
+
+C) Output examples (structure)
+	•	One met, one failed:
+“Mike Conley had 5,000+ career assists but was not a second-round pick.”
+“Jason Kidd was a first-round pick but never made a 50/40/90 season.”
+	•	Both failed:
+“Kyle Lowry did not have 10,000+ career rebounds and was not a second-round pick.”
+“Al Horford never led the league in blocks and never scored 50+ points in a game.”
+	•	Team + achievement:
+“Chris Paul played for the Phoenix Suns but did not have 2,000+ career steals.”
+
+⸻
+
+D) Implementation notes
+	•	Always use affirm() and neg() from the phrase dictionary above to keep grammar correct (avoid mistakes like “didn’t play for the 2nd Round Pick”).
+	•	Use the joiners exactly as specified:
+	•	“but” when one condition passes and the other fails.
+	•	“and” when both fail.
+	•	Keep the sentence short, declarative, and end with a period.
+	•	Support internationalized number formatting later, but for now keep U.S. separators and the “+” sign as in labels.
+
+⸻
+
+Acceptance: The message for every wrong guess is grammatical, specific, and uses the correct verb (“played for”, “was”, “won”, “led”, “averaged”, “recorded”, “made”) for the category type; it never produces phrases like “played for the 2nd Round Pick.”
+
+
+Hard constraint (do not change):
+This update is purely visual. It must not change how the app determines whether a player met (not “let”) any requirement. The existing validation logic is already correct and must remain untouched.
+
+What you must use (read-only):
+	•	Continue relying on the existing results/flags from the validator (e.g., booleans like meetsA / meetsB, existing category outcomes).
+	•	Treat those values as read-only inputs to the message composer. Do not recompute, reinterpret, or override them.
+
+What you must not change:
+	•	❌ Category/achievement evaluation logic
+	•	❌ Correct/incorrect determination
+	•	❌ Scoring, rarity calculations, or totals
+	•	❌ Guess counting, remaining guesses, win/loss state
+	•	❌ Any persistence or session logic
+
+Scope of this change:
+	•	✅ Replace only the text string shown in the “Why this was incorrect” UI, using the phrasing rules/phrase dictionary from the main brief.
+	•	✅ Joiners (“but” vs “and”), grammar, and number formatting are presentation-only.
+
+Acceptance:
+	•	Given the same guess and the same underlying validation output, the result (correct/incorrect, score, rarity, etc.) is identical before and after this change.
+	•	Only the explanation sentence changes, and it is grammatical (e.g., “Mike Conley had 5,000+ career assists but was not a second-round pick.”).
