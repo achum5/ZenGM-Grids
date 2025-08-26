@@ -6,43 +6,11 @@ import multer from "multer";
 import { z } from "zod";
 import { gunzip } from "zlib";
 import { promisify } from "util";
-import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria, type Player } from "@shared/schema";
-import { buildIndices, type Indices } from './indices';
-import { EVALS, populationByCriterion, meetsCriteria } from './evals';
+import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria } from "@shared/schema";
+import { EligibilityChecker } from "./eligibility";
 import { sampleUniform } from "@shared/utils/rng";
 
 const gunzipAsync = promisify(gunzip);
-
-// Global indices for all evaluations
-let globalIndices: Indices | null = null;
-
-// Helper functions for team checks and other logic
-function didPlayForTeam(player: Player, teamName: string): boolean {
-  return player.teams.includes(teamName);
-}
-
-// Helper function to check if player meets specific criteria using new EVALS system
-function checkPlayerCriteria(player: Player, criteria: any, indices: Indices): boolean {
-  if (criteria.type === 'team') {
-    return player.teams?.includes(criteria.value) ?? false;
-  }
-  
-  if (criteria.type === 'achievement') {
-    const evaluator = EVALS[criteria.value];
-    if (!evaluator) return false;
-    return evaluator(player, indices);
-  }
-  
-  return false;
-}
-
-function eligibleForCell(p: Player, row: any, col: any, ix: Indices): boolean {
-  // Both column and row criteria must be met
-  const columnMatch = checkPlayerCriteria(p, col, ix);
-  const rowMatch = checkPlayerCriteria(p, row, ix);
-  
-  return columnMatch && rowMatch;
-}
 
 // Use uniform sampling for fairness
 function sample<T>(arr: T[], n: number): T[] {
@@ -52,9 +20,9 @@ function sample<T>(arr: T[], n: number): T[] {
 function buildCorrectAnswers(
   players: any[],
   columnCriteria: { value: string; type: string }[],
-  rowCriteria: { value: string; type: string }[],
-  indices: Indices
+  rowCriteria: { value: string; type: string }[]
 ) {
+  const eligibilityChecker = new EligibilityChecker(players);
   const out: Record<string, string[]> = {};
   
   for (let r = 0; r < rowCriteria.length; r++) {
@@ -62,10 +30,8 @@ function buildCorrectAnswers(
       const colCriteria = columnCriteria[c];
       const rowCriteria_item = rowCriteria[r];
       
-      // Use new eligibility system with proper indices
-      const eligiblePlayers = players.filter(p => 
-        eligibleForCell(p, rowCriteria_item, colCriteria, indices)
-      );
+      // Use new eligibility system - decoupled team/achievement logic
+      const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
       const names = eligiblePlayers.map(p => p.name);
       
       out[`${r}_${c}`] = names; // keep underscore key format
@@ -201,7 +167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
       
       // Try to process league-level achievements (will mostly be empty due to no league data)
-      // Legacy function call removed - now using new EVALS system
+      await processLeagueLevelAchievements({}, mutablePlayers);
       
       // Update storage with any changes
       console.log("Updating players with league-level achievements...");
@@ -325,39 +291,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return map;
   }
 
-  // 2) Build leaders correctly (regular season, per-game, min games, ties ok)
   function buildLeadersBySeason(league: any, numGamesBySeason: Map<number, number>) {
     const bySeason = new Map<number, Array<{pid: number, s: any}>>();
     for (const p of league.players ?? []) {
       for (const s of p.stats ?? []) {
-        if (s.playoffs) continue;                       // RS only
+        if (s.playoffs) continue;
         if (typeof p.pid !== "number") continue;
-        (bySeason.get(s.season) ?? bySeason.set(s.season, []).get(s.season)!).push({pid: p.pid, s});
+        const arr = bySeason.get(s.season) ?? [];
+        arr.push({pid: p.pid, s});
+        bySeason.set(s.season, arr);
       }
     }
-    const leaders = new Map<number, Record<LeaderKey, Set<number>>>();
+    const leaders = new Map<number, any>();
     const EPS = 1e-9;
-    for (const [season, arr] of bySeason) {
-      const MIN = Math.ceil(0.58 * (numGamesBySeason.get(season) ?? 82));
-      let max = { ppg: -Infinity, rpg: -Infinity, apg: -Infinity, spg: -Infinity, bpg: -Infinity };
-      const rows = arr.map(({pid, s}) => {
-        const gp = s.gp ?? 0, ok = gp >= MIN;
+    for (const [season, arr] of Array.from(bySeason.entries())) {
+      const MIN = seasonMinGames(numGamesBySeason, season);
+      let maxPPG = -Infinity, maxRPG = -Infinity, maxAPG = -Infinity, maxSPG = -Infinity, maxBPG = -Infinity;
+      const rows: any[] = [];
+      for (const {pid, s} of arr) {
+        const gp = s.gp ?? 0;
+        const ok = gp >= MIN;
         const ppg = (s.pts ?? 0) / (gp || 1);
-        const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1);   // REB = ORB+DRB
+        const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1); // REB = ORB+DRB
         const apg = (s.ast ?? 0) / (gp || 1);
         const spg = (s.stl ?? 0) / (gp || 1);
         const bpg = (s.blk ?? 0) / (gp || 1);
-        if (ok) {
-          max.ppg = Math.max(max.ppg, ppg);
-          max.rpg = Math.max(max.rpg, rpg);
-          max.apg = Math.max(max.apg, apg);
-          max.spg = Math.max(max.spg, spg);
-          max.bpg = Math.max(max.bpg, bpg);
+        rows.push({pid, ok, ppg, rpg, apg, spg, bpg});
+        if (ok) { 
+          maxPPG = Math.max(maxPPG, ppg); 
+          maxRPG = Math.max(maxRPG, rpg);
+          maxAPG = Math.max(maxAPG, apg); 
+          maxSPG = Math.max(maxSPG, spg); 
+          maxBPG = Math.max(maxBPG, bpg); 
         }
-        return {pid, ok, ppg, rpg, apg, spg, bpg};
+      }
+      const set = (sel: (r: any) => number, max: number) => new Set(rows.filter(r => r.ok && sel(r) >= max - EPS).map(r => r.pid));
+      leaders.set(season, {
+        ppg: set(r => r.ppg, maxPPG),
+        rpg: set(r => r.rpg, maxRPG),
+        apg: set(r => r.apg, maxAPG),
+        spg: set(r => r.spg, maxSPG),
+        bpg: set(r => r.bpg, maxBPG),
       });
-      const set = (sel: LeaderKey) => new Set(rows.filter(r => r.ok && r[sel] >= max[sel] - EPS).map(r => r.pid));
-      leaders.set(season, { ppg: set("ppg"), rpg: set("rpg"), apg: set("apg"), spg: set("spg"), bpg: set("bpg") });
     }
     return leaders;
   }
@@ -380,39 +355,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return {hallOfFamers: hof, hofSeasonTidMap: seasonTidToHOF};
   }
 
-  // Legacy function removed - replaced by new EVALS system
+  function applyRemainingAchievements(players: any[], ix: any) {
+    console.log("🎯 Applying remaining 10 achievements...");
+    const byPid = new Map(players.map(p => [p.pid, p]));
+    const add = (pid: number, label: string) => {
+      const p = byPid.get(pid); 
+      if (!p) return;
+      p.achievements ??= [];
+      if (!p.achievements.includes(label)) p.achievements.push(label);
+    };
 
-  // 3) Evaluator must use the leaders index for the right key
-  function ledLeague(pid: number, key: LeaderKey, leadersBySeason: Map<number, any>) {
-    for (const sets of leadersBySeason.values()) if (sets[key]?.has(pid)) return true;
-    return false;
-  }
-
-  // 5) Add a quick self-test for this exact bug
-  function assertNoFalseLeader(namesToPids: Map<string, number>, ix: any) {
-    const suspects = ["Tiny Archibald"]; // add any others you see
-    for (const name of suspects) {
-      const pid = namesToPids.get(name);
-      if (!pid) continue;
-      const isLedBlocks = ledLeague(pid, "bpg", ix.leadersBySeason);
-      if (isLedBlocks) console.warn("⚠️ Sanity: suspect actually in bpg leaders", name);
-      else console.log("✅ Sanity: not in bpg leaders", name);
+    // Season leaders (5)
+    let leaderCounts = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0 };
+    for (const [, sets] of ix.leadersBySeason) {
+      for (const pid of sets.ppg) { add(pid, "Led League in Scoring"); leaderCounts.ppg++; }
+      for (const pid of sets.rpg) { add(pid, "Led League in Rebounds"); leaderCounts.rpg++; }
+      for (const pid of sets.apg) { add(pid, "Led League in Assists"); leaderCounts.apg++; }
+      for (const pid of sets.spg) { add(pid, "Led League in Steals"); leaderCounts.spg++; }
+      for (const pid of sets.bpg) { add(pid, "Led League in Blocks"); leaderCounts.bpg++; }
     }
+    console.log("🏆 League leaders applied:", leaderCounts);
+
+    // All-Star selection + Age 35+
+    let allStarCount = 0, age35Count = 0;
+    for (const [season, set] of ix.allStarsBySeason) {
+      for (const pid of set) {
+        add(pid, "All-Star Selection");
+        allStarCount++;
+        const p = byPid.get(pid);
+        const bornYear = p?.born?.year ?? 0;
+        if (bornYear && (season - bornYear) >= 35) {
+          add(pid, "Made All-Star Team at Age 35+");
+          age35Count++;
+        }
+      }
+    }
+    console.log(`🌟 All-Stars: ${allStarCount}, Age 35+: ${age35Count}`);
+
+    // Champions (NBA Champion + Champion alias)
+    let champCount = 0;
+    for (const p of players) {
+      for (const s of p.stats ?? []) {
+        if ((s.gp ?? 0) <= 0) continue;
+        const champTid = ix.championsBySeason.get(s.season);
+        if (champTid != null && s.tid === champTid) {
+          add(p.pid, "NBA Champion");
+          add(p.pid, "Champion");
+          champCount++;
+          break;
+        }
+      }
+    }
+    console.log(`🏆 Champions: ${champCount}`);
+
+    // Teammate of All-Time Greats (different person on same team-season)
+    let teammateCount = 0;
+    for (const p of players) {
+      let ok = false;
+      for (const s of p.stats ?? []) {
+        if ((s.gp ?? 0) <= 0) continue;
+        const key = `${s.season}:${s.tid}`;
+        const hofSet = ix.hofSeasonTidMap.get(key);
+        if (hofSet && (hofSet.size > 1 || !hofSet.has(p.pid))) { 
+          ok = true; 
+          break; 
+        }
+      }
+      if (ok) {
+        add(p.pid, "Teammate of All-Time Greats");
+        teammateCount++;
+      }
+    }
+    console.log(`🤝 Teammates of ATGs: ${teammateCount}`);
   }
 
-  // 1) Canonical IDs and stat keys
-  type LeaderKey = "ppg" | "rpg" | "apg" | "spg" | "bpg";
-
-  const ACH_LEADERS = {
-    LedPTS: { label: "Led League in Scoring",  key: "ppg" as LeaderKey },
-    LedREB: { label: "Led League in Rebounds", key: "rpg" as LeaderKey },
-    LedAST: { label: "Led League in Assists",  key: "apg" as LeaderKey },
-    LedSTL: { label: "Led League in Steals",   key: "spg" as LeaderKey },
-    LedBLK: { label: "Led League in Blocks",   key: "bpg" as LeaderKey },
-  } as const;
-
-  // Legacy processLeagueLevelAchievements function removed - replaced by new EVALS system
-  async function processLeagueLevelAchievements_DEPRECATED(leagueData: any, players: any[]) {
+  async function processLeagueLevelAchievements(leagueData: any, players: any[]) {
     console.log("🔍 Processing league-level achievements...");
     console.log("League data keys:", Object.keys(leagueData || {}));
     
@@ -603,7 +620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     // 🚀 APPLY THE REMAINING 10 ACHIEVEMENTS (ChatGPT guide)
-    // Legacy function call removed - achievements now applied by new EVALS system during upload
+    applyRemainingAchievements(players, ix);
     
     console.log("League-level achievement processing complete.");
   }
@@ -958,32 +975,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         }).filter((p: any) => p.name !== "Unknown Player"); // Only include players with valid names
         
-        // Build comprehensive indices for all achievements
-        console.log("🚀 Building indices for all 42 achievements...");
+        // Process league-level data for comprehensive achievements
+        console.log("🚀 About to process league-level achievements...");
         console.log("isJson:", isJson, "data exists:", !!data);
         console.log("Players array length:", players.length);
         
         if (isJson && data) {
-          console.log("✅ Building indices from league data...");
+          console.log("✅ Calling processLeagueLevelAchievements...");
           console.log("🔍 League data keys:", Object.keys(data));
           console.log("🔍 Awards array length:", data.awards?.length || 0);
           console.log("🔍 Events array length:", data.events?.length || 0);
-          console.log("🔍 PlayerFeats array length:", data.playerFeats?.length || 0);
-          
-          // Build comprehensive indices for all achievements
-          globalIndices = buildIndices(data);
-          console.log("✅ Built indices successfully!");
-          
-          // EVALS achievements will be applied after player validation
-          console.log("🔧 Leaders by season:", globalIndices.leadersBySeason.size);
-          console.log("🔧 All-Stars by season:", globalIndices.allStarsBySeason.size);
-          console.log("🔧 Champions by season:", globalIndices.championsBySeason.size);
-          console.log("🔧 Hall of Famers:", globalIndices.hallOfFamers.size);
-          console.log("🔧 MVP winners:", globalIndices.awards.mvp.size);
-          console.log("🔧 Game feats:", globalIndices.featsByPid.size);
+          await processLeagueLevelAchievements(data, players);
         } else {
-          console.log("❌ No league data available for comprehensive indices");
-          // Basic achievements will be applied after player validation
+          console.log("❌ Skipping league-level processing - isJson:", isJson, "data:", !!data);
+          // TEMPORARY: Force call with existing data to test
+          if (players.length > 0) {
+            console.log("🔧 TEMP: Forcing league-level processing with available data...");
+            await processLeagueLevelAchievements(data || {}, players);
+          }
         }
       } else {
         return res.status(400).json({ message: "Unsupported file format. Please upload JSON or gzipped league files only." });
@@ -1044,83 +1053,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       deriveCareerAggregates(validatedPlayers);
       assignQuality(validatedPlayers);
       
-      // D) Clear bad data (clear leader tags from previous runs)
-      const LEADER_LABELS = new Set([
-        "Led League in Scoring","Led League in Rebounds","Led League in Assists","Led League in Steals","Led League in Blocks"
-      ]);
+      // CRITICAL FIX: Process league-level achievements on validated players BEFORE saving  
+      if (isJson) {
+        console.log("🔧 APPLYING league achievements to validated players before saving...");
+        const leagueData = JSON.parse(fileContent);
+        await processLeagueLevelAchievements(leagueData, validatedPlayers);
+      }
       
-      for (const p of validatedPlayers) {
-        if (Array.isArray(p.achievements)) {
-          p.achievements = p.achievements.filter((a: string) => !LEADER_LABELS.has(a));
-        }
-      }
-      console.log("🔧 Cleared old leader labels from achievements");
-
-      // Debug: Check globalIndices status before EVALS application
-      console.log("🔍 EVALS Debug - globalIndices exists:", !!globalIndices);
-      console.log("🔍 EVALS Debug - EVALS object exists:", !!EVALS);
-      console.log("🔍 EVALS Debug - EVALS keys:", Object.keys(EVALS || {}));
-      console.log("🔍 EVALS Debug - validatedPlayers count:", validatedPlayers.length);
-
-      // Apply EVALS achievements using the globalIndices
-      if (globalIndices) {
-        console.log("🎯 Applying all EVALS achievements with league data...");
-        let totalAchievementsApplied = 0;
-        for (const player of validatedPlayers) {
-          player.achievements = player.achievements || [];
-          const initialCount = player.achievements.length;
-          
-          // Apply all EVALS achievements
-          for (const [achievementName, evaluator] of Object.entries(EVALS)) {
-            try {
-              if (evaluator(player, globalIndices) && !player.achievements.includes(achievementName)) {
-                player.achievements.push(achievementName);
-              }
-            } catch (error) {
-              console.error(`Error evaluating achievement "${achievementName}" for player ${player.name}:`, error);
-            }
-          }
-          
-          const newCount = player.achievements.length;
-          if (newCount > initialCount) {
-            totalAchievementsApplied += (newCount - initialCount);
-          }
-        }
-        console.log(`✅ Applied ${totalAchievementsApplied} achievements across all players using EVALS system`);
-      } else {
-        console.log("🎯 Applying basic EVALS achievements without league data...");
-        let basicAchievementsApplied = 0;
-        for (const player of validatedPlayers) {
-          player.achievements = player.achievements || [];
-          const initialCount = player.achievements.length;
-          
-          // Apply basic achievements that don't require indices
-          const basicAchievements = [
-            "Played 15+ Seasons", "#1 Overall Draft Pick", "Undrafted Player", 
-            "First Round Pick", "2nd Round Pick", "Only One Team"
-          ];
-          
-          for (const achievementName of basicAchievements) {
-            const evaluator = EVALS[achievementName];
-            if (evaluator) {
-              try {
-                if (evaluator(player, {} as any) && !player.achievements.includes(achievementName)) {
-                  player.achievements.push(achievementName);
-                }
-              } catch (error) {
-                // Ignore errors for basic achievements without indices
-              }
-            }
-          }
-          
-          const newCount = player.achievements.length;
-          if (newCount > initialCount) {
-            basicAchievementsApplied += (newCount - initialCount);
-          }
-        }
-        console.log(`✅ Applied ${basicAchievementsApplied} basic achievements without league data`);
-      }
-
+      // DEBUG: Verify PIDs exist before saving (ChatGPT's suggestion)
       console.log("🔧 APPLY: about to save players. sample:", {
         count: validatedPlayers.length,
         withPid: validatedPlayers.slice(0,3).map(p => ({pid: p.pid, name: p.name}))
@@ -1133,9 +1073,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // DEBUG: Verify achievements are stored (ChatGPT's suggestion F) 
       const all = await storage.getPlayers();
       const asJson = JSON.stringify(all);
-      const count = (label: string) => { 
+      function count(label: string) { 
         return (asJson.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length; 
-      };
+      }
       console.log("🏁 Stored counts (final 10 focus):", {
         LedPTS: count("Led League in Scoring"),
         LedREB: count("Led League in Rebounds"),
@@ -1209,15 +1149,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Generate a new game grid
   app.post("/api/games/generate", async (req, res) => {
-    console.log("🚨 GRID GENERATION STARTED - Using new EVALS system");
+    console.log("🚨 GRID GENERATION STARTED - This should always appear");
     try {
+      console.log("🔧 TESTING: Running league-level processing during grid generation...");
+      
       const players = await storage.getPlayers();
       
-      // Ensure we have global indices for evaluation
-      if (!globalIndices) {
-        return res.status(400).json({ 
-          message: "No league data available. Please upload a league file first to enable all achievements." 
-        });
+      // TEMPORARY: Force league-level processing on existing players to test
+      if (players.length > 0) {
+        console.log("🔧 TEMP: Processing league achievements on existing players...");
+        const mutablePlayers = players.map(p => ({
+          ...p,
+          achievements: [...p.achievements],
+          careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
+          quality: p.quality ?? 50, // Ensure non-null
+          stats: p.stats ?? undefined // Fix null stats
+        }));
+        
+        await processLeagueLevelAchievements({}, mutablePlayers);
+        
+        // Update storage if achievements were added
+        let hadChanges = false;
+        for (let i = 0; i < mutablePlayers.length; i++) {
+          if (mutablePlayers[i].achievements.length !== players[i].achievements.length) {
+            hadChanges = true;
+            break;
+          }
+        }
+        
+        if (hadChanges) {
+          console.log("🔧 Detected changes, updating storage...");
+          await storage.clearPlayers();
+          for (const player of mutablePlayers) {
+            await storage.createPlayer(player);
+          }
+          console.log("🔧 Storage updated with league-level achievements");
+        }
       }
       
       if (players.length === 0) {
@@ -1346,18 +1313,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Debug: Log all achievements found in players
       console.log("All unique achievements in player data:", Array.from(allAchievements).sort());
       
-      // Use new EVALS system to check achievement availability
+      // Debug: Check each achievement in our master list
       const availableAchievements = ACHIEVEMENTS.filter(ach => {
-        const evaluator = EVALS[ach];
-        if (!evaluator) {
-          console.log(`❌ Achievement "${ach}" has no evaluator in EVALS system`);
-          return false;
-        }
+        const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
+        const isAvailable = allAchievements.includes(ach) && playersWithAchievement >= 2;
         
-        const playersWithAchievement = players.filter(p => evaluator(p, globalIndices!)).length;
-        const isAvailable = playersWithAchievement >= 2;
-        
-        if (playersWithAchievement < 2) {
+        if (!allAchievements.includes(ach)) {
+          console.log(`❌ Achievement "${ach}" not found in any player data`);
+        } else if (playersWithAchievement < 2) {
           console.log(`⚠️  Achievement "${ach}" found but only ${playersWithAchievement} players have it (need ≥2)`);
         } else {
           console.log(`✅ Achievement "${ach}" available with ${playersWithAchievement} players`);
@@ -1506,93 +1469,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }))
           ];
         } else {
-          // Fallback: Ensure 3x3 grid regardless of available achievements
-          console.log(`⚠️  Using fallback grid generation with ${achievements.length} achievements`);
+          // 2% chance: Fallback to mixed approach with available data
+          const selectedTeams = sample(teams, Math.min(4, teams.length));
+          const availableAchievements = sample(achievements, Math.min(2, achievements.length));
           
-          if (teams.length >= 6) {
-            // Use 6 different teams for a full 3x3 teams grid
-            const selectedTeams = sample(teams, 6);
+          if (selectedTeams.length >= 3 && availableAchievements.length >= 1) {
             columnCriteria = selectedTeams.slice(0, 3).map(team => ({
               label: team,
               type: "team",
               value: team,
             }));
-            rowCriteria = selectedTeams.slice(3, 6).map(team => ({
-              label: team,
-              type: "team",
-              value: team,
-            }));
-          } else if (teams.length >= 3) {
-            // Use available teams and pad with whatever we have
-            const selectedTeams = sample(teams, Math.min(6, teams.length));
-            columnCriteria = selectedTeams.slice(0, 3).map(team => ({
-              label: team,
-              type: "team", 
-              value: team,
-            }));
             
-            // For rows, use remaining teams and achievements
-            rowCriteria = [];
-            let remainingTeams = selectedTeams.slice(3);
+            const rowTeams = selectedTeams.slice(3, Math.min(4, selectedTeams.length));
+            const neededAchievements = Math.max(1, 3 - rowTeams.length);
+            const selectedRowAchievements = achievements.length > 0 ? sample(achievements, neededAchievements) : [];
             
-            // Add remaining teams first
-            remainingTeams.forEach(team => {
-              if (rowCriteria.length < 3) {
+            rowCriteria = [
+              ...rowTeams.map(team => ({
+                label: team,
+                type: "team",
+                value: team,
+              })),
+              ...selectedRowAchievements.map(achievement => ({
+                label: achievement,
+                type: "achievement",
+                value: achievement,
+              }))
+            ];
+            
+            // Ensure we always have exactly 3 row criteria
+            while (rowCriteria.length < 3 && achievements.length > 0) {
+              const extraAchievement = sample(achievements.filter(a => !rowCriteria.some(r => r.value === a)), 1)[0];
+              if (extraAchievement) {
                 rowCriteria.push({
-                  label: team,
-                  type: "team",
-                  value: team,
+                  label: extraAchievement,
+                  type: "achievement",
+                  value: extraAchievement,
                 });
-              }
-            });
-            
-            // Fill remaining slots with achievements or repeat teams
-            while (rowCriteria.length < 3) {
-              if (achievements.length > 0) {
-                const availableAchievements = achievements.filter(a => !rowCriteria.some(r => r.value === a));
-                const achievement = availableAchievements.length > 0 
-                  ? availableAchievements[0] 
-                  : achievements[0]; // Use first achievement if no unique ones left
-                
-                if (achievement) {
-                  rowCriteria.push({
-                    label: achievement,
-                    type: "achievement",
-                    value: achievement,
-                  });
-                } else {
-                  // Use team if no achievements available
-                  const team = sample(teams, 1)[0];
-                  rowCriteria.push({
-                    label: team,
-                    type: "team",
-                    value: team,
-                  });
-                }
               } else {
-                // Use more teams (can repeat)
-                const team = sample(teams, 1)[0];
-                rowCriteria.push({
-                  label: team,
-                  type: "team",
-                  value: team,
-                });
+                break;
               }
             }
           }
         }
 
-        // Ensure we always have exactly 3x3 grid
-        if (columnCriteria.length !== 3 || rowCriteria.length !== 3) {
-          console.log(`❌ Grid generation failed: ${columnCriteria.length}x${rowCriteria.length}, retrying...`);
-          continue;
-        }
+        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
         
-        console.log(`✅ Generated ${columnCriteria.length}x${rowCriteria.length} grid on attempt ${attempt + 1}`);
-        console.log("Columns:", columnCriteria.map(c => `${c.label} (${c.type})`));
-        console.log("Rows:", rowCriteria.map(r => `${r.label} (${r.type})`));
-
-        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria, globalIndices!);
+        // Log successful grid generation
+        if (attempt === 0) {
+          console.log("Generated grid with criteria:");
+          console.log("Columns:", columnCriteria.map(c => `${c.label} (${c.type})`));
+          console.log("Rows:", rowCriteria.map(r => `${r.label} (${r.type})`));
+        }
 
         if (gridIsValid(correctAnswers)) {
           const gameData = insertGameSchema.parse({
@@ -1623,7 +1551,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           value: team,
         }));
         
-        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria, globalIndices!);
+        const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
         
         if (Object.values(correctAnswers).every(list => list && list.length > 0)) {
           const gameData = insertGameSchema.parse({
@@ -1667,91 +1595,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Search players
-  // Force apply EVALS achievements to all players
-  app.post("/api/players/reevaluate-achievements", async (req, res) => {
-    try {
-      console.log("🔄 FORCE-APPLYING ALL 42 EVALS ACHIEVEMENTS");
-      
-      const players = await storage.getPlayers();
-      if (players.length === 0) {
-        return res.status(400).json({ message: "No players found. Upload a league file first." });
-      }
-      
-      console.log(`📊 Found ${players.length} existing players`);
-      console.log("🔍 EVALS object exists:", !!EVALS);
-      console.log("🔍 EVALS keys:", Object.keys(EVALS || {}).length);
-      console.log("🔍 globalIndices exists:", !!globalIndices);
-      
-      let totalAchievementsApplied = 0;
-      let playersWithAchievements = 0;
-      
-      // Apply achievements directly without clearing storage
-      for (const player of players) {
-        // Ensure player has pid field (this is crucial!)
-        if (!player.pid && player.id) {
-          player.pid = parseInt(player.id) || 0;
-        }
-        
-        const originalAchievements = player.achievements ? [...player.achievements] : [];
-        player.achievements = [];
-        
-        // Apply ALL 42 EVALS achievements
-        for (const [achievementName, evaluator] of Object.entries(EVALS)) {
-          try {
-            // For globalIndices-dependent achievements, use empty object if not available
-            const indices = globalIndices || {} as any;
-            
-            if (evaluator(player, indices) && !player.achievements.includes(achievementName)) {
-              player.achievements.push(achievementName);
-              totalAchievementsApplied++;
-            }
-          } catch (error) {
-            // Silently continue on errors
-          }
-        }
-        
-        if (player.achievements.length > originalAchievements.length) {
-          playersWithAchievements++;
-        }
-        
-        // Update the player in storage
-        await storage.updatePlayer(player.id, player);
-      }
-      
-      console.log(`✅ Applied ${totalAchievementsApplied} total achievements`);
-      console.log(`✅ ${playersWithAchievements} players now have achievements`);
-      
-      // Count achievements for grid generation
-      const achievementCounts = new Map<string, number>();
-      for (const player of players) {
-        if (Array.isArray(player.achievements)) {
-          for (const achievement of player.achievements) {
-            achievementCounts.set(achievement, (achievementCounts.get(achievement) || 0) + 1);
-          }
-        }
-      }
-      
-      const availableAchievements = Array.from(achievementCounts.entries())
-        .filter(([_, count]) => count >= 2)
-        .map(([achievement, count]) => ({ achievement, count }))
-        .sort((a, b) => b.count - a.count);
-      
-      console.log(`🎉 ${availableAchievements.length}/42 achievements now available for grid generation!`);
-      
-      res.json({ 
-        message: "Successfully applied all EVALS achievements!",
-        achievementsApplied: totalAchievementsApplied,
-        playersUpdated: playersWithAchievements,
-        availableAchievements: availableAchievements.length,
-        totalAchievements: 42,
-        topAchievements: availableAchievements.slice(0, 15)
-      });
-    } catch (error: any) {
-      console.error("Re-evaluation error:", error);
-      res.status(500).json({ message: error.message || "Failed to re-evaluate achievements" });
-    }
-  });
-
   app.get("/api/players/search", async (req, res) => {
     try {
       const { q } = searchQuerySchema.parse(req.query);
@@ -1776,42 +1619,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      // FIXED: Use EVALS system with proper indices (never string matching)
-      
-      // Get all eligible players using intersection with proper indices
-      const eligiblePlayers = players.filter(p => 
-        eligibleForCell(p, rowCriteria_item, colCriteria, globalIndices)
-      );
-      
-      // Add invariant check for leader achievements  
-      const isLeaderAchievement = colCriteria.label?.includes("Led League in") || rowCriteria_item.label?.includes("Led League in");
-      if (isLeaderAchievement && globalIndices) {
-        const achievementCriteria = rowCriteria_item.type === "achievement" ? rowCriteria_item : colCriteria;
-        const achievementId = achievementCriteria.label;
-        
-        // Legacy ACH_LEADERS lookup replaced by new EVALS system
-        if (achievementId && EVALS[achievementId]) {
-          // Achievement evaluation is now handled dynamically
-          const bogus = eligiblePlayers.filter(p => {
-            const pid = p.pid;
-            if (pid === undefined) return false;
-            // Check if player is NOT actually a leader according to the index
-            for (const sets of Array.from(globalIndices.leadersBySeason.values())) {
-              if (sets.ppg?.has(pid) || sets.rpg?.has(pid) || sets.apg?.has(pid) || sets.spg?.has(pid) || sets.bpg?.has(pid)) return false; // Player IS a leader, so not bogus
-            }
-            return true; // Player is NOT a leader, so this is bogus
-          }).map(p => p.name);
-          
-          if (bogus.length) {
-            console.warn(`🚨 ${achievementCriteria.label} false positives:`, bogus.slice(0,5));
-          } else {
-            console.log(`✅ ${achievementCriteria.label} eligibility verified: ${eligiblePlayers.length} players`);
-          }
-        }
-      }
-      
-      // Sort by Win Shares using the existing logic
+      // Use new eligibility system
       const eligibilityChecker = new EligibilityChecker(players);
+      const eligiblePlayers = eligibilityChecker.getEligiblePlayers(colCriteria, rowCriteria_item);
+      
+      // Sort by Win Shares 
       const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
       
       let topPlayers;
