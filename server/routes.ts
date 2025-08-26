@@ -395,11 +395,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Season leaders (5)
     let leaderCounts = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0 };
     for (const [, sets] of ix.leadersBySeason) {
-      for (const pid of sets.ppg) { add(pid, ACH_LEADERS.LedPTS.label); leaderCounts.ppg++; }
-      for (const pid of sets.rpg) { add(pid, ACH_LEADERS.LedREB.label); leaderCounts.rpg++; }
-      for (const pid of sets.apg) { add(pid, ACH_LEADERS.LedAST.label); leaderCounts.apg++; }
-      for (const pid of sets.spg) { add(pid, ACH_LEADERS.LedSTL.label); leaderCounts.spg++; }
-      for (const pid of sets.bpg) { add(pid, ACH_LEADERS.LedBLK.label); leaderCounts.bpg++; }
+      for (const pid of sets.ppg) { add(pid, "Led League in Scoring"); leaderCounts.ppg++; }
+      for (const pid of sets.rpg) { add(pid, "Led League in Rebounds"); leaderCounts.rpg++; }
+      for (const pid of sets.apg) { add(pid, "Led League in Assists"); leaderCounts.apg++; }
+      for (const pid of sets.spg) { add(pid, "Led League in Steals"); leaderCounts.spg++; }
+      for (const pid of sets.bpg) { add(pid, "Led League in Blocks"); leaderCounts.bpg++; }
     }
     console.log("🏆 League leaders applied:", leaderCounts);
 
