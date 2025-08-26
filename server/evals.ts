@@ -2,7 +2,7 @@
 import type { Indices, LeaderKey } from "./indices";
 
 const ledLeague = (pid:number, key:LeaderKey, leadersBySeason:Indices["leadersBySeason"]) => {
-  for (const sets of leadersBySeason.values()) if (sets[key]?.has(pid)) return true;
+  for (const [season, sets] of Array.from(leadersBySeason.entries())) if (sets[key]?.has(pid)) return true;
   return false;
 };
 
@@ -52,10 +52,10 @@ export const EVALS: Record<string,(p:any, ix:Indices, ctx?:{teamId?:number})=>bo
   "All-Defensive Team":         (p,ix)=> ix.awards.allDefensive.has(p.pid),
 
   // — All-Star / Champions / ATGs (5 missing) —
-  "All-Star Selection":         (p,ix)=> { for (const set of ix.allStarsBySeason.values()) if (set.has(p.pid)) return true; return false; },
+  "All-Star Selection":         (p,ix)=> { for (const [season, set] of Array.from(ix.allStarsBySeason.entries())) if (set.has(p.pid)) return true; return false; },
   "Made All-Star Team at Age 35+": (p,ix)=> {
     const born = p.born?.year ?? 0;
-    for (const [season,set] of ix.allStarsBySeason) if (set.has(p.pid) && season - born >= 35) return true;
+    for (const [season,set] of Array.from(ix.allStarsBySeason.entries())) if (set.has(p.pid) && season - born >= 35) return true;
     return false;
   },
   "NBA Champion":               (p,ix)=> (p.stats ?? []).some((s:any)=> (s.gp??0)>0 && ix.championsBySeason.get(s.season) === s.tid),

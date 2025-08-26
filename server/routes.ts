@@ -973,6 +973,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Build comprehensive indices for all achievements
           globalIndices = buildIndices(data);
           console.log("✅ Built indices successfully!");
+          
+          // EVALS achievements will be applied after player validation
           console.log("🔧 Leaders by season:", globalIndices.leadersBySeason.size);
           console.log("🔧 All-Stars by season:", globalIndices.allStarsBySeason.size);
           console.log("🔧 Champions by season:", globalIndices.championsBySeason.size);
@@ -981,6 +983,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log("🔧 Game feats:", globalIndices.featsByPid.size);
         } else {
           console.log("❌ No league data available for comprehensive indices");
+          // Basic achievements will be applied after player validation
         }
       } else {
         return res.status(400).json({ message: "Unsupported file format. Please upload JSON or gzipped league files only." });
@@ -1053,31 +1056,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log("🔧 Cleared old leader labels from achievements");
 
-      // CRITICAL FIX: Build leaders index and process league-level achievements
-      if (isJson) {
-        console.log("🔧 APPLYING league achievements to validated players before saving...");
-        const leagueData = JSON.parse(fileContent);
-        
-        // Build leaders index
-        const numGamesBySeason = new Map<number, number>();
-        // Extract games per season from league data
-        for (const team of leagueData.teams ?? []) {
-          for (const s of team.seasons ?? []) {
-            if (s.gp) {
-              numGamesBySeason.set(s.season, s.gp);
+      // Apply EVALS achievements using the globalIndices
+      if (globalIndices) {
+        console.log("🎯 Applying all EVALS achievements with league data...");
+        let totalAchievementsApplied = 0;
+        for (const player of validatedPlayers) {
+          player.achievements = player.achievements || [];
+          const initialCount = player.achievements.length;
+          
+          // Apply all EVALS achievements
+          for (const [achievementName, evaluator] of Object.entries(EVALS)) {
+            try {
+              if (evaluator(player, globalIndices) && !player.achievements.includes(achievementName)) {
+                player.achievements.push(achievementName);
+              }
+            } catch (error) {
+              console.error(`Error evaluating achievement "${achievementName}" for player ${player.name}:`, error);
             }
           }
-        }
-        // Default 82 games if no data found
-        if (numGamesBySeason.size === 0) {
-          console.log("🔧 No games per season data found, using default 82");
-          for (let season = 1947; season <= 2030; season++) {
-            numGamesBySeason.set(season, 82);
+          
+          const newCount = player.achievements.length;
+          if (newCount > initialCount) {
+            totalAchievementsApplied += (newCount - initialCount);
           }
         }
-        
-        // Old legacy code - no longer needed with new EVALS system
-        console.log("🔧 Legacy code skipped - using new EVALS system");
+        console.log(`✅ Applied ${totalAchievementsApplied} achievements across all players using EVALS system`);
+      } else {
+        console.log("🎯 Applying basic EVALS achievements without league data...");
+        let basicAchievementsApplied = 0;
+        for (const player of validatedPlayers) {
+          player.achievements = player.achievements || [];
+          const initialCount = player.achievements.length;
+          
+          // Apply basic achievements that don't require indices
+          const basicAchievements = [
+            "Played 15+ Seasons", "#1 Overall Draft Pick", "Undrafted Player", 
+            "First Round Pick", "2nd Round Pick", "Only One Team"
+          ];
+          
+          for (const achievementName of basicAchievements) {
+            const evaluator = EVALS[achievementName];
+            if (evaluator) {
+              try {
+                if (evaluator(player, {} as any) && !player.achievements.includes(achievementName)) {
+                  player.achievements.push(achievementName);
+                }
+              } catch (error) {
+                // Ignore errors for basic achievements without indices
+              }
+            }
+          }
+          
+          const newCount = player.achievements.length;
+          if (newCount > initialCount) {
+            basicAchievementsApplied += (newCount - initialCount);
+          }
+        }
+        console.log(`✅ Applied ${basicAchievementsApplied} basic achievements without league data`);
       }
 
       console.log("🔧 APPLY: about to save players. sample:", {
