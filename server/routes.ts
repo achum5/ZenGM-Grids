@@ -1264,6 +1264,248 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Process already-parsed league data (for client-side file/URL handling)
+  app.post("/api/process-league", async (req, res) => {
+    console.log("🚀 LEAGUE DATA PROCESSING STARTED (/api/process-league)");
+    try {
+      const { leagueData } = req.body;
+      if (!leagueData) {
+        return res.status(400).json({ message: "League data is required" });
+      }
+
+      console.log("Processing pre-parsed league data");
+      console.log("League data keys:", Object.keys(leagueData));
+      
+      let players: any[] = [];
+      
+      // Handle BBGM format
+      let rawPlayers = [];
+      if (leagueData.players && Array.isArray(leagueData.players)) {
+        rawPlayers = leagueData.players;
+        console.log(`Found ${rawPlayers.length} players in BBGM format`);
+      } else if (Array.isArray(leagueData)) {
+        rawPlayers = leagueData;
+        console.log(`Found ${rawPlayers.length} players in array format`);
+      } else {
+        console.log("Invalid data structure. Expected players array but got:", typeof leagueData);
+        return res.status(400).json({ message: "Invalid data format. Expected players array." });
+      }
+      
+      // Create team mapping from BBGM teams data
+      const teamMap = new Map<number, {name: string, abbrev: string, logo?: string}>();
+      if (leagueData.teams && Array.isArray(leagueData.teams)) {
+        console.log(`Found ${leagueData.teams.length} teams in BBGM file`);
+        leagueData.teams.forEach((team: any, index: number) => {
+          if (team && team.region && team.name) {
+            const teamInfo = {
+              name: `${team.region} ${team.name}`,
+              abbrev: team.abbrev || team.tid || team.region?.substring(0, 3).toUpperCase() || 'UNK',
+              logo: team.imgURL || team.imgUrl || team.logo
+            };
+            teamMap.set(index, teamInfo);
+          }
+        });
+        console.log("Team mapping with abbreviations created:", Array.from(teamMap.entries()).slice(0, 5));
+      } else {
+        console.log("No teams array found in league data");
+      }
+      
+      // Transform BBGM player data to our format (same as processLeagueFile but simplified)
+      players = rawPlayers.map((player: any) => {
+        const name = player.firstName && player.lastName 
+          ? `${player.firstName} ${player.lastName}` 
+          : player.name || "Unknown Player";
+        
+        // Map team ID to team name using BBGM teams data
+        const teams: string[] = [];
+        if (player.tid !== undefined && player.tid >= 0) {
+          const teamInfo = teamMap.get(player.tid);
+          const teamName = teamInfo?.name || `Team ${player.tid}`;
+          teams.push(teamName);
+        }
+        
+        // Also collect teams from stats history - only include teams where player actually played games
+        const allTeams = new Set(teams);
+        if (player.stats && Array.isArray(player.stats)) {
+          player.stats.forEach((stat: any) => {
+            if (stat.tid !== undefined && stat.tid >= 0 && (stat.gp || 0) > 0) {
+              const teamInfo = teamMap.get(stat.tid);
+              const teamName = teamInfo?.name || `Team ${stat.tid}`;
+              allTeams.add(teamName);
+            }
+          });
+        }
+        
+        // Process achievements and career stats (simplified version)
+        const achievements: string[] = [];
+        
+        function careerTotalsRegularSeason(p: any) {
+          let pts=0, ast=0, stl=0, blk=0, tp=0, orb=0, drb=0;
+          for (const s of p.stats ?? []) {
+            if (s.playoffs) continue;
+            pts += s.pts ?? 0; ast += s.ast ?? 0; stl += s.stl ?? 0;
+            blk += s.blk ?? 0; tp += s.tp ?? 0; orb += s.orb ?? 0; drb += s.drb ?? 0;
+          }
+          return {pts, trb: orb + drb, ast, stl, blk, tp};
+        }
+        
+        const careerTotals = careerTotalsRegularSeason(player);
+        
+        // Career achievements
+        if (careerTotals.pts >= 20000) achievements.push("20,000+ Career Points");
+        if (careerTotals.trb >= 10000) achievements.push("10,000+ Career Rebounds");
+        if (careerTotals.ast >= 5000) achievements.push("5,000+ Career Assists");
+        if (careerTotals.stl >= 2000) achievements.push("2,000+ Career Steals");
+        if (careerTotals.blk >= 1500) achievements.push("1,500+ Career Blocks");
+        if (careerTotals.tp >= 2000) achievements.push("2,000+ Made Threes");
+
+        // Process draft achievements
+        if (player.draft) {
+          if (player.draft.pick === 1) achievements.push("#1 Overall Draft Pick");
+          if (player.draft.round === 1) achievements.push("First Round Pick");
+          else if (player.draft.round === 2) achievements.push("2nd Round Pick");
+          else if (!player.draft.pick) achievements.push("Undrafted Player");
+        } else {
+          achievements.push("Undrafted Player");
+        }
+        
+        // Process years played per team
+        const years: Array<{ team: string; start: number; end: number }> = [];
+        if (player.stats && Array.isArray(player.stats)) {
+          const sortedStats = player.stats
+            .filter((stat: any) => !stat.playoffs)
+            .sort((a: any, b: any) => a.season - b.season);
+          
+          let currentTeam: string | null = null;
+          let currentStart: number | null = null;
+          let currentEnd: number | null = null;
+          
+          sortedStats.forEach((stat: any) => {
+            if (stat.tid !== undefined && stat.tid >= 0 && (stat.gp || 0) > 0) {
+              const teamInfo = teamMap.get(stat.tid);
+              const teamName = teamInfo?.name || `Team ${stat.tid}`;
+              
+              if (teamName !== currentTeam) {
+                if (currentTeam && currentStart && currentEnd) {
+                  years.push({ team: currentTeam, start: currentStart, end: currentEnd });
+                }
+                currentTeam = teamName;
+                currentStart = stat.season;
+                currentEnd = stat.season;
+              } else {
+                currentEnd = stat.season;
+              }
+            }
+          });
+          
+          if (currentTeam && currentStart && currentEnd) {
+            years.push({ team: currentTeam, start: currentStart, end: currentEnd });
+          }
+        }
+        
+        // Calculate career win shares
+        let careerWinShares = 0;
+        if (player.stats && Array.isArray(player.stats)) {
+          player.stats.forEach((stat: any) => {
+            careerWinShares += stat.ws || stat.winShares || stat.WS || 0;
+          });
+        }
+        
+        if (careerWinShares === 0 && player.ratings && Array.isArray(player.ratings)) {
+          const avgRating = player.ratings.reduce((sum: number, rating: any) => sum + (rating.ovr || 0), 0) / player.ratings.length;
+          careerWinShares = avgRating / 10;
+        }
+
+        return {
+          name,
+          pid: player.pid || undefined,
+          teams: Array.from(allTeams),
+          years,
+          achievements,
+          stats: player.ratings || player.stats || undefined,
+          face: player.face || null,
+          imageUrl: player.imgURL || player.imageUrl || player.img || undefined,
+          careerWinShares: Math.round(careerWinShares * 10),
+          quality: 50
+        };
+      }).filter((p: any) => p.name !== "Unknown Player");
+      
+      console.log(`Parsed ${players.length} players from league data`);
+
+      // Validate players
+      const validatedPlayers: any[] = [];
+      for (let i = 0; i < players.length; i++) {
+        try {
+          const playerWithDefaults = {
+            name: players[i].name || "Unknown Player",
+            teams: players[i].teams || [],
+            years: players[i].years || [],
+            achievements: players[i].achievements || [],
+            stats: players[i].stats,
+            face: players[i].face,
+            imageUrl: players[i].imageUrl || undefined,
+            careerWinShares: players[i].careerWinShares || 0
+          };
+          
+          const validatedPlayer = insertPlayerSchema.parse(playerWithDefaults);
+          validatedPlayers.push(validatedPlayer);
+        } catch (error) {
+          // Skip invalid players
+          continue;
+        }
+      }
+      
+      if (validatedPlayers.length === 0) {
+        return res.status(400).json({ 
+          message: "No valid players found in league data"
+        });
+      }
+
+      // Calculate quality scores
+      deriveCareerAggregates(validatedPlayers);
+      assignQuality(validatedPlayers);
+      
+      // Process league-level achievements
+      await processLeagueLevelAchievements(leagueData, validatedPlayers);
+      
+      // Save to storage
+      await storage.clearPlayers();
+      const createdPlayers = await storage.createPlayers(validatedPlayers);
+
+      // Extract teams and achievements for frontend
+      const teamNames = Array.from(new Set(createdPlayers.flatMap(p => p.teams)));
+      const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
+      
+      const teams = teamNames.map(name => {
+        const teamInfo = Array.from(teamMap.values()).find(t => t.name === name);
+        return {
+          name,
+          abbrev: teamInfo?.abbrev || name.substring(0, 3).toUpperCase(),
+          logo: teamInfo?.logo
+        };
+      });
+
+      const result: FileUploadData = {
+        players: createdPlayers.map(p => ({
+          name: p.name,
+          teams: p.teams,
+          years: p.years,
+          achievements: p.achievements,
+          stats: p.stats || undefined,
+          careerWinShares: p.careerWinShares || 0,
+          quality: p.quality || 50
+        })),
+        teams,
+        achievements
+      };
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("League processing error:", error);
+      res.status(500).json({ message: error.message || "Failed to process league data" });
+    }
+  });
+
   // Generate a new game grid
   app.post("/api/games/generate", async (req, res) => {
     console.log("🚨 GRID GENERATION STARTED - This should always appear");

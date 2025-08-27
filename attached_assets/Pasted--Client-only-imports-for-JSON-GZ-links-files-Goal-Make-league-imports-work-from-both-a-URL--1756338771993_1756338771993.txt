@@ -1,0 +1,154 @@
+“Client-only imports for JSON + GZ (links & files)”
+
+Goal: Make league imports work from both a URL and a local file, for .json and .gz, in both Replit preview and the deployed Vercel site — without relying on server uploads or serverless functions.
+
+0) Add dependency
+
+Add fflate (for gzip in the browser) to dependencies (not dev):
+
+npm i fflate
+
+1) Create helper: client/src/lib/leagueIO.ts
+
+Create this file with the following code:
+
+// client/src/lib/leagueIO.ts
+import { gunzipSync } from "fflate";
+
+export function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+
+  // --- Dropbox: keep all params (st, rlkey, etc), just force direct download
+  if (
+    u.hostname === "www.dropbox.com" ||
+    u.hostname === "dropbox.com" ||
+    u.hostname === "dl.dropbox.com" ||
+    u.hostname.endsWith("dropbox.com")
+  ) {
+    u.hostname = "dl.dropboxusercontent.com";
+    u.searchParams.set("dl", "1");
+  }
+
+  // --- GitHub blob -> raw
+  if (u.hostname === "github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 5 && parts[2] === "blob") {
+      const [user, repo, _blob, branch, ...rest] = parts;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+      u.search = "";
+    }
+  }
+
+  // --- Gist page -> raw
+  if (u.hostname === "gist.github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      const [user, hash] = parts;
+      u.hostname = "gist.githubusercontent.com";
+      u.pathname = `/${user}/${hash}/raw`;
+      u.search = "";
+    }
+  }
+
+  // --- Google Drive file -> direct
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc";
+    u.search = "";
+    u.searchParams.set("export", "download");
+    u.searchParams.set("id", id);
+  }
+
+  if (!/^https?:$/.test(u.protocol)) {
+    throw new Error("Only http(s) URLs are allowed.");
+  }
+  return u.toString();
+}
+
+export function isGzip(bytes: Uint8Array): boolean {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+export async function bytesFromUrl(rawUrl: string): Promise<Uint8Array> {
+  const url = normalizeLeagueUrl(rawUrl);
+  const r = await fetch(url, { redirect: "follow" });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`Remote ${r.status} ${r.statusText}${text ? ` — ${text.slice(0, 200)}` : ""}`);
+  }
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+export async function bytesFromFile(file: File): Promise<Uint8Array> {
+  const buf = await file.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+export function parseLeagueBytes(bytes: Uint8Array, filenameHint?: string) {
+  const looksGzByName = !!filenameHint?.toLowerCase().endsWith(".gz");
+  const raw = (looksGzByName || isGzip(bytes)) ? gunzipSync(bytes) : bytes;
+  const text = new TextDecoder().decode(raw);
+
+  try {
+    return JSON.parse(text);
+  } catch (e: any) {
+    // If we accidentally fetched an HTML page, surface the first chars to diagnose
+    const sample = text.slice(0, 80);
+    throw new Error(`Invalid JSON data received${sample ? ` — starts with: ${JSON.stringify(sample)}` : ""}`);
+  }
+}
+
+2) Update your upload component to use the helper
+
+Find the component handling URL input and file input (the one that used to call fetch(url).then(r => r.json()) or POST to /api/...). Replace just the loading part with:
+
+// Example usage inside your uploader component
+import { bytesFromUrl, bytesFromFile, parseLeagueBytes } from "@/lib/leagueIO";
+
+// URL submit
+async function loadFromUrl(inputUrl: string) {
+  const bytes = await bytesFromUrl(inputUrl);
+  const league = parseLeagueBytes(bytes, inputUrl);
+  // ... continue your flow with the parsed `league` object
+}
+
+// Local file select
+async function loadFromFile(file: File) {
+  const bytes = await bytesFromFile(file);
+  const league = parseLeagueBytes(bytes, file.name);
+  // ... continue your flow with the parsed `league` object
+}
+
+
+Also make sure your file picker accepts gz:
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />
+
+3) Important: do NOT call response.json() for league files
+
+Always read bytes (arrayBuffer()), then call parseLeagueBytes(...). That is what makes .gz and unusual hosts work.
+
+4) No server changes required
+
+Keep your Replit preview exactly as it is.
+
+Nothing new is needed on Vercel.
+
+Because we fetch links and read files entirely in the browser, we avoid Vercel’s size limits and server quirks.
+
+5) Quick test checklist (dev + prod)
+
+Paste a Dropbox link ending in .gz → loads (we normalize and gunzip).
+
+Paste a GitHub “blob” URL → loads (we convert to raw).
+
+Paste a raw GitHub URL → loads.
+
+Paste a Google Drive file link → loads (converted to direct download; if Google requires a manual confirmation for very big files, you’ll see a helpful error string).
+
+Upload a large .json → loads.
+
+Upload a .gz league → loads.
+
+Pass criteria: No “Unexpected token” / “Invalid JSON” toasts unless the actual file is corrupt.
