@@ -1,3 +1,36 @@
+“Vite + Vercel uploads (no Next.js)”
+
+Goal: Make uploads work on the Vercel deployment exactly like Replit preview.
+We are a Vite app with a Node Serverless Function under api/. Do not use Next.js types or files.
+
+1) Package.json cleanup
+
+Remove any next dependency that may have been added.
+
+Ensure these entries exist:
+
+{
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "formidable": "^3.5.4"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.0"
+  }
+}
+
+
+Keep all other existing deps/scripts. Do not change the build script (vite build) or anything in /server used for local dev.
+
+2) Create/overwrite api/fetch-league.ts (Vercel Function)
+
+Use @vercel/node types, not Next.js. This function must:
+
+GET ?url=… → normalize Dropbox/GitHub/Gist/Drive links and stream bytes through with Accept-Encoding: identity.
+
+POST (multipart or raw) → accept local .json or .gz files and return raw bytes; set X-Content-Encoding: gzip when gz.
+
+// api/fetch-league.ts
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import formidable from "formidable";
 import { promises as fsp } from "node:fs";
@@ -134,3 +167,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(400).json({ error: String(err?.message || err) });
   }
 }
+
+3) Fix vercel.json
+
+Replace the file with exactly:
+
+{
+  "functions": {
+    "api/**": { "runtime": "nodejs20.x", "maxDuration": 60 }
+  }
+}
+
+
+No references to server/index.ts. All serverless functions must live under api/.
+
+4) Don’t touch the client, just confirm the calls
+
+URL upload:
+
+fetch(`/api/fetch-league?url=${encodeURIComponent(inputUrl)}`)
+
+
+File upload (multipart with .json or .gz):
+
+const fd = new FormData();
+fd.append("file", file);
+fetch("/api/fetch-league", { method: "POST", body: fd });
+
+5) Commit & push (you’ll do this manually)
+git add -A
+git commit -m "Vercel function (no Next); vercel.json fixed; uploads working"
+git push
+
+
+Vercel UI settings (for reference):
+Framework: Vite · Build Command: npm run build · Output Directory: dist/public · Node: 20.
+
+Please apply exactly these changes and don’t add next anywhere.

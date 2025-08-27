@@ -1,5 +1,5 @@
 {
   "functions": {
-    "api/fetch-league.ts": { "maxDuration": 60 }
+    "api/**": { "runtime": "nodejs20.x", "maxDuration": 60 }
   }
 }
