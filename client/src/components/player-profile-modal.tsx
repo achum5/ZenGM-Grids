@@ -100,9 +100,7 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
                   <div className="text-sm text-gray-300">
                     Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
                   </div>
-                  <div className="text-xs text-gray-400">
-                    1 = rarest · {eligibleCount} = most common
-                  </div>
+                  
                 </div>
               </div>
             )
