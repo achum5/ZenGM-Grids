@@ -2,9 +2,6 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import formidable from "formidable";
-import { promises as fsp } from "node:fs";
-import { Readable } from "node:stream";
 
 import { z } from "zod";
 import { gunzip } from "zlib";
@@ -170,81 +167,6 @@ interface MulterRequest extends Request {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-// URL normalization for Vercel fetch-league endpoint
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-
-function normalizeLeagueUrl(input: string): string {
-  const u = new URL(input.trim());
-
-  // Dropbox share -> direct
-  if (u.hostname.endsWith("dropbox.com")) {
-    u.hostname = "dl.dropboxusercontent.com";
-    u.searchParams.set("dl", "1");
-    u.searchParams.delete("st");
-  }
-  if (u.hostname === "dl.dropboxusercontent.com") {
-    u.searchParams.delete("st");
-  }
-
-  // GitHub blob -> raw
-  if (u.hostname === "github.com") {
-    const parts = u.pathname.split("/").filter(Boolean);
-    if (parts[2] === "blob" && parts.length >= 5) {
-      const [user, repo, _blob, branch, ...rest] = parts;
-      u.hostname = "raw.githubusercontent.com";
-      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
-      u.search = "";
-    }
-  }
-
-  // Gist -> raw
-  if (u.hostname === "gist.github.com") {
-    const parts = u.pathname.split("/").filter(Boolean);
-    if (parts.length >= 2) {
-      const [user, hash] = parts;
-      u.hostname = "gist.githubusercontent.com";
-      u.pathname = `/${user}/${hash}/raw`;
-      u.search = "";
-    }
-  }
-
-  // Google Drive file -> direct
-  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
-    const id = u.pathname.split("/")[3];
-    u.pathname = "/uc";
-    u.search = "";
-    u.searchParams.set("export", "download");
-    u.searchParams.set("id", id);
-  }
-
-  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
-  return u.toString();
-}
-
-function sniffIsGzip(bytes: Uint8Array): boolean {
-  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-}
-
-async function parseMultipart(req: any): Promise<Uint8Array> {
-  const form = formidable({ multiples: false, keepExtensions: true });
-  const { files } = await new Promise<any>((resolve, reject) => {
-    form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
-  });
-
-  const fileObj = files.file || files.upload || Object.values(files)[0];
-  if (!fileObj) throw new Error("No file provided");
-
-  // formidable v3+ may return an array
-  const f = Array.isArray(fileObj) ? fileObj[0] : fileObj;
-  const filepath = f.filepath || f.path;
-
-  const fs = await import('fs');
-  const data = await fs.promises.readFile(filepath);
-  // Clean up temp file just in case
-  fs.promises.unlink(filepath).catch(() => {});
-  return new Uint8Array(data);
-}
-
 // Validation schemas
 const searchQuerySchema = z.object({
   q: z.string().min(1),
@@ -257,82 +179,6 @@ const answerSchema = z.object({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  
-  // Vercel-compatible fetch-league endpoint for URL and file proxy
-  app.get("/api/fetch-league", async (req, res) => {
-    const url = typeof req.query.url === 'string' ? req.query.url : '';
-    if (!url) {
-      return res.status(400).json({ error: "Missing ?url=" });
-    }
-
-    try {
-      const normalized = normalizeLeagueUrl(url);
-      const remote = await fetch(normalized, {
-        redirect: "follow",
-        headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
-      });
-
-      if (!remote.ok || !remote.body) {
-        return res.status(remote.status || 502).json({
-          error: `Fetch failed: remote ${remote.status} ${remote.statusText}`
-        });
-      }
-
-      res.setHeader("Content-Type", remote.headers.get("content-type") || "application/octet-stream");
-      const ce = remote.headers.get("content-encoding");
-      if (ce) res.setHeader("X-Content-Encoding", ce);
-      res.setHeader("Cache-Control", "no-store");
-
-      // Stream the response body
-      if (remote.body) {
-        const reader = remote.body.getReader();
-        const pump = async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              res.write(Buffer.from(value));
-            }
-            res.end();
-          } catch (error) {
-            res.end();
-          }
-        };
-        await pump();
-      } else {
-        res.end();
-      }
-    } catch (e: any) {
-      res.status(400).json({ error: String(e?.message || e) });
-    }
-  });
-
-  app.post("/api/fetch-league", async (req, res) => {
-    try {
-      const ct = req.headers["content-type"] || "";
-      let bytes: Uint8Array;
-
-      if (typeof ct === "string" && ct.includes("multipart/form-data")) {
-        bytes = await parseMultipart(req);
-      } else {
-        // Raw octet-stream
-        const chunks: Buffer[] = [];
-        await new Promise<void>((resolve, reject) => {
-          req.on("data", (c) => chunks.push(c));
-          req.on("end", () => resolve());
-          req.on("error", reject);
-        });
-        bytes = new Uint8Array(Buffer.concat(chunks));
-      }
-
-      res.setHeader("Content-Type", "application/octet-stream");
-      if (sniffIsGzip(bytes)) res.setHeader("X-Content-Encoding", "gzip");
-      res.setHeader("Cache-Control", "no-store");
-      res.status(200).send(Buffer.from(bytes));
-    } catch (err: any) {
-      res.status(400).json({ error: String(err?.message || err) });
-    }
-  });
   
   // Debug endpoint to manually process league-level achievements on existing data
   app.post("/api/debug/process-league-achievements", async (req, res) => {
@@ -377,9 +223,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Upload league file from URL
+  // New unified endpoint for processing parsed league data
+  app.post("/api/process-league", async (req, res) => {
+    console.log("🚀 LEAGUE PROCESSING STARTED (/api/process-league)");
+    try {
+      const { data } = req.body;
+      if (!data) {
+        return res.status(400).json({ message: "League data is required" });
+      }
+      
+      // Process the parsed league data directly
+      await processLeagueData(data, res);
+    } catch (error: any) {
+      console.error("League processing error:", error);
+      res.status(500).json({ message: error.message || "Failed to process league data" });
+    }
+  });
+
+  // Legacy endpoints - kept for compatibility but redirect to new system
   app.post("/api/upload-url", async (req, res) => {
-    console.log("🚀 URL UPLOAD STARTED (/api/upload-url)");
+    console.log("🚀 URL UPLOAD STARTED (/api/upload-url) - LEGACY");
     console.log("URL:", req.body?.url);
     try {
       const { url } = req.body;
@@ -404,9 +267,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Upload league file and parse players
+  // Legacy endpoint - kept for compatibility but will use new system
   app.post("/api/upload", upload.single("file"), async (req: MulterRequest, res) => {
-    console.log("🚀 FILE UPLOAD STARTED (/api/upload)");
+    console.log("🚀 FILE UPLOAD STARTED (/api/upload) - LEGACY");
     console.log("File received:", !!req.file);
     console.log("File name:", req.file?.originalname);
     console.log("File size:", req.file?.size);
@@ -835,7 +698,323 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("League-level achievement processing complete.");
   }
 
-  // Helper function to process league files
+  // New unified function to process parsed league data
+  async function processLeagueData(data: any, res: any) {
+    console.log("📂 PROCESSING PARSED LEAGUE DATA");
+    console.log("Data keys:", Object.keys(data));
+    
+    try {
+      let players: any[] = [];
+      let rawPlayers = [];
+      
+      // Handle BBGM format
+      if (data.players && Array.isArray(data.players)) {
+        rawPlayers = data.players;
+        console.log(`Found ${rawPlayers.length} players in BBGM format`);
+      } else if (Array.isArray(data)) {
+        rawPlayers = data;
+        console.log(`Found ${rawPlayers.length} players in array format`);
+      } else {
+        console.log("Invalid JSON structure. Expected players array but got:", typeof data);
+        return res.status(400).json({ message: "Invalid JSON format. Expected players array." });
+      }
+      
+      // Create team mapping from BBGM teams data
+      const teamMap = new Map<number, {name: string, abbrev: string, logo?: string}>();
+      if (data.teams && Array.isArray(data.teams)) {
+        console.log(`Found ${data.teams.length} teams in BBGM file`);
+        data.teams.forEach((team: any, index: number) => {
+          if (team && team.region && team.name) {
+            const teamInfo = {
+              name: `${team.region} ${team.name}`,
+              abbrev: team.abbrev || team.tid || team.region?.substring(0, 3).toUpperCase() || 'UNK',
+              logo: team.imgURL || team.imgUrl || team.logo
+            };
+            teamMap.set(index, teamInfo);
+          }
+        });
+        console.log("Team mapping with abbreviations created:", Array.from(teamMap.entries()).slice(0, 5));
+      } else {
+        console.log("No teams array found in BBGM file");
+      }
+      
+      // Transform BBGM player data to our format - inline the logic for now
+      players = rawPlayers.map((player: any) => {
+        // Use the same transformation logic as in processLeagueFile
+        const name = player.firstName && player.lastName 
+          ? `${player.firstName} ${player.lastName}` 
+          : player.name || "Unknown Player";
+        
+        // Map team ID to team name using BBGM teams data
+        const teams: string[] = [];
+        if (player.tid !== undefined && player.tid >= 0) {
+          const teamInfo = teamMap.get(player.tid);
+          const teamName = teamInfo?.name || `Team ${player.tid}`;
+          teams.push(teamName);
+        }
+        
+        // Also collect teams from stats history
+        const allTeams = new Set(teams);
+        if (player.stats && Array.isArray(player.stats)) {
+          player.stats.forEach((stat: any) => {
+            if (stat.tid !== undefined && stat.tid >= 0 && (stat.gp || 0) > 0) {
+              const teamInfo = teamMap.get(stat.tid);
+              const teamName = teamInfo?.name || `Team ${stat.tid}`;
+              allTeams.add(teamName);
+            }
+          });
+        }
+        
+        return {
+          name,
+          teams: Array.from(allTeams),
+          years: [], // Will be populated by processing logic
+          achievements: [], // Will be populated by processing logic
+          stats: player.stats || undefined,
+          careerWinShares: 0, // Will be calculated
+          quality: 50, // Default
+          pid: player.pid
+        };
+      });
+      
+      // Apply the full processing logic inline (extracted from processLeagueFile)
+      console.log("🚀 Processing player achievements and stats...");
+      
+      // Process each player with the same logic as processLeagueFile
+      for (let i = 0; i < players.length; i++) {
+        const player = players[i];
+        const rawPlayer = rawPlayers[i];
+        
+        // Apply achievements logic from processLeagueFile
+        const achievements: string[] = [];
+        
+        // Helper functions (inline for now)
+        function careerTotalsRegularSeason(p: any) {
+          let pts=0, ast=0, stl=0, blk=0, tp=0, orb=0, drb=0;
+          for (const s of p.stats ?? []) {
+            if (s.playoffs) continue;
+            pts += s.pts ?? 0;
+            ast += s.ast ?? 0;
+            stl += s.stl ?? 0;
+            blk += s.blk ?? 0;
+            tp  += s.tp  ?? 0;
+            orb += s.orb ?? 0;
+            drb += s.drb ?? 0;
+          }
+          const trb = orb + drb;
+          return {pts, trb, ast, stl, blk, tp};
+        }
+        
+        function minGamesForSeason(season: number): number {
+          return Math.ceil(0.58 * 82); // Default 82 games
+        }
+        
+        const careerTotals = careerTotalsRegularSeason(rawPlayer);
+        
+        // Career achievements
+        if (careerTotals.pts >= 20000) achievements.push("20,000+ Career Points");
+        if (careerTotals.trb >= 10000) achievements.push("10,000+ Career Rebounds");
+        if (careerTotals.ast >= 5000) achievements.push("5,000+ Career Assists");
+        if (careerTotals.stl >= 2000) achievements.push("2,000+ Career Steals");
+        if (careerTotals.blk >= 1500) achievements.push("1,500+ Career Blocks");
+        if (careerTotals.tp >= 2000) achievements.push("2,000+ Made Threes");
+        
+        // Season achievements
+        if (rawPlayer.stats && Array.isArray(rawPlayer.stats)) {
+          const regularSeasonStats = rawPlayer.stats.filter((s: any) => !s.playoffs);
+          
+          for (const season of regularSeasonStats) {
+            const gp = season.gp || 0;
+            const minGames = minGamesForSeason(season.season);
+            
+            if (gp < minGames) continue;
+            
+            const ppg = (season.pts || 0) / gp;
+            const rpg = ((season.orb || 0) + (season.drb || 0)) / gp;
+            const apg = (season.ast || 0) / gp;
+            const spg = (season.stl || 0) / gp;
+            const bpg = (season.blk || 0) / gp;
+            
+            if (ppg >= 30 && !achievements.includes("Averaged 30+ PPG in a Season")) {
+              achievements.push("Averaged 30+ PPG in a Season");
+            }
+            if (apg >= 10 && !achievements.includes("Averaged 10+ APG in a Season")) {
+              achievements.push("Averaged 10+ APG in a Season");
+            }
+            if (rpg >= 15 && !achievements.includes("Averaged 15+ RPG in a Season")) {
+              achievements.push("Averaged 15+ RPG in a Season");
+            }
+            if (bpg >= 3 && !achievements.includes("Averaged 3+ BPG in a Season")) {
+              achievements.push("Averaged 3+ BPG in a Season");
+            }
+            if (spg >= 2.5 && !achievements.includes("Averaged 2.5+ SPG in a Season")) {
+              achievements.push("Averaged 2.5+ SPG in a Season");
+            }
+          }
+        }
+        
+        // Draft achievements
+        if (rawPlayer.draft) {
+          if (rawPlayer.draft.round === 1 && rawPlayer.draft.pick === 1) {
+            achievements.push("#1 Overall Draft Pick");
+          }
+          if (rawPlayer.draft.round === 1) {
+            achievements.push("First Round Pick");
+          }
+          if (rawPlayer.draft.round === 2) {
+            achievements.push("2nd Round Pick");
+          }
+          if (rawPlayer.draft.round === 0 || rawPlayer.draft.pick === 0 || rawPlayer.draft.tid < 0) {
+            achievements.push("Undrafted Player");
+          }
+        }
+        
+        // Career length
+        if (rawPlayer.stats && Array.isArray(rawPlayer.stats)) {
+          const distinctSeasons = new Set(
+            rawPlayer.stats
+              .filter((s: any) => !s.playoffs && (s.gp || 0) > 0)
+              .map((s: any) => s.season)
+          );
+          if (distinctSeasons.size >= 15) {
+            achievements.push("Played 15+ Seasons");
+          }
+          
+          // Only One Team
+          const distinctTeams = new Set(
+            rawPlayer.stats
+              .filter((s: any) => (s.gp || 0) > 0)
+              .map((s: any) => s.tid)
+          );
+          if (distinctTeams.size === 1) {
+            achievements.push("Only One Team");
+          }
+        }
+        
+        // Calculate career win shares
+        let careerWinShares = 0;
+        if (rawPlayer.stats && Array.isArray(rawPlayer.stats)) {
+          rawPlayer.stats.forEach((stat: any) => {
+            careerWinShares += stat.ws || stat.winShares || stat.WS || 0;
+          });
+        }
+        
+        // Calculate years
+        const years: { team: string; start: number; end: number }[] = [];
+        if (rawPlayer.stats && Array.isArray(rawPlayer.stats)) {
+          const sortedStats = rawPlayer.stats
+            .filter((stat: any) => stat.season && stat.tid !== undefined && (stat.gp || 0) > 0)
+            .sort((a: any, b: any) => a.season - b.season);
+          
+          let currentTeam: string | null = null;
+          let currentStart: number | null = null;
+          let currentEnd: number | null = null;
+          
+          sortedStats.forEach((stat: any) => {
+            const teamInfo = teamMap.get(stat.tid);
+            const teamName = teamInfo?.name || `Team ${stat.tid}`;
+            
+            if (teamName !== currentTeam) {
+              if (currentTeam && currentStart && currentEnd) {
+                years.push({ team: currentTeam, start: currentStart, end: currentEnd });
+              }
+              currentTeam = teamName;
+              currentStart = stat.season;
+              currentEnd = stat.season;
+            } else {
+              currentEnd = stat.season;
+            }
+          });
+          
+          if (currentTeam && currentStart && currentEnd) {
+            years.push({ team: currentTeam, start: currentStart, end: currentEnd });
+          }
+        }
+        
+        // Update player with processed data
+        player.achievements = achievements;
+        player.years = years;
+        player.careerWinShares = Math.round(careerWinShares * 10);
+      }
+      
+      // Apply league-level achievements
+      console.log("🚀 Applying league-level achievements...");
+      await processLeagueLevelAchievements(data, players);
+      
+      // Apply quality calculation
+      deriveCareerAggregates(players);
+      assignQuality(players);
+      
+      // Save to storage and respond
+      console.log("🚀 Saving players to storage...");
+      await storage.clearPlayers();
+      
+      const createdPlayers: any[] = [];
+      const validationErrors: string[] = [];
+      
+      for (const player of players) {
+        try {
+          const playerWithDefaults = {
+            name: player.name || "Unknown Player",
+            teams: player.teams || [],
+            years: player.years || [],
+            achievements: player.achievements || [],
+            stats: player.stats,
+            careerWinShares: player.careerWinShares || 0,
+            quality: player.quality || 50
+          };
+          
+          const validatedPlayer = insertPlayerSchema.parse(playerWithDefaults);
+          const createdPlayer = await storage.createPlayer(validatedPlayer);
+          createdPlayers.push(createdPlayer);
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Validation failed';
+          validationErrors.push(`${player.name}: ${errorMsg}`);
+          continue;
+        }
+      }
+      
+      if (createdPlayers.length === 0) {
+        return res.status(400).json({ 
+          message: "No valid players could be created", 
+          errors: validationErrors.slice(0, 10)
+        });
+      }
+      
+      // Extract unique achievements
+      const achievements = Array.from(new Set(createdPlayers.flatMap(p => p.achievements)));
+      
+      // Create team info from team mapping
+      const teams = Array.from(teamMap.values()).map(teamInfo => ({
+        name: teamInfo.name,
+        abbrev: teamInfo.abbrev,
+        logo: teamInfo.logo
+      }));
+      
+      // Respond with the processed data
+      const result = {
+        players: createdPlayers.map(p => ({
+          name: p.name,
+          teams: p.teams,
+          years: p.years,
+          achievements: p.achievements,
+          stats: p.stats || undefined,
+          careerWinShares: p.careerWinShares || 0,
+          quality: p.quality || 50
+        })),
+        teams,
+        achievements
+      };
+      
+      res.json(result);
+      
+    } catch (error) {
+      console.error("League data processing error:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid file format" });
+    }
+  }
+
+  // Helper function to process league files (legacy)
   async function processLeagueFile(fileBuffer: Buffer, filename: string, res: any) {
     console.log("📂 PROCESSING LEAGUE FILE:", filename);
     console.log("Buffer size:", fileBuffer.length);
@@ -1890,12 +2069,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
+      console.log("DEBUG: top-for-cell request");
+      console.log("Column criteria:", colCriteria);
+      console.log("Row criteria:", rowCriteria_item);
+      
       // FIXED: Use EVALS system with proper indices (never string matching)
       
       // Get all eligible players using intersection with proper indices
       const eligiblePlayers = players.filter(p => 
         eligibleForCell(p, rowCriteria_item, colCriteria, globalIndices)
       );
+      
+      console.log(`Found ${eligiblePlayers.length} eligible players for cell`);
+      console.log("Sample eligible players:", eligiblePlayers.slice(0, 5).map(p => p.name));
       
       // Add invariant check for leader achievements  
       const isLeaderAchievement = colCriteria.label?.includes("Led League in") || rowCriteria_item.label?.includes("Led League in");
@@ -1927,6 +2113,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const eligibilityChecker = new EligibilityChecker(players);
       const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
       
+      console.log(`Sorted players list length: ${sortedPlayers.length}`);
+      console.log("Top 3 sorted players:", sortedPlayers.slice(0, 3).map(p => p.name));
+      
       let topPlayers;
       if (includeGuessed === 'true') {
         // Include guessed player if they're in top 10
@@ -1941,6 +2130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .map(p => ({ name: p.name, teams: p.teams }));
       }
       
+      console.log(`Returning ${topPlayers.length} top players`);
       res.json(topPlayers);
     } catch (error) {
       console.error("Get top players error:", error);
@@ -2156,121 +2346,7 @@ app.get("/api/debug/matches", async (req, res) => {
     }
   });
 
-  // URL proxy routes for dev environment to match Vercel function
-  const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
-  function normalizeLeagueUrl(input: string): string {
-    const u = new URL(input.trim());
-    if (u.hostname.endsWith("dropbox.com")) {
-      u.hostname = "dl.dropboxusercontent.com";
-      u.searchParams.set("dl", "1");
-      u.searchParams.delete("st");
-    }
-    if (u.hostname === "dl.dropboxusercontent.com") u.searchParams.delete("st");
-    if (u.hostname === "github.com") {
-      const parts = u.pathname.split("/").filter(Boolean);
-      if (parts.length >= 5 && parts[2] === "blob") {
-        const [user, repo, _blob, branch, ...rest] = parts;
-        u.hostname = "raw.githubusercontent.com";
-        u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
-        u.search = "";
-      }
-    }
-    if (u.hostname === "gist.github.com") {
-      const parts = u.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2) {
-        const [user, hash] = parts;
-        u.hostname = "gist.githubusercontent.com";
-        u.pathname = `/${user}/${hash}/raw`;
-        u.search = "";
-      }
-    }
-    if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
-      const id = u.pathname.split("/")[3];
-      u.pathname = "/uc";
-      u.search = "";
-      u.searchParams.set("export", "download");
-      u.searchParams.set("id", id);
-    }
-    if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
-    return u.toString();
-  }
-
-  app.get("/api/fetch-league", async (req, res) => {
-    try {
-      const url = typeof req.query.url === "string" ? req.query.url : "";
-      if (!url) return res.status(400).json({ error: "Missing ?url=" });
-
-      const normalized = normalizeLeagueUrl(url);
-      const normURL = new URL(normalized);
-      const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(normURL.pathname);
-
-      const remote = await fetch(normalized, {
-        redirect: "follow",
-        headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
-      });
-
-      if (!remote.ok || !remote.body) {
-        return res
-          .status(remote.status || 502)
-          .json({ error: `Fetch failed: remote ${remote.status} ${remote.statusText}` });
-      }
-
-      const ct = remote.headers.get("content-type") || "application/octet-stream";
-      res.setHeader("Content-Type", ct);
-      const ce = remote.headers.get("content-encoding");
-      const isGzipType =
-        /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
-      if (ce) res.setHeader("X-Content-Encoding", ce);
-      else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
-      res.setHeader("Cache-Control", "no-store");
-
-      const nodeStream = Readable.fromWeb(remote.body as any);
-      nodeStream.pipe(res);
-    } catch (e: any) {
-      res.status(400).json({ error: String(e?.message || e) });
-    }
-  });
-
-  // Optional: keep POST to mirror prod, though client won't use it now
-  app.post("/api/fetch-league", async (req, res) => {
-    try {
-      const ct = req.headers["content-type"] || "";
-      if (typeof ct === "string" && ct.includes("multipart/form-data")) {
-        const form = formidable({ multiples: false, keepExtensions: true });
-        const { files } = await new Promise<any>((resolve, reject) => {
-          form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
-        });
-        const fileObj = (files as any).file || (files as any).upload || Object.values(files)[0];
-        if (!fileObj) return res.status(400).json({ error: "No file provided" });
-        const f = Array.isArray(fileObj) ? fileObj[0] : fileObj;
-        const filepath = f.filepath || f.path;
-        const data = await fsp.readFile(filepath);
-        res.setHeader("Content-Type", "application/octet-stream");
-        if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) {
-          res.setHeader("X-Content-Encoding", "gzip");
-        }
-        res.setHeader("Cache-Control", "no-store");
-        res.status(200).send(Buffer.from(data));
-      } else {
-        const chunks: Buffer[] = [];
-        await new Promise<void>((resolve, reject) => {
-          req.on("data", (c) => chunks.push(c));
-          req.on("end", () => resolve());
-          req.on("error", reject);
-        });
-        const data = Buffer.concat(chunks);
-        res.setHeader("Content-Type", "application/octet-stream");
-        if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) {
-          res.setHeader("X-Content-Encoding", "gzip");
-        }
-        res.setHeader("Cache-Control", "no-store");
-        res.status(200).send(data);
-      }
-    } catch (e: any) {
-      res.status(400).json({ error: String(e?.message || e) });
-    }
-  });
 
   const httpServer = createServer(app);
   return httpServer;

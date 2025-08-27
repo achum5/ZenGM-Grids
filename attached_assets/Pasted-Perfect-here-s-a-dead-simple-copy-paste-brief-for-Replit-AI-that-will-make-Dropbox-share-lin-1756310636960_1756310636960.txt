@@ -1,0 +1,119 @@
+Perfect — here’s a dead-simple **copy/paste brief for Replit AI** that will make **Dropbox share links (like the one you posted) always work** on the live site, plus GitHub/Drive “share page” links too. No code here — just plain English instructions Replit can follow.
+
+---
+
+# COPY/PASTE FOR REPLIT AI — Always-Works URL Import (Dropbox/GitHub/Drive)
+
+## Goal
+
+Make the **URL Upload** box accept the *same links people paste into BBGM*, including Dropbox links with `dl=0` and ephemeral `st=…`. The app must also keep working for direct raw links and for local file uploads (`.json`, `.gz`, `.json.gz`) with **any filename**.
+
+**Do not change** game rules, rarity, scoring, or UI layout.
+
+---
+
+## Edit 1 — Normalize share links inside the proxy
+
+**File:** `api/fetch-league.ts` (at repo root)
+
+Add a function `normalizeRemoteUrl(raw: string): string` and call it **before** `isValidUrl()` and `fetchWithTimeout()`:
+
+### A) Dropbox (MUST)
+
+Handle these hosts: `www.dropbox.com`, `dropbox.com`, `dl.dropbox.com`, `dl.dropboxusercontent.com`.
+
+Rules:
+
+1. **Host** → always rewrite to `dl.dropboxusercontent.com`.
+2. **Query** → remove `st` if present (it’s ephemeral), **force** `dl=1`, **preserve** `rlkey` and any other params.
+3. Path stays the same (works for both `/s/...` and `/scl/fi/...` forms).
+
+**Examples (these must become direct links):**
+
+* `https://dl.dropbox.com/scl/fi/.../Dom.gz?...&st=XYZ&dl=0` →
+  `https://dl.dropboxusercontent.com/scl/fi/.../Dom.gz?rlkey=...&dl=1`
+* `https://www.dropbox.com/s/<id>/<name>?dl=0` →
+  `https://dl.dropboxusercontent.com/s/<id>/<name>?dl=1`
+
+### B) GitHub (nice-to-have)
+
+* Repo blob → Raw:
+  `https://github.com/<user>/<repo>/blob/<branch>/<path>` →
+  `https://raw.githubusercontent.com/<user>/<repo>/<branch>/<path>`
+* Gist page → Raw:
+  `https://gist.github.com/<user>/<id>` →
+  `https://gist.githubusercontent.com/<user>/<id>/raw`
+
+### C) Google Drive (nice-to-have)
+
+* `/file/d/<ID>/view?...` or `/open?id=<ID>` →
+  `https://drive.google.com/uc?export=download&id=<ID>`
+
+After normalization, continue with the existing security checks (HTTPS only, block private IPs), size limits, and timeout.
+
+**Improve the error message:**
+When `!response.ok`, include the remote status code in the JSON you return, e.g.
+`{ message: "We couldn't download that URL (remote 403 Forbidden). Make sure the link is public or use File Upload." }`
+
+---
+
+## Edit 2 — Client continues to use the proxy and read bytes
+
+**Files:** the URL upload handler/component under `client/src/**`
+
+* Ensure the URL path fetches the **proxy**:
+  `fetch('/api/fetch-league?url=' + encodeURIComponent(userUrl))`
+* Read the response as **bytes** (`await res.arrayBuffer()`), then pass those bytes to the unified loader (which already detects gzip and parses JSON).
+* File Upload remains **client-side** via `File.arrayBuffer()` (no server round-trip).
+* Keep the friendly error toasts; no stack traces.
+
+---
+
+## Acceptance tests (run on the live Vercel site)
+
+1. **Your exact Dropbox link (unchanged):**
+
+   ```
+   https://dl.dropbox.com/scl/fi/28tx15h0511f5knzt095u/Dom.gz?rlkey=m1hsx3u6hfwq2zlukbhargxfh&st=v0ddqq1n&dl=0
+   ```
+
+   ✅ Should import after normalization (host→`dl.dropboxusercontent.com`, drop `st`, force `dl=1`).
+
+2. **Direct Dropbox (already direct):**
+
+   ```
+   https://dl.dropboxusercontent.com/scl/fi/28tx15h0511f5knzt095u/Dom.gz?rlkey=m1hsx3u6hfwq2zlukbhargxfh&dl=1
+   ```
+
+   ✅ Should import.
+
+3. **GitHub blob URL** → should auto-convert to Raw and import.
+
+4. **Google Drive view URL** → should auto-convert to `uc?export=download&id=…` and import.
+
+5. **Local file upload**: `.json`, `.json.gz`, `.gz`, and the same file renamed to a random name → all import (content sniffing, not filename).
+
+6. If a URL is non-public or HTML, show a friendly error with the **remote status** in the message.
+
+---
+
+## Deploy steps (so it goes live)
+
+1. In **Replit → Git**: **Stage all → Commit → Push**.
+2. On **Vercel**, a new deployment appears automatically. Open it:
+
+   * **Source** tab shows the `api/` folder (proves function included).
+   * **Visit** to open the live site.
+
+**Quick proxy check:**
+Open this in your browser (replace domain):
+
+```
+https://zen-gm-grids.vercel.app/api/fetch-league?url=https://dl.dropbox.com/scl/fi/28tx15h0511f5knzt095u/Dom.gz?rlkey=m1hsx3u6hfwq2zlukbhargxfh&st=v0ddqq1n&dl=0
+```
+
+You should get **bytes** (a download), not an HTML page — that confirms normalization works.
+
+---
+
+If anything still errors on Vercel, open **Project → Logs → Runtime Logs**, trigger the URL upload again, and use the first red line (status code/content-type) to adjust.

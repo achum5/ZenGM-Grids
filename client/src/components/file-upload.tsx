@@ -8,8 +8,8 @@ import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { bytesFromUrl, bytesFromFile, toJson } from "@/lib/leagueLoader";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
+import { loadLeague, ImportErrors } from "@shared/importLeague";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -27,43 +27,33 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
-      let bytes: Uint8Array;
-      let hintedEncoding: "gzip" | null;
+      let leagueData: any;
       
-      if (typeof fileOrUrl === 'string') {
-        // URL upload - use client-side loader
-        const result = await bytesFromUrl(fileOrUrl);
-        bytes = result.bytes;
-        hintedEncoding = result.hintedEncoding;
-      } else {
-        // File upload - use client-side loader
-        const result = await bytesFromFile(fileOrUrl);
-        bytes = result.bytes;
-        hintedEncoding = result.hintedEncoding;
+      try {
+        // Use unified import pipeline
+        if (typeof fileOrUrl === 'string') {
+          leagueData = await loadLeague({ type: 'url', url: fileOrUrl });
+        } else {
+          leagueData = await loadLeague({ type: 'file', file: fileOrUrl });
+        }
+        
+        // Send parsed data to backend for processing
+        const response = await fetch("/api/process-league", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: leagueData }),
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Processing failed");
+        }
+        
+        return response.json() as Promise<FileUploadData>;
+      } catch (error: any) {
+        // Pass through friendly error messages from importLeague
+        throw new Error(error.message || "Import failed");
       }
-      
-      // Parse JSON client-side (decompresses if needed)
-      const league = toJson(bytes, hintedEncoding);
-      
-      // Create a blob from the parsed JSON to send to upload processor
-      const jsonString = JSON.stringify(league);
-      const processedBlob = new Blob([jsonString], { type: 'application/json' });
-      
-      // Process through existing upload endpoint to parse players
-      const formData = new FormData();
-      formData.append("file", processedBlob, typeof fileOrUrl === 'string' ? 'league-file.json' : fileOrUrl.name);
-      
-      const processResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      
-      if (!processResponse.ok) {
-        const error = await processResponse.json();
-        throw new Error(error.message || "Processing failed");
-      }
-      
-      return processResponse.json() as Promise<FileUploadData>;
     },
     onSuccess: (data) => {
       setUploadData(data);
@@ -76,9 +66,14 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       generateGameMutation.mutate();
     },
     onError: (error) => {
+      // Don't show stack traces in UI
+      const friendlyMessage = error.message.includes('NetworkError') || error.message.includes('fetch') 
+        ? ImportErrors.NETWORK 
+        : error.message;
+        
       toast({
         title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
-        description: error.message,
+        description: friendlyMessage,
         variant: "destructive",
       });
       setUploadedFile(null);
@@ -125,30 +120,43 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       return;
     }
     
-    // Auto-convert Dropbox www URLs to dl URLs
-    let processedUrl = urlInput.trim();
-    if (processedUrl.includes("www.dropbox.com")) {
-      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
-      // Also ensure the dl=0 parameter is set to dl=1 for direct download
-      if (processedUrl.includes("dl=0")) {
-        processedUrl = processedUrl.replace("dl=0", "dl=1");
-      } else if (!processedUrl.includes("dl=1")) {
-        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
-      }
-    }
+    // No client-side URL processing - let serverless function handle all normalization
+    const processedUrl = urlInput.trim();
     
     setUploadedFile(null);
     uploadMutation.mutate(processedUrl);
   };
+  
+  // Cancel in-flight requests when modal closes or new URL is submitted
+  useEffect(() => {
+    return () => {
+      // This will be called on component unmount
+      // uploadMutation.reset() can be used if needed
+    };
+  }, [urlInput]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'application/json': ['.json'],
-      'application/gzip': ['.gz'],
-      'application/x-gzip': ['.gz'],
-    },
+    // Accept any file - content detection by magic bytes, not extension
+    accept: undefined, // Accept all files
     multiple: false,
+    maxSize: 50 * 1024 * 1024, // 50MB limit
+    onDropRejected: (fileRejections) => {
+      const rejection = fileRejections[0];
+      if (rejection.errors.some(e => e.code === 'file-too-large')) {
+        toast({
+          title: "File too large",
+          description: "That file is too large to process here. Please upload a smaller file or host it where it can be fetched directly.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "File rejected",
+          description: "There was an issue with the selected file.",
+          variant: "destructive",
+        });
+      }
+    }
   });
 
   const removeFile = () => {
@@ -182,12 +190,12 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               }`}
               data-testid="upload-dropzone"
             >
-              <input {...getInputProps()} data-testid="input-file" accept=".json,.gz,application/gzip,application/x-gzip" />
+              <input {...getInputProps()} data-testid="input-file" />
               <CloudUpload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-600 dark:text-gray-300 mb-2">
                 {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Supports JSON and gzipped league files</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Supports any filename - detects JSON and gzipped files automatically</p>
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
@@ -214,8 +222,11 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   Enter League File URL
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  Paste a direct link to a JSON or gzipped league file
+                  Paste a league file URL. GitHub Raw links, Dropbox dl=1, Google Drive direct links work best.
                 </p>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border">
+                  <strong>Tip:</strong> Regular 'share pages' won't work. Use GitHub Raw links, Dropbox links with dl=1, or Google Drive direct links.
+                </div>
               </div>
               <div className="flex gap-2">
                 <Input

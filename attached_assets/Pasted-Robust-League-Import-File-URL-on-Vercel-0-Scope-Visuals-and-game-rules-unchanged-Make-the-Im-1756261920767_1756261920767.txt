@@ -1,0 +1,163 @@
+Robust League Import (File & URL) on Vercel
+0) Scope
+
+Visuals and game rules unchanged.
+
+Make the Import League feature work on our Vercel deployment for both “File Upload” and “URL Upload”.
+
+Accept any filename (no BBGM naming assumptions). Detect content by magic bytes / headers, not just extension.
+
+1) Unified import pipeline
+
+Create a small module (e.g., importLeague.ts) that exposes one function:
+
+loadLeague(source) → returns the parsed league JSON object (same shape our app already consumes) or throws a friendly, user-facing error string.
+
+Supported source:
+
+{ type: 'file', file: File }
+
+{ type: 'url', url: string }
+
+This function:
+
+Gets raw bytes (ArrayBuffer) either from the File API (file upload) or from a serverless fetch (see §3).
+
+Sniffs content:
+
+If gzip: magic bytes 1F 8B at the start or Content-Encoding: gzip header we propagated.
+
+Else treat as plain text.
+
+Decompress if needed:
+
+Prefer DecompressionStream('gzip') when available; fall back to pako. (Bundle pako for reliability.)
+
+Decode bytes to UTF-8 string and JSON.parse.
+
+Validate shape lightly (e.g., file contains expected top-level fields: players array OR teams array). If it fails, show the friendly error below.
+
+Return the parsed object to the existing load pipeline (no changes to scoring/rarity/etc).
+
+Important: Never rely on the filename. We accept any name and decide using content sniffing.
+
+2) File Upload (client-side only; no server)
+
+On file drop/select, call loadLeague({ type: 'file', file }).
+
+Use File.arrayBuffer() to read bytes.
+
+Keep a size cap (e.g., 25–50 MB) and error if exceeded.
+
+On error, show a friendly message and do not show stack traces.
+
+3) URL Upload (serverless proxy to avoid CORS / HTML share pages)
+
+Implement a tiny Vercel Serverless Function at /api/fetch-league:
+
+Input: GET /api/fetch-league?url=<encoded URL>
+
+Server-side behavior:
+
+Validate URL: must be https://; reject localhost/private IPs; limit redirects to 3; 10s timeout; size limit ~25–50 MB.
+
+Fetch the remote resource with headers: Accept: application/json, application/octet-stream, */*.
+
+Read raw bytes (ArrayBuffer/Buffer). Do not assume JSON—remote hosts often mislabel content-type.
+
+Return the raw bytes to the browser with:
+
+Content-Type: application/octet-stream
+
+Access-Control-Allow-Origin: *
+
+Propagate Content-Encoding: gzip header if present (or add X-Content-Encoding: gzip custom header) so the client can detect gzip reliably.
+
+Client URL flow:
+
+On URL submit, call fetch('/api/fetch-league?url=' + encodeURIComponent(url)).
+
+Convert to ArrayBuffer and pass to the same loadLeague pipeline (as if it were a file).
+
+If response is not OK or bytes don’t parse to JSON, show the friendly error below.
+
+Why: This avoids CORS problems and “share page” HTML. We parse by content, not by file name or content-type.
+
+4) Content detection (no filename assumptions)
+
+Gzip detection: check the first two bytes 0x1F, 0x8B or a gzip header we propagated from the serverless function.
+
+Plain JSON: if not gzip, decode as UTF-8 and try JSON.parse.
+
+If parse fails:
+
+If the payload starts with < or the text contains <html, assume the user pasted a web page and show the friendly error.
+
+Otherwise: general invalid file error.
+
+5) Friendly errors (use these exact messages)
+
+Not JSON:
+“This file/link doesn’t contain valid league JSON. Please upload a .json, .gz, or .json.gz BBGM export (any filename is fine).”
+
+Web page (HTML) link:
+“That link looks like a web page, not the raw league file. Use a direct raw file link (e.g., GitHub Raw, Dropbox dl=1, S3 public object) or use File Upload.”
+
+Too large:
+“That file is too large to process here. Please upload a smaller file or host it where it can be fetched directly.”
+
+Network:
+“We couldn’t download that URL. Check the link is public and try again.”
+
+Security (blocked localhost/private):
+“That URL can’t be fetched from the server. Please use a public HTTPS link or use File Upload.”
+
+6) UI/UX states
+
+Both flows should show loading → success/error; disable the submit button while loading.
+
+On success, immediately hydrate the grid as today.
+
+Preserve the File Upload drag-and-drop UX and the URL text box—only wiring changes.
+
+No changes to score/rarity/validation logic.
+
+7) Limits & Performance
+
+Max payload 25–50 MB; timeouts ~10s.
+
+Stream decompression when supported; otherwise pako is fine.
+
+Debounce URL input; ignore empty/whitespace.
+
+Cancel in-flight URL fetch when the modal closes or the user submits a new URL.
+
+8) Security
+
+Serverless function: only HTTPS; block localhost, 127.0.0.1, 10.*, 172.16–31.*, 192.168.*, and IPv6 private ranges.
+
+Limit redirects (3), set a user agent, and cap size.
+
+Return 400 with a user message rather than proxying arbitrary HTML.
+
+9) QA checklist (acceptance)
+
+Drag-drop a .json file → loads successfully.
+
+Drag-drop a .json.gz or .gz file → detects gzip and loads.
+
+Rename those files to random names (no .json in the name) → still loads (content sniffing works).
+
+Paste a GitHub Raw URL to a league JSON → loads.
+
+Paste a Dropbox URL with dl=1 → loads.
+
+Paste a normal blob/share page link → shows the web page friendly error (no JSON parse error).
+
+Bad JSON → shows the not JSON friendly error.
+
+Huge file → too large error.
+
+Nothing in the rest of the app changes (score, rarity, correctness).
+
+Result: Imports work reliably on Vercel for any filename and for both File and URL, across .json, .gz, and .json.gz, with clear errors when the input isn’t actually a raw league file.

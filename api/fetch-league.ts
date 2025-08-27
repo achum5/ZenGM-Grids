@@ -1,150 +1,228 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import formidable from "formidable";
-import { promises as fsp } from "node:fs";
-import { Readable } from "node:stream";
-
-export const config = { maxDuration: 60 }; // extend function timeout
-
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-
-function normalizeLeagueUrl(input: string): string {
-  const u = new URL(input.trim());
-
-  // Dropbox share -> direct
-  if (u.hostname.endsWith("dropbox.com")) {
-    u.hostname = "dl.dropboxusercontent.com";
-    u.searchParams.set("dl", "1");
-    u.searchParams.delete("st");
-  }
-  if (u.hostname === "dl.dropboxusercontent.com") {
-    u.searchParams.delete("st");
-  }
-
-  // GitHub blob -> raw
-  if (u.hostname === "github.com") {
-    const parts = u.pathname.split("/").filter(Boolean);
-    if (parts.length >= 5 && parts[2] === "blob") {
-      const [user, repo, _blob, branch, ...rest] = parts;
-      u.hostname = "raw.githubusercontent.com";
-      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
-      u.search = "";
-    }
-  }
-
-  // Gist page -> raw
-  if (u.hostname === "gist.github.com") {
-    const parts = u.pathname.split("/").filter(Boolean);
-    if (parts.length >= 2) {
-      const [user, hash] = parts;
-      u.hostname = "gist.githubusercontent.com";
-      u.pathname = `/${user}/${hash}/raw`;
-      u.search = "";
-    }
-  }
-
-  // Google Drive file -> direct
-  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
-    const id = u.pathname.split("/")[3];
-    u.pathname = "/uc";
-    u.search = "";
-    u.searchParams.set("export", "download");
-    u.searchParams.set("id", id);
-  }
-
-  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
-  return u.toString();
+// Vercel serverless function types
+interface VercelRequest {
+  method?: string;
+  query: { [key: string]: string | string[] | undefined };
+  body?: any;
 }
 
-function sniffIsGzip(buf: Uint8Array) {
-  return buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+interface VercelResponse {
+  status(code: number): VercelResponse;
+  json(object: any): void;
+  send(body: any): void;
+  setHeader(name: string, value: string): void;
 }
 
-async function parseMultipart(req: VercelRequest): Promise<Uint8Array> {
-  const form = formidable({ multiples: false, keepExtensions: true });
-  const { files } = await new Promise<any>((resolve, reject) => {
-    form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
-  });
+// Security constants
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_REDIRECTS = 3;
+const TIMEOUT_MS = 10000; // 10 seconds
+const BLOCKED_HOSTS = [
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+];
 
-  const fileObj = (files as any).file || (files as any).upload || Object.values(files)[0];
-  if (!fileObj) throw new Error("No file provided");
-  const f = Array.isArray(fileObj) ? fileObj[0] : fileObj;
-  const filepath = f.filepath || f.path;
-  const data = await fsp.readFile(filepath);
-  // best-effort cleanup
-  fsp.unlink(filepath).catch(() => {});
-  return new Uint8Array(data);
+// Check for private IP ranges
+function isPrivateIP(hostname: string): boolean {
+  // IPv4 private ranges
+  const ipv4Private = [
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+    /^192\.168\./,
+  ];
+  
+  // IPv6 private ranges (simplified)
+  const ipv6Private = [
+    /^::1$/,
+    /^fc00:/,
+    /^fd00:/,
+    /^fe80:/,
+  ];
+  
+  return ipv4Private.some(regex => regex.test(hostname)) ||
+         ipv6Private.some(regex => regex.test(hostname)) ||
+         BLOCKED_HOSTS.includes(hostname.toLowerCase());
+}
+
+// Normalize common share page links to direct download links
+function normalizeRemoteUrl(raw: string): string {
+  let url = raw.trim();
+  
+  try {
+    const urlObj = new URL(url);
+    
+    // 1) Dropbox - convert all variants to dl.dropboxusercontent.com
+    if (['www.dropbox.com', 'dropbox.com', 'dl.dropbox.com', 'dl.dropboxusercontent.com'].includes(urlObj.hostname)) {
+      // Extract path and query
+      let searchParams = new URLSearchParams(urlObj.search);
+      
+      // Convert to dropboxusercontent.com domain
+      urlObj.hostname = 'dl.dropboxusercontent.com';
+      
+      // Ensure dl=1 and remove ephemeral st parameter
+      searchParams.set('dl', '1');
+      searchParams.delete('st');
+      
+      urlObj.search = searchParams.toString();
+      url = urlObj.toString();
+    }
+    
+    // 2) GitHub - convert blob to raw
+    else if (urlObj.hostname === 'github.com' && urlObj.pathname.includes('/blob/')) {
+      // Convert /blob/ to raw.githubusercontent.com
+      const pathParts = urlObj.pathname.split('/');
+      if (pathParts.length >= 5) {
+        const [, user, repo, , branch, ...filePath] = pathParts;
+        url = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${filePath.join('/')}`;
+      }
+    }
+    
+    // GitHub Gist - convert page to raw
+    else if (urlObj.hostname === 'gist.github.com') {
+      const pathParts = urlObj.pathname.split('/');
+      if (pathParts.length >= 3) {
+        const [, user, id] = pathParts;
+        url = `https://gist.githubusercontent.com/${user}/${id}/raw`;
+      }
+    }
+    
+    // 3) Google Drive - convert view/open to direct download
+    else if (urlObj.hostname === 'drive.google.com') {
+      let fileId = '';
+      
+      // Extract file ID from different URL formats
+      if (urlObj.pathname.includes('/file/d/')) {
+        const match = urlObj.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (match) fileId = match[1];
+      } else if (urlObj.pathname === '/open') {
+        fileId = urlObj.searchParams.get('id') || '';
+      }
+      
+      if (fileId) {
+        url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      }
+    }
+    
+    // 4) OneDrive/SharePoint - ensure download=1
+    else if (urlObj.hostname.includes('sharepoint.com') || urlObj.hostname.includes('1drv.ms')) {
+      const searchParams = new URLSearchParams(urlObj.search);
+      searchParams.set('download', '1');
+      urlObj.search = searchParams.toString();
+      url = urlObj.toString();
+    }
+    
+    return url;
+  } catch (error) {
+    // If URL parsing fails, return original
+    return raw;
+  }
+}
+
+function isValidUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    
+    // Must be HTTPS
+    if (url.protocol !== 'https:') {
+      return false;
+    }
+    
+    // Check for blocked hosts
+    if (isPrivateIP(url.hostname)) {
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json, application/octet-stream, */*',
+        'User-Agent': 'BBGM-Grid-Import/1.0',
+      },
+      redirect: 'follow',
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Only allow GET requests
+  if (req.method !== 'GET') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+  
+  const { url } = req.query;
+  
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ message: 'URL parameter is required' });
+  }
+  
+  // Normalize URL (convert share pages to direct download links)
+  const normalizedUrl = normalizeRemoteUrl(url);
+  
+  // Validate URL security after normalization
+  if (!isValidUrl(normalizedUrl)) {
+    return res.status(400).json({ message: 'That URL can\'t be fetched from the server. Please use a public HTTPS link or use File Upload.' });
+  }
+  
   try {
-    if (req.method === "GET") {
-      const url = typeof req.query.url === "string" ? req.query.url : "";
-      if (!url) return res.status(400).json({ error: "Missing ?url=" });
-
-      const normalized = normalizeLeagueUrl(url);
-      const normURL = new URL(normalized);
-      const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(normURL.pathname);
-
-      const remote = await fetch(normalized, {
-        redirect: "follow",
-        headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" }
+    // Fetch the remote resource
+    const response = await fetchWithTimeout(normalizedUrl, TIMEOUT_MS);
+    
+    if (!response.ok) {
+      return res.status(400).json({ 
+        message: `We couldn't download that URL (remote ${response.status} ${response.statusText}). Make sure the link is public or use File Upload.` 
       });
-
-      if (!remote.ok || !remote.body) {
-        return res
-          .status(remote.status || 502)
-          .json({ error: `Fetch failed: remote ${remote.status} ${remote.statusText}` });
-      }
-
-      const ct = remote.headers.get("content-type") || "application/octet-stream";
-      res.setHeader("Content-Type", ct);
-      const ce = remote.headers.get("content-encoding");
-
-      // if Dropbox doesn't declare gzip, hint it based on extension or content-type
-      const isGzipType =
-        /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
-
-      if (ce) {
-        res.setHeader("X-Content-Encoding", ce);
-      } else if (looksGzipByExt || isGzipType) {
-        res.setHeader("X-Content-Encoding", "gzip");
-      }
-
-      res.setHeader("Cache-Control", "no-store");
-
-      const nodeStream = Readable.fromWeb(remote.body as any);
-      nodeStream.pipe(res);
-      return;
     }
-
-    if (req.method === "POST") {
-      const ct = req.headers["content-type"] || "";
-      let bytes: Uint8Array;
-
-      if (typeof ct === "string" && ct.includes("multipart/form-data")) {
-        bytes = await parseMultipart(req);
-      } else {
-        // raw octet-stream
-        const chunks: Buffer[] = [];
-        await new Promise<void>((resolve, reject) => {
-          req.on("data", (c) => chunks.push(c));
-          req.on("end", () => resolve());
-          req.on("error", reject);
-        });
-        bytes = new Uint8Array(Buffer.concat(chunks));
-      }
-
-      res.setHeader("Content-Type", "application/octet-stream");
-      if (sniffIsGzip(bytes)) res.setHeader("X-Content-Encoding", "gzip");
-      res.setHeader("Cache-Control", "no-store");
-      res.status(200).send(Buffer.from(bytes));
-      return;
+    
+    // Check content length
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
+      return res.status(400).json({ message: 'That file is too large to process here. Please upload a smaller file or host it where it can be fetched directly.' });
     }
-
-    res.setHeader("Allow", "GET, POST");
-    res.status(405).send("Method Not Allowed");
-  } catch (err: any) {
-    res.status(400).json({ error: String(err?.message || err) });
+    
+    // Read the response as array buffer with size checking
+    const buffer = await response.arrayBuffer();
+    
+    if (buffer.byteLength > MAX_FILE_SIZE) {
+      return res.status(400).json({ message: 'That file is too large to process here. Please upload a smaller file or host it where it can be fetched directly.' });
+    }
+    
+    // Set response headers
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // Propagate gzip encoding if present
+    const contentEncoding = response.headers.get('content-encoding');
+    if (contentEncoding === 'gzip') {
+      res.setHeader('X-Content-Encoding', 'gzip');
+    }
+    
+    // Return raw bytes
+    res.send(Buffer.from(buffer));
+    
+  } catch (error: any) {
+    console.error('Fetch error:', error);
+    
+    if (error.name === 'AbortError') {
+      return res.status(408).json({ message: 'Request timeout. The file took too long to download.' });
+    }
+    
+    return res.status(500).json({ message: 'We couldn\'t download that URL. Check the link is public and try again.' });
   }
 }
