@@ -1736,19 +1736,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      console.log("DEBUG: top-for-cell request");
-      console.log("Column criteria:", colCriteria);
-      console.log("Row criteria:", rowCriteria_item);
-      
       // FIXED: Use EVALS system with proper indices (never string matching)
       
       // Get all eligible players using intersection with proper indices
       const eligiblePlayers = players.filter(p => 
         eligibleForCell(p, rowCriteria_item, colCriteria, globalIndices)
       );
-      
-      console.log(`Found ${eligiblePlayers.length} eligible players for cell`);
-      console.log("Sample eligible players:", eligiblePlayers.slice(0, 5).map(p => p.name));
       
       // Add invariant check for leader achievements  
       const isLeaderAchievement = colCriteria.label?.includes("Led League in") || rowCriteria_item.label?.includes("Led League in");
@@ -1780,9 +1773,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const eligibilityChecker = new EligibilityChecker(players);
       const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
       
-      console.log(`Sorted players list length: ${sortedPlayers.length}`);
-      console.log("Top 3 sorted players:", sortedPlayers.slice(0, 3).map(p => p.name));
-      
       let topPlayers;
       if (includeGuessed === 'true') {
         // Include guessed player if they're in top 10
@@ -1797,7 +1787,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .map(p => ({ name: p.name, teams: p.teams }));
       }
       
-      console.log(`Returning ${topPlayers.length} top players`);
       res.json(topPlayers);
     } catch (error) {
       console.error("Get top players error:", error);

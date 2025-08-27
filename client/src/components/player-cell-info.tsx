@@ -94,7 +94,7 @@ interface NameFitResult {
   lines: string[];
 }
 
-function formatPlayerName(fullName: string, containerWidth: number, containerHeight: number): NameFitResult {
+function formatPlayerName(fullName: string, plateWidth: number, containerHeight: number): NameFitResult {
   const nameParts = fullName.trim().split(/\s+/);
   if (nameParts.length === 0) return { mode: 'minimal', lines: [''] };
   
@@ -102,26 +102,30 @@ function formatPlayerName(fullName: string, containerWidth: number, containerHei
   const firstInitial = firstName.charAt(0) + '.';
   const lastNameFull = nameParts.slice(1).join(' ');
   
-  // Estimate available space (rough calculation based on container size)
-  const baseFontSize = Math.max(10, Math.min(14, containerWidth * 0.08));
+  // Use wider name plate (92-96% of tile width)
+  // Subtract padding from both sides (about 2% each side)
+  const platePaddingPercent = 0.04; // 2% each side = 4% total
+  const innerPlateWidth = plateWidth * (1 - platePaddingPercent);
+  
+  // Higher starting font size for wider plates
+  const baseFontSize = Math.max(12, Math.min(18, plateWidth * 0.09));
   const estimateWidth = (text: string) => text.length * baseFontSize * 0.6;
-  const maxWidth = containerWidth * 0.9;
   
   // Try fitting modes in order
   
   // 1. One-line full: "F. Lastname"
   const oneLineFull = `${firstInitial} ${lastNameFull}`;
-  if (estimateWidth(oneLineFull) <= maxWidth) {
+  if (estimateWidth(oneLineFull) <= innerPlateWidth) {
     return { mode: 'one-line-full', lines: [oneLineFull] };
   }
   
-  // 2. Two-line full: "F." on line 1, "Lastname" on line 2
-  if (estimateWidth(firstInitial) <= maxWidth && estimateWidth(lastNameFull) <= maxWidth) {
+  // 2. Two-line full: "F." on line 1, "Lastname" on line 2 (wraps only at spaces)
+  if (estimateWidth(firstInitial) <= innerPlateWidth && estimateWidth(lastNameFull) <= innerPlateWidth) {
     return { mode: 'two-line-full', lines: [firstInitial, lastNameFull] };
   }
   
-  // 3. One-line truncated: "F. Lastna..."
-  const availableForLastName = maxWidth - estimateWidth(firstInitial + ' ');
+  // 3. One-line truncated: "F. Lastna..." (end ellipsis only)
+  const availableForLastName = innerPlateWidth - estimateWidth(firstInitial + ' ');
   if (availableForLastName > estimateWidth('...')) {
     const maxLastNameChars = Math.floor(availableForLastName / (baseFontSize * 0.6)) - 3;
     if (maxLastNameChars > 0) {
@@ -130,9 +134,9 @@ function formatPlayerName(fullName: string, containerWidth: number, containerHei
     }
   }
   
-  // 4. Two-line truncated: "F." on line 1, "Lastna..." on line 2
-  if (estimateWidth(firstInitial) <= maxWidth) {
-    const maxLastNameChars = Math.floor(maxWidth / (baseFontSize * 0.6)) - 3;
+  // 4. Two-line truncated: "F." on line 1, "Lastna..." on line 2 (end ellipsis only)
+  if (estimateWidth(firstInitial) <= innerPlateWidth) {
+    const maxLastNameChars = Math.floor(innerPlateWidth / (baseFontSize * 0.6)) - 3;
     if (maxLastNameChars > 0) {
       const truncatedLastName = lastNameFull.substring(0, maxLastNameChars) + '...';
       return { mode: 'two-line-truncated', lines: [firstInitial, truncatedLastName] };
@@ -214,7 +218,10 @@ export default function PlayerCellInfo({
   // Calculate responsive sizes
   const badgeSize = Math.max(16, Math.min(24, containerSize.width * 0.15));
   const faceSize = Math.max(40, Math.min(80, containerSize.width * 0.6));
-  const nameFormat = formatPlayerName(playerName, containerSize.width, containerSize.height);
+  
+  // Name plate uses 94% of tile width (target: 92-96%)
+  const plateWidth = containerSize.width * 0.94;
+  const nameFormat = formatPlayerName(playerName, plateWidth, containerSize.height);
   
   // Calculate avatar positioning to avoid badge overlap
   const avatarOffset = isCorrect ? { marginTop: badgeSize * 0.3, marginLeft: -badgeSize * 0.2 } : {};
@@ -268,11 +275,14 @@ export default function PlayerCellInfo({
           />
         </div>
         
-        {/* Player name with dynamic fitting */}
+        {/* Player name with full-width plate */}
         <div 
-          className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-80 text-white text-center rounded border border-gray-600 flex flex-col items-center justify-center"
+          className="absolute bottom-0 bg-black bg-opacity-80 text-white text-center rounded border border-gray-600 flex flex-col items-center justify-center"
           style={{
-            padding: '4px 2px',
+            width: `${plateWidth}px`,
+            left: `${(containerSize.width - plateWidth) / 2}px`,
+            bottom: `${containerSize.width * 0.03}px`, // 3% bottom margin
+            padding: `4px ${plateWidth * 0.02}px`, // 2% horizontal padding
             minHeight: nameFormat.lines.length === 1 ? '24px' : '32px',
           }}
         >
@@ -281,7 +291,7 @@ export default function PlayerCellInfo({
               key={index}
               className="font-bold leading-tight"
               style={{
-                fontSize: `${Math.max(10, Math.min(14, containerSize.width * 0.08))}px`,
+                fontSize: `${Math.max(12, Math.min(18, plateWidth * 0.09))}px`,
                 lineHeight: '1.1',
               }}
               title={playerName}
