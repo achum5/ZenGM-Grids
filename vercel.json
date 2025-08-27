@@ -1,5 +1,5 @@
 {
   "functions": {
-    "server/index.ts": { "maxDuration": 60 }
+    "api/fetch-league.ts": { "maxDuration": 60 }
   }
 }
