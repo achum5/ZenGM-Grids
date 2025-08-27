@@ -52,15 +52,14 @@ function normalizeRemoteUrl(raw: string): string {
     const urlObj = new URL(url);
     
     // 1) Dropbox - convert all variants to dl.dropboxusercontent.com
-    if (['www.dropbox.com', 'dropbox.com', 'dl.dropbox.com'].includes(urlObj.hostname)) {
+    if (['www.dropbox.com', 'dropbox.com', 'dl.dropbox.com', 'dl.dropboxusercontent.com'].includes(urlObj.hostname)) {
       // Extract path and query
-      let path = urlObj.pathname;
       let searchParams = new URLSearchParams(urlObj.search);
       
       // Convert to dropboxusercontent.com domain
       urlObj.hostname = 'dl.dropboxusercontent.com';
       
-      // Ensure dl=1 and remove st parameter
+      // Ensure dl=1 and remove ephemeral st parameter
       searchParams.set('dl', '1');
       searchParams.delete('st');
       
@@ -187,7 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     if (!response.ok) {
       return res.status(400).json({ 
-        message: `We couldn't download that URL (${response.status} ${response.statusText}). Check the link is public and try again.` 
+        message: `We couldn't download that URL (remote ${response.status} ${response.statusText}). Make sure the link is public or use File Upload.` 
       });
     }
     
