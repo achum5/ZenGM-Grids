@@ -83,6 +83,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!url) return res.status(400).json({ error: "Missing ?url=" });
 
       const normalized = normalizeLeagueUrl(url);
+      const normURL = new URL(normalized);
+      const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(normURL.pathname);
+
       const remote = await fetch(normalized, {
         redirect: "follow",
         headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" }
@@ -94,9 +97,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .json({ error: `Fetch failed: remote ${remote.status} ${remote.statusText}` });
       }
 
-      res.setHeader("Content-Type", remote.headers.get("content-type") || "application/octet-stream");
+      const ct = remote.headers.get("content-type") || "application/octet-stream";
+      res.setHeader("Content-Type", ct);
       const ce = remote.headers.get("content-encoding");
-      if (ce) res.setHeader("X-Content-Encoding", ce);
+
+      // if Dropbox doesn't declare gzip, hint it based on extension or content-type
+      const isGzipType =
+        /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+
+      if (ce) {
+        res.setHeader("X-Content-Encoding", ce);
+      } else if (looksGzipByExt || isGzipType) {
+        res.setHeader("X-Content-Encoding", "gzip");
+      }
+
       res.setHeader("Cache-Control", "no-store");
 
       const nodeStream = Readable.fromWeb(remote.body as any);

@@ -1,0 +1,280 @@
+End-to-end uploads overhaul (dev + prod, json + gz)
+
+Goal:
+
+Links (Dropbox/GitHub/Gist/Drive) must work in Replit preview and Vercel.
+
+Local file uploads (.json and .gz) must work in both places.
+
+No more “Invalid JSON” or “Payload Too Large” errors.
+
+Summary of what to change
+
+Keep using a server endpoint /api/fetch-league for URL uploads only (proxy + normalization + gzip hint).
+
+Handle local files entirely in the browser (read file → decompress if needed → parse JSON). This avoids Vercel body-size limits and works in Replit too.
+
+Implement the same /api/fetch-league endpoint in both environments:
+
+Vercel Function at api/fetch-league.ts (prod)
+
+Express route in server/index.ts (dev)
+
+1) Shared client utilities (browser-side JSON/gzip handling)
+
+Add dependency:
+
+// package.json
+"dependencies": {
+  "fflate": "^0.8.2"
+}
+
+
+Create client/src/lib/leagueLoader.ts (or equivalent path in this repo):
+
+// client/src/lib/leagueLoader.ts
+import { gunzipSync } from "fflate";
+
+export function sniffIsGzip(bytes: Uint8Array) {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+export async function bytesFromUrl(inputUrl: string) {
+  const r = await fetch(`/api/fetch-league?url=${encodeURIComponent(inputUrl)}`);
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`URL fetch failed (${r.status}): ${text || r.statusText}`);
+  }
+  const hinted = r.headers.get("x-content-encoding");
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { bytes, hintedEncoding: (hinted as "gzip" | null) || null };
+}
+
+export async function bytesFromFile(file: File) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const hinted = file.name.toLowerCase().endsWith(".gz") ? "gzip" : null;
+  return { bytes, hintedEncoding: hinted as "gzip" | null };
+}
+
+export function toJson(bytes: Uint8Array, hinted?: "gzip" | null) {
+  const shouldGunzip = hinted === "gzip" || sniffIsGzip(bytes);
+  const raw = shouldGunzip ? gunzipSync(bytes) : bytes;
+  const text = new TextDecoder().decode(raw);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Invalid JSON data received");
+  }
+}
+
+
+Update the upload UI code (search repo for the uploader logic):
+
+URL flow: call bytesFromUrl(url) then toJson(...).
+
+Local file flow: STOP posting to /api/fetch-league. Instead use:
+
+import { bytesFromFile, bytesFromUrl, toJson } from "@/lib/leagueLoader";
+
+async function handleUrlSubmit(url: string) {
+  const { bytes, hintedEncoding } = await bytesFromUrl(url);
+  const league = toJson(bytes, hintedEncoding);
+  // use league data
+}
+
+async function handleFileSelected(file: File) {
+  const { bytes, hintedEncoding } = await bytesFromFile(file);
+  const league = toJson(bytes, hintedEncoding);
+  // use league data
+}
+
+
+Make sure your <input type="file"> accepts both:
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />
+
+2) URL proxy — Vercel Function (prod)
+
+Edit api/fetch-league.ts (keep the POST handler as-is; we won’t use it from the client anymore, but it can stay).
+Add gzip-hinting for .gz links (handles Dropbox not sending Content-Encoding):
+
+// after: const normalized = normalizeLeagueUrl(url);
+const normalized = normalizeLeagueUrl(url);
+const normURL = new URL(normalized);
+const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(normURL.pathname);
+
+// ...
+const ct = remote.headers.get("content-type") || "application/octet-stream";
+res.setHeader("Content-Type", ct);
+const ce = remote.headers.get("content-encoding");
+
+// if Dropbox doesn't declare gzip, hint it based on extension or content-type
+const isGzipType =
+  /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+
+if (ce) {
+  res.setHeader("X-Content-Encoding", ce);
+} else if (looksGzipByExt || isGzipType) {
+  res.setHeader("X-Content-Encoding", "gzip");
+}
+
+res.setHeader("Cache-Control", "no-store");
+
+
+Keep upstream fetch headers as:
+
+headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" }
+
+3) URL proxy — Express route for Replit preview (dev)
+
+In server/index.ts add both routes so dev behaves like prod:
+
+// server/index.ts (add near other imports)
+import formidable from "formidable";
+import { Readable } from "node:stream";
+
+// Reuse the same helpers you used in api/fetch-league.ts
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+  if (u.hostname.endsWith("dropbox.com")) {
+    u.hostname = "dl.dropboxusercontent.com";
+    u.searchParams.set("dl", "1");
+    u.searchParams.delete("st");
+  }
+  if (u.hostname === "dl.dropboxusercontent.com") u.searchParams.delete("st");
+  if (u.hostname === "github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 5 && parts[2] === "blob") {
+      const [user, repo, _blob, branch, ...rest] = parts;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+      u.search = "";
+    }
+  }
+  if (u.hostname === "gist.github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      const [user, hash] = parts;
+      u.hostname = "gist.githubusercontent.com";
+      u.pathname = `/${user}/${hash}/raw`;
+      u.search = "";
+    }
+  }
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc";
+    u.search = "";
+    u.searchParams.set("export", "download");
+    u.searchParams.set("id", id);
+  }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+app.get("/api/fetch-league", async (req, res) => {
+  try {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url) return res.status(400).json({ error: "Missing ?url=" });
+
+    const normalized = normalizeLeagueUrl(url);
+    const normURL = new URL(normalized);
+    const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(normURL.pathname);
+
+    const remote = await fetch(normalized, {
+      redirect: "follow",
+      headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
+    });
+
+    if (!remote.ok || !remote.body) {
+      return res
+        .status(remote.status || 502)
+        .json({ error: `Fetch failed: remote ${remote.status} ${remote.statusText}` });
+    }
+
+    const ct = remote.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+    const ce = remote.headers.get("content-encoding");
+    const isGzipType =
+      /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+    if (ce) res.setHeader("X-Content-Encoding", ce);
+    else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+    res.setHeader("Cache-Control", "no-store");
+
+    const nodeStream = Readable.fromWeb(remote.body as any);
+    nodeStream.pipe(res);
+  } catch (e: any) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// Optional: keep POST to mirror prod, though client won't use it now
+app.post("/api/fetch-league", async (req, res) => {
+  try {
+    const ct = req.headers["content-type"] || "";
+    if (typeof ct === "string" && ct.includes("multipart/form-data")) {
+      const form = formidable({ multiples: false, keepExtensions: true });
+      const { files } = await new Promise<any>((resolve, reject) => {
+        form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
+      });
+      const fileObj = (files as any).file || (files as any).upload || Object.values(files)[0];
+      if (!fileObj) return res.status(400).json({ error: "No file provided" });
+      const f = Array.isArray(fileObj) ? fileObj[0] : fileObj;
+      const filepath = f.filepath || f.path;
+      const data = await fsp.readFile(filepath);
+      res.setHeader("Content-Type", "application/octet-stream");
+      if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) {
+        res.setHeader("X-Content-Encoding", "gzip");
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.status(200).send(Buffer.from(data));
+    } else {
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => resolve());
+        req.on("error", reject);
+      });
+      const data = Buffer.concat(chunks);
+      res.setHeader("Content-Type", "application/octet-stream");
+      if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) {
+        res.setHeader("X-Content-Encoding", "gzip");
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.status(200).send(data);
+    }
+  } catch (e: any) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+This ensures the same /api/fetch-league path exists in Replit dev and Vercel prod, so the front-end works in both.
+
+4) Keep vercel.json minimal
+{
+  "functions": {
+    "api/**": { "maxDuration": 60 }
+  }
+}
+
+5) Acceptance tests
+
+On Replit preview and on Vercel:
+
+URL – Dropbox .gz: paste your Dom.gz link → should load (function hints gzip).
+
+URL – GitHub raw JSON → should parse.
+
+Local .json (large) → parse client-side immediately, no server call.
+
+Local .gz (large) → parse client-side; no payload errors.
+
+Errors show remote status (e.g., remote 403 Forbidden) if the source blocks.
+
+Pass criteria: No “Invalid JSON” and no “FUNCTION_PAYLOAD_TOO_LARGE”.
+
+If any filenames are different (e.g., your uploader component path), just adapt the import path for leagueLoader.ts. The agent can search for the existing POST to /api/fetch-league and replace it with the bytesFromFile flow.

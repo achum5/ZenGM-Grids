@@ -8,6 +8,7 @@ import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { bytesFromUrl, bytesFromFile, toJson } from "@/lib/leagueLoader";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 
 interface FileUploadProps {
@@ -26,51 +27,31 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
-      let fetchResponse: Response;
+      let bytes: Uint8Array;
+      let hintedEncoding: "gzip" | null;
       
       if (typeof fileOrUrl === 'string') {
-        // URL upload via fetch-league proxy
-        fetchResponse = await fetch(`/api/fetch-league?url=${encodeURIComponent(fileOrUrl)}`);
+        // URL upload - use client-side loader
+        const result = await bytesFromUrl(fileOrUrl);
+        bytes = result.bytes;
+        hintedEncoding = result.hintedEncoding;
       } else {
-        // File upload via fetch-league proxy
-        const formData = new FormData();
-        formData.append("file", fileOrUrl);
-        fetchResponse = await fetch("/api/fetch-league", {
-          method: "POST",
-          body: formData,
-        });
+        // File upload - use client-side loader
+        const result = await bytesFromFile(fileOrUrl);
+        bytes = result.bytes;
+        hintedEncoding = result.hintedEncoding;
       }
       
-      if (!fetchResponse.ok) {
-        const error = await fetchResponse.text();
-        throw new Error(error || "Upload failed");
-      }
+      // Parse JSON client-side (decompresses if needed)
+      const league = toJson(bytes, hintedEncoding);
       
-      // Get the raw bytes and encoding info
-      const data = new Uint8Array(await fetchResponse.arrayBuffer());
-      const encoding = fetchResponse.headers.get("x-content-encoding");
-      
-      // Now process the raw bytes through the existing upload processing
-      let processedData: any;
-      let processedBlob: Blob;
-      
-      if (encoding === "gzip") {
-        // It's gzipped, create blob with gzip data
-        processedBlob = new Blob([data], { type: 'application/gzip' });
-      } else {
-        // It's regular JSON
-        try {
-          const textData = new TextDecoder().decode(data);
-          JSON.parse(textData); // Validate JSON
-          processedBlob = new Blob([data], { type: 'application/json' });
-        } catch {
-          throw new Error("Invalid JSON data received");
-        }
-      }
+      // Create a blob from the parsed JSON to send to upload processor
+      const jsonString = JSON.stringify(league);
+      const processedBlob = new Blob([jsonString], { type: 'application/json' });
       
       // Process through existing upload endpoint to parse players
       const formData = new FormData();
-      formData.append("file", processedBlob, typeof fileOrUrl === 'string' ? 'league-file' : fileOrUrl.name);
+      formData.append("file", processedBlob, typeof fileOrUrl === 'string' ? 'league-file.json' : fileOrUrl.name);
       
       const processResponse = await fetch("/api/upload", {
         method: "POST",
@@ -162,7 +143,11 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    // Accept any file - let backend validate content
+    accept: {
+      'application/json': ['.json'],
+      'application/gzip': ['.gz'],
+      'application/x-gzip': ['.gz'],
+    },
     multiple: false,
   });
 
@@ -197,7 +182,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               }`}
               data-testid="upload-dropzone"
             >
-              <input {...getInputProps()} data-testid="input-file" />
+              <input {...getInputProps()} data-testid="input-file" accept=".json,.gz,application/gzip,application/x-gzip" />
               <CloudUpload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-600 dark:text-gray-300 mb-2">
                 {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
