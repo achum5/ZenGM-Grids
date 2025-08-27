@@ -26,32 +26,63 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
+      let fetchResponse: Response;
+      
       if (typeof fileOrUrl === 'string') {
-        // URL upload
-        const response = await fetch("/api/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: fileOrUrl }),
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "URL upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+        // URL upload via fetch-league proxy
+        fetchResponse = await fetch(`/api/fetch-league?url=${encodeURIComponent(fileOrUrl)}`);
       } else {
-        // File upload
+        // File upload via fetch-league proxy
         const formData = new FormData();
         formData.append("file", fileOrUrl);
-        const response = await fetch("/api/upload", {
+        fetchResponse = await fetch("/api/fetch-league", {
           method: "POST",
           body: formData,
         });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
       }
+      
+      if (!fetchResponse.ok) {
+        const error = await fetchResponse.text();
+        throw new Error(error || "Upload failed");
+      }
+      
+      // Get the raw bytes and encoding info
+      const data = new Uint8Array(await fetchResponse.arrayBuffer());
+      const encoding = fetchResponse.headers.get("x-content-encoding");
+      
+      // Now process the raw bytes through the existing upload processing
+      let processedData: any;
+      let processedBlob: Blob;
+      
+      if (encoding === "gzip") {
+        // It's gzipped, create blob with gzip data
+        processedBlob = new Blob([data], { type: 'application/gzip' });
+      } else {
+        // It's regular JSON
+        try {
+          const textData = new TextDecoder().decode(data);
+          JSON.parse(textData); // Validate JSON
+          processedBlob = new Blob([data], { type: 'application/json' });
+        } catch {
+          throw new Error("Invalid JSON data received");
+        }
+      }
+      
+      // Process through existing upload endpoint to parse players
+      const formData = new FormData();
+      formData.append("file", processedBlob, typeof fileOrUrl === 'string' ? 'league-file' : fileOrUrl.name);
+      
+      const processResponse = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!processResponse.ok) {
+        const error = await processResponse.json();
+        throw new Error(error.message || "Processing failed");
+      }
+      
+      return processResponse.json() as Promise<FileUploadData>;
     },
     onSuccess: (data) => {
       setUploadData(data);

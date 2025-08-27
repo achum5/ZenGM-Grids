@@ -2,6 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
+import formidable from "formidable";
 
 import { z } from "zod";
 import { gunzip } from "zlib";
@@ -167,6 +168,81 @@ interface MulterRequest extends Request {
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// URL normalization for Vercel fetch-league endpoint
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+
+  // Dropbox share -> direct
+  if (u.hostname.endsWith("dropbox.com")) {
+    u.hostname = "dl.dropboxusercontent.com";
+    u.searchParams.set("dl", "1");
+    u.searchParams.delete("st");
+  }
+  if (u.hostname === "dl.dropboxusercontent.com") {
+    u.searchParams.delete("st");
+  }
+
+  // GitHub blob -> raw
+  if (u.hostname === "github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts[2] === "blob" && parts.length >= 5) {
+      const [user, repo, _blob, branch, ...rest] = parts;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+      u.search = "";
+    }
+  }
+
+  // Gist -> raw
+  if (u.hostname === "gist.github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      const [user, hash] = parts;
+      u.hostname = "gist.githubusercontent.com";
+      u.pathname = `/${user}/${hash}/raw`;
+      u.search = "";
+    }
+  }
+
+  // Google Drive file -> direct
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc";
+    u.search = "";
+    u.searchParams.set("export", "download");
+    u.searchParams.set("id", id);
+  }
+
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+function sniffIsGzip(bytes: Uint8Array): boolean {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+async function parseMultipart(req: any): Promise<Uint8Array> {
+  const form = formidable({ multiples: false, keepExtensions: true });
+  const { files } = await new Promise<any>((resolve, reject) => {
+    form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
+  });
+
+  const fileObj = files.file || files.upload || Object.values(files)[0];
+  if (!fileObj) throw new Error("No file provided");
+
+  // formidable v3+ may return an array
+  const f = Array.isArray(fileObj) ? fileObj[0] : fileObj;
+  const filepath = f.filepath || f.path;
+
+  const fs = await import('fs');
+  const data = await fs.promises.readFile(filepath);
+  // Clean up temp file just in case
+  fs.promises.unlink(filepath).catch(() => {});
+  return new Uint8Array(data);
+}
+
 // Validation schemas
 const searchQuerySchema = z.object({
   q: z.string().min(1),
@@ -179,6 +255,82 @@ const answerSchema = z.object({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // Vercel-compatible fetch-league endpoint for URL and file proxy
+  app.get("/api/fetch-league", async (req, res) => {
+    const url = typeof req.query.url === 'string' ? req.query.url : '';
+    if (!url) {
+      return res.status(400).json({ error: "Missing ?url=" });
+    }
+
+    try {
+      const normalized = normalizeLeagueUrl(url);
+      const remote = await fetch(normalized, {
+        redirect: "follow",
+        headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
+      });
+
+      if (!remote.ok || !remote.body) {
+        return res.status(remote.status || 502).json({
+          error: `Fetch failed: remote ${remote.status} ${remote.statusText}`
+        });
+      }
+
+      res.setHeader("Content-Type", remote.headers.get("content-type") || "application/octet-stream");
+      const ce = remote.headers.get("content-encoding");
+      if (ce) res.setHeader("X-Content-Encoding", ce);
+      res.setHeader("Cache-Control", "no-store");
+
+      // Stream the response body
+      if (remote.body) {
+        const reader = remote.body.getReader();
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(Buffer.from(value));
+            }
+            res.end();
+          } catch (error) {
+            res.end();
+          }
+        };
+        await pump();
+      } else {
+        res.end();
+      }
+    } catch (e: any) {
+      res.status(400).json({ error: String(e?.message || e) });
+    }
+  });
+
+  app.post("/api/fetch-league", async (req, res) => {
+    try {
+      const ct = req.headers["content-type"] || "";
+      let bytes: Uint8Array;
+
+      if (typeof ct === "string" && ct.includes("multipart/form-data")) {
+        bytes = await parseMultipart(req);
+      } else {
+        // Raw octet-stream
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => {
+          req.on("data", (c) => chunks.push(c));
+          req.on("end", () => resolve());
+          req.on("error", reject);
+        });
+        bytes = new Uint8Array(Buffer.concat(chunks));
+      }
+
+      res.setHeader("Content-Type", "application/octet-stream");
+      if (sniffIsGzip(bytes)) res.setHeader("X-Content-Encoding", "gzip");
+      res.setHeader("Cache-Control", "no-store");
+      res.status(200).send(Buffer.from(bytes));
+    } catch (err: any) {
+      res.status(400).json({ error: String(err?.message || err) });
+    }
+  });
   
   // Debug endpoint to manually process league-level achievements on existing data
   app.post("/api/debug/process-league-achievements", async (req, res) => {
