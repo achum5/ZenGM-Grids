@@ -120,17 +120,8 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       return;
     }
     
-    // Auto-convert Dropbox www URLs to dl URLs
-    let processedUrl = urlInput.trim();
-    if (processedUrl.includes("www.dropbox.com")) {
-      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
-      // Also ensure the dl=0 parameter is set to dl=1 for direct download
-      if (processedUrl.includes("dl=0")) {
-        processedUrl = processedUrl.replace("dl=0", "dl=1");
-      } else if (!processedUrl.includes("dl=1")) {
-        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
-      }
-    }
+    // No client-side URL processing - let serverless function handle all normalization
+    const processedUrl = urlInput.trim();
     
     setUploadedFile(null);
     uploadMutation.mutate(processedUrl);
@@ -231,8 +222,11 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   Enter League File URL
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  Paste a direct raw file link (GitHub Raw, Dropbox dl=1, S3, etc.)
+                  Paste a league file URL. GitHub Raw links, Dropbox dl=1, Google Drive direct links work best.
                 </p>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border">
+                  <strong>Tip:</strong> Regular 'share pages' won't work. Use GitHub Raw links, Dropbox links with dl=1, or Google Drive direct links.
+                </div>
               </div>
               <div className="flex gap-2">
                 <Input

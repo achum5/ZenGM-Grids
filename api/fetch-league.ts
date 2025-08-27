@@ -44,6 +44,81 @@ function isPrivateIP(hostname: string): boolean {
          BLOCKED_HOSTS.includes(hostname.toLowerCase());
 }
 
+// Normalize common share page links to direct download links
+function normalizeRemoteUrl(raw: string): string {
+  let url = raw.trim();
+  
+  try {
+    const urlObj = new URL(url);
+    
+    // 1) Dropbox - convert all variants to dl.dropboxusercontent.com
+    if (['www.dropbox.com', 'dropbox.com', 'dl.dropbox.com'].includes(urlObj.hostname)) {
+      // Extract path and query
+      let path = urlObj.pathname;
+      let searchParams = new URLSearchParams(urlObj.search);
+      
+      // Convert to dropboxusercontent.com domain
+      urlObj.hostname = 'dl.dropboxusercontent.com';
+      
+      // Ensure dl=1 and remove st parameter
+      searchParams.set('dl', '1');
+      searchParams.delete('st');
+      
+      urlObj.search = searchParams.toString();
+      url = urlObj.toString();
+    }
+    
+    // 2) GitHub - convert blob to raw
+    else if (urlObj.hostname === 'github.com' && urlObj.pathname.includes('/blob/')) {
+      // Convert /blob/ to raw.githubusercontent.com
+      const pathParts = urlObj.pathname.split('/');
+      if (pathParts.length >= 5) {
+        const [, user, repo, , branch, ...filePath] = pathParts;
+        url = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${filePath.join('/')}`;
+      }
+    }
+    
+    // GitHub Gist - convert page to raw
+    else if (urlObj.hostname === 'gist.github.com') {
+      const pathParts = urlObj.pathname.split('/');
+      if (pathParts.length >= 3) {
+        const [, user, id] = pathParts;
+        url = `https://gist.githubusercontent.com/${user}/${id}/raw`;
+      }
+    }
+    
+    // 3) Google Drive - convert view/open to direct download
+    else if (urlObj.hostname === 'drive.google.com') {
+      let fileId = '';
+      
+      // Extract file ID from different URL formats
+      if (urlObj.pathname.includes('/file/d/')) {
+        const match = urlObj.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (match) fileId = match[1];
+      } else if (urlObj.pathname === '/open') {
+        fileId = urlObj.searchParams.get('id') || '';
+      }
+      
+      if (fileId) {
+        url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      }
+    }
+    
+    // 4) OneDrive/SharePoint - ensure download=1
+    else if (urlObj.hostname.includes('sharepoint.com') || urlObj.hostname.includes('1drv.ms')) {
+      const searchParams = new URLSearchParams(urlObj.search);
+      searchParams.set('download', '1');
+      urlObj.search = searchParams.toString();
+      url = urlObj.toString();
+    }
+    
+    return url;
+  } catch (error) {
+    // If URL parsing fails, return original
+    return raw;
+  }
+}
+
 function isValidUrl(urlString: string): boolean {
   try {
     const url = new URL(urlString);
@@ -98,17 +173,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ message: 'URL parameter is required' });
   }
   
-  // Validate URL security
-  if (!isValidUrl(url)) {
+  // Normalize URL (convert share pages to direct download links)
+  const normalizedUrl = normalizeRemoteUrl(url);
+  
+  // Validate URL security after normalization
+  if (!isValidUrl(normalizedUrl)) {
     return res.status(400).json({ message: 'That URL can\'t be fetched from the server. Please use a public HTTPS link or use File Upload.' });
   }
   
   try {
     // Fetch the remote resource
-    const response = await fetchWithTimeout(url, TIMEOUT_MS);
+    const response = await fetchWithTimeout(normalizedUrl, TIMEOUT_MS);
     
     if (!response.ok) {
-      return res.status(400).json({ message: 'We couldn\'t download that URL. Check the link is public and try again.' });
+      return res.status(400).json({ 
+        message: `We couldn't download that URL (${response.status} ${response.statusText}). Check the link is public and try again.` 
+      });
     }
     
     // Check content length

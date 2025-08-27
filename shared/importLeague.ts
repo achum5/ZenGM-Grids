@@ -84,6 +84,7 @@ function validateLeagueData(data: any): void {
 // Main import function
 export async function loadLeague(source: ImportSource): Promise<any> {
   let buffer: ArrayBuffer;
+  let needsDecompression = false;
   
   // Get raw bytes based on source type
   if (source.type === 'file' && source.file) {
@@ -106,6 +107,12 @@ export async function loadLeague(source: ImportSource): Promise<any> {
     }
     
     buffer = await response.arrayBuffer();
+    
+    // Check if serverless function indicated gzip compression
+    const gzipHeader = response.headers.get('X-Content-Encoding');
+    if (gzipHeader === 'gzip') {
+      needsDecompression = true;
+    }
   } else {
     throw new Error("Invalid import source");
   }
@@ -115,9 +122,14 @@ export async function loadLeague(source: ImportSource): Promise<any> {
     throw new Error(ImportErrors.TOO_LARGE);
   }
   
-  // Detect and handle compression
+  // Detect compression by magic bytes if not already detected by header
+  if (!needsDecompression) {
+    needsDecompression = isGzipped(buffer);
+  }
+  
+  // Decompress if needed
   let finalBuffer = buffer;
-  if (isGzipped(buffer)) {
+  if (needsDecompression) {
     finalBuffer = await decompressGzip(buffer);
     
     // Check decompressed size
