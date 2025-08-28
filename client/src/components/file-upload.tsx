@@ -8,7 +8,7 @@ import { useDropzone } from "react-dropzone";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { bytesFromUrl, bytesFromFile, parseLeagueBytes } from "@/lib/leagueIO";
+import { fetchLeagueBytesViaProxy, readLocalFileBytes, parseLeague } from "@/lib/leagueIO";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 
 interface FileUploadProps {
@@ -30,13 +30,13 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       let leagueData: any;
       
       if (typeof fileOrUrl === 'string') {
-        // URL upload - use client-side processing
-        const bytes = await bytesFromUrl(fileOrUrl);
-        leagueData = parseLeagueBytes(bytes, fileOrUrl);
+        // URL upload - use proxy to avoid CORS issues
+        const { bytes, hintedEncoding } = await fetchLeagueBytesViaProxy(fileOrUrl);
+        leagueData = parseLeague(bytes, hintedEncoding);
       } else {
-        // File upload - use client-side processing
-        const bytes = await bytesFromFile(fileOrUrl);
-        leagueData = parseLeagueBytes(bytes, fileOrUrl.name);
+        // File upload - process entirely in browser
+        const { bytes, hintedEncoding } = await readLocalFileBytes(fileOrUrl);
+        leagueData = parseLeague(bytes, hintedEncoding);
       }
 
       // Process the league data to extract player information

@@ -1,0 +1,202 @@
+“Fix infinite loading in preview + make prod work”
+
+Goals
+
+In Replit preview, stop infinite loading for URL and local file imports.
+
+Add a dev Express route /api/fetch-league that normalizes links and streams bytes (no CORS).
+
+(Later on Vercel, we’ll add the same path as a function; client code won’t change.)
+
+Local files are parsed in the browser (no POST).
+
+1) Add Express routes (dev preview)
+
+Edit server/index.ts (or server/routes.ts if that’s where routes live):
+
+// TOP-LEVEL imports (add if missing)
+import { Readable } from "node:stream";
+
+// Put these helpers near the top of the file
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+
+  // Dropbox — keep tokens like st/rlkey; just force direct download
+  if (
+    u.hostname === "www.dropbox.com" ||
+    u.hostname === "dropbox.com" ||
+    u.hostname === "dl.dropbox.com" ||
+    u.hostname.endsWith("dropbox.com")
+  ) {
+    u.hostname = "dl.dropboxusercontent.com";
+    u.searchParams.set("dl", "1");
+  }
+
+  // GitHub blob -> raw
+  if (u.hostname === "github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 5 && parts[2] === "blob") {
+      const [user, repo, _blob, branch, ...rest] = parts;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+      u.search = "";
+    }
+  }
+
+  // Gist page -> raw
+  if (u.hostname === "gist.github.com") {
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      const [user, hash] = parts;
+      u.hostname = "gist.githubusercontent.com";
+      u.pathname = `/${user}/${hash}/raw`;
+      u.search = "";
+    }
+  }
+
+  // Google Drive file -> direct
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc";
+    u.search = "";
+    u.searchParams.set("export", "download");
+    u.searchParams.set("id", id);
+  }
+
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+// Health check
+app.get("/api/ping", (_req, res) => res.json({ ok: true, where: "express-dev" }));
+
+// URL proxy — dev preview
+app.get("/api/fetch-league", async (req, res) => {
+  try {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url) return res.status(400).json({ error: "Missing ?url=" });
+
+    const normalized = normalizeLeagueUrl(url);
+    const normURL = new URL(normalized);
+    const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(normURL.pathname);
+
+    const upstream = await fetch(normalized, {
+      redirect: "follow",
+      headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      return res
+        .status(upstream.status || 502)
+        .json({ error: `Fetch failed: remote ${upstream.status} ${upstream.statusText}` });
+    }
+
+    const ct = upstream.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+
+    // Hint gzip if host doesn’t label it
+    const ce = upstream.headers.get("content-encoding");
+    const isGzipType =
+      /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+    if (ce) res.setHeader("X-Content-Encoding", ce);
+    else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+
+    res.setHeader("Cache-Control", "no-store");
+    Readable.fromWeb(upstream.body as any).pipe(res);
+  } catch (e: any) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+
+Test in preview: open /api/ping in the browser (should show JSON).
+Then open /api/fetch-league?url=<your dropbox link> — you should see a download stream (not HTML error).
+
+2) Add a tiny client helper for bytes → JSON (handles .gz)
+
+Install once: npm i fflate
+
+Create client/src/lib/leagueIO.ts:
+
+import { gunzipSync } from "fflate";
+
+export function sniffIsGzip(bytes: Uint8Array) {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+export async function fetchLeagueBytesViaProxy(rawUrl: string) {
+  const r = await fetch(`/api/fetch-league?url=${encodeURIComponent(rawUrl)}`);
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`URL fetch failed (${r.status}): ${text || r.statusText}`);
+  }
+  const hinted = r.headers.get("x-content-encoding");
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { bytes, hintedEncoding: (hinted as "gzip" | null) || null };
+}
+
+export async function readLocalFileBytes(file: File) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const hinted = file.name.toLowerCase().endsWith(".gz") ? "gzip" : null;
+  return { bytes, hintedEncoding: hinted as "gzip" | null };
+}
+
+export function parseLeague(bytes: Uint8Array, hinted?: "gzip" | null) {
+  const shouldGunzip = hinted === "gzip" || sniffIsGzip(bytes);
+  const raw = shouldGunzip ? gunzipSync(bytes) : bytes;
+  const text = new TextDecoder().decode(raw);
+  return JSON.parse(text);
+}
+
+3) Use the helper in your upload UI and stop the spinner in finally{}
+
+In your uploader component (where the infinite load happens), ensure you:
+
+Always call the proxy for URLs:
+
+import { fetchLeagueBytesViaProxy, readLocalFileBytes, parseLeague } from "@/lib/leagueIO";
+
+async function onSubmitUrl(inputUrl: string) {
+  setLoading(true);
+  try {
+    const { bytes, hintedEncoding } = await fetchLeagueBytesViaProxy(inputUrl);
+    const league = parseLeague(bytes, hintedEncoding);
+    // ...continue with league
+  } catch (e:any) {
+    toast.error(e.message || "Failed to load URL");
+  } finally {
+    setLoading(false); // <<< prevents infinite spinner even on error
+  }
+}
+
+async function onSelectFile(file: File) {
+  setLoading(true);
+  try {
+    const { bytes, hintedEncoding } = await readLocalFileBytes(file);
+    const league = parseLeague(bytes, hintedEncoding);
+    // ...continue with league
+  } catch (e:any) {
+    toast.error(e.message || "Failed to load file");
+  } finally {
+    setLoading(false); // <<< prevents infinite spinner even on error
+  }
+}
+
+
+Make sure your file input accepts gzip:
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />
+
+4) Quick checklist for you
+
+In preview, visit /api/ping → should show { ok: true, where: "express-dev" }.
+
+Paste your Dropbox .gz link in the app → should load now (no CORS, no HTML page).
+
+Upload a local .json and .gz → both should load.
+
+If there’s any error, the toast should fire and the spinner should stop.
