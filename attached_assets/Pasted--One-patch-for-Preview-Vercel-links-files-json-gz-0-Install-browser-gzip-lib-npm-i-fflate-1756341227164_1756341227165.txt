@@ -1,0 +1,296 @@
+“One patch for Preview + Vercel (links + files, json + gz)”
+0) Install browser gzip lib
+npm i fflate
+
+1) Client loader (browser-only import like BBGM)
+
+Create client/src/lib/leagueIO.ts:
+
+import { gunzipSync } from "fflate";
+
+// Normalize host links to direct-file URLs
+export function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+
+  // Dropbox — keep tokens (st/rlkey/etc), just force direct download
+  if (
+    u.hostname === "www.dropbox.com" ||
+    u.hostname === "dropbox.com" ||
+    u.hostname === "dl.dropbox.com" ||
+    u.hostname.endsWith("dropbox.com")
+  ) {
+    u.hostname = "dl.dropboxusercontent.com";
+    u.searchParams.set("dl", "1");
+  }
+
+  // GitHub "blob" -> raw
+  if (u.hostname === "github.com") {
+    const p = u.pathname.split("/").filter(Boolean);
+    if (p.length >= 5 && p[2] === "blob") {
+      const [user, repo, _blob, branch, ...rest] = p;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+      u.search = "";
+    }
+  }
+
+  // Gist page -> raw
+  if (u.hostname === "gist.github.com") {
+    const p = u.pathname.split("/").filter(Boolean);
+    if (p.length >= 2) {
+      const [user, hash] = p;
+      u.hostname = "gist.githubusercontent.com";
+      u.pathname = `/${user}/${hash}/raw`;
+      u.search = "";
+    }
+  }
+
+  // Google Drive file -> direct
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc";
+    u.search = "";
+    u.searchParams.set("export", "download");
+    u.searchParams.set("id", id);
+  }
+
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+export function isGzip(bytes: Uint8Array) {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+// URL → bytes via our API proxy (same path in preview & Vercel)
+export async function fetchLeagueBytes(rawUrl: string) {
+  const r = await fetch(`/api/fetch-league?url=${encodeURIComponent(rawUrl)}`);
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`URL fetch failed (${r.status}): ${text || r.statusText}`);
+  }
+  const hinted = r.headers.get("x-content-encoding");
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { bytes, hintedEncoding: (hinted as "gzip" | null) || null };
+}
+
+// Local file → bytes (no server POSTs)
+export async function fileToBytes(file: File) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const hinted = file.name.toLowerCase().endsWith(".gz") ? "gzip" : null;
+  return { bytes, hintedEncoding: (hinted as "gzip" | null) };
+}
+
+// Bytes → JSON (handles .gz)
+export function parseLeague(bytes: Uint8Array, hinted?: "gzip" | null) {
+  const raw = hinted === "gzip" || isGzip(bytes) ? gunzipSync(bytes) : bytes;
+  const text = new TextDecoder().decode(raw);
+  return JSON.parse(text);
+}
+
+
+Update your upload component to use it and always stop the spinner:
+
+import { fetchLeagueBytes, fileToBytes, parseLeague } from "@/lib/leagueIO";
+
+async function onUrlSubmit(url: string) {
+  setLoading(true);
+  try {
+    const { bytes, hintedEncoding } = await fetchLeagueBytes(url);
+    const league = parseLeague(bytes, hintedEncoding);
+    // use `league` directly in app state (do NOT POST huge JSON to server)
+  } catch (e: any) {
+    toast.error(e.message || "Failed to load URL");
+  } finally {
+    setLoading(false);  // <- prevents infinite spinner
+  }
+}
+
+async function onFileChosen(file: File) {
+  setLoading(true);
+  try {
+    const { bytes, hintedEncoding } = await fileToBytes(file);
+    const league = parseLeague(bytes, hintedEncoding);
+    // use `league` directly in app state (do NOT POST huge JSON to server)
+  } catch (e: any) {
+    toast.error(e.message || "Failed to load file");
+  } finally {
+    setLoading(false);  // <- prevents infinite spinner
+  }
+}
+
+
+And make sure your input accepts gz:
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />
+
+2) Dev (Replit) API route — place before the SPA catch-all
+
+In server/index.ts (or your main Express file), register API routes before vite/static/app.get("*").
+
+Add near the top:
+
+import { Readable } from "node:stream";
+
+app.get("/api/ping", (_req, res) => res.json({ ok: true, where: "express-dev" }));
+
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+function normalizeLeagueUrl(input: string): string {
+  // paste the exact normalizeLeagueUrl from client (same logic)
+  // (you can import it if you share code, or duplicate it here)
+  const u = new URL(input.trim());
+  if (u.hostname === "www.dropbox.com" || u.hostname === "dropbox.com" || u.hostname === "dl.dropbox.com" || u.hostname.endsWith("dropbox.com")) { u.hostname = "dl.dropboxusercontent.com"; u.searchParams.set("dl", "1"); }
+  if (u.hostname === "github.com") { const p = u.pathname.split("/").filter(Boolean); if (p.length >= 5 && p[2] === "blob") { const [user, repo, _b, branch, ...rest] = p; u.hostname="raw.githubusercontent.com"; u.pathname=`/${user}/${repo}/${branch}/${rest.join("/")}`; u.search=""; } }
+  if (u.hostname === "gist.github.com") { const p = u.pathname.split("/").filter(Boolean); if (p.length >= 2) { const [user, hash] = p; u.hostname="gist.githubusercontent.com"; u.pathname=`/${user}/${hash}/raw`; u.search=""; } }
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) { const id = u.pathname.split("/")[3]; u.pathname="/uc"; u.search=""; u.searchParams.set("export","download"); u.searchParams.set("id", id); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+app.get("/api/fetch-league", async (req, res) => {
+  try {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url) return res.status(400).json({ error: "Missing ?url=" });
+
+    const normalized = normalizeLeagueUrl(url);
+    const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
+
+    const upstream = await fetch(normalized, {
+      redirect: "follow",
+      headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      return res
+        .status(upstream.status || 502)
+        .json({ error: `Fetch failed: remote ${upstream.status} ${upstream.statusText}` });
+    }
+
+    const ct = upstream.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+
+    const ce = upstream.headers.get("content-encoding");
+    const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+    if (ce) res.setHeader("X-Content-Encoding", ce);
+    else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+
+    res.setHeader("Cache-Control", "no-store");
+    Readable.fromWeb(upstream.body as any).pipe(res);
+  } catch (e: any) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+});
+
+// IMPORTANT: only after the routes above, mount vite/static, then the "*" handler
+
+
+Quick preview check:
+
+Visit /api/ping → must return JSON (not your index.html).
+
+Visit /api/fetch-league?url=<dropbox link> → should download/stream bytes.
+
+3) Vercel function for production (same path, same behavior)
+
+Create api/fetch-league.ts at the repo root:
+
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { Readable } from "node:stream";
+
+export const config = { maxDuration: 60 };
+
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+  if (u.hostname === "www.dropbox.com" || u.hostname === "dropbox.com" || u.hostname === "dl.dropbox.com" || u.hostname.endsWith("dropbox.com")) { u.hostname="dl.dropboxusercontent.com"; u.searchParams.set("dl","1"); }
+  if (u.hostname === "github.com") { const p = u.pathname.split("/").filter(Boolean); if (p.length >= 5 && p[2] === "blob") { const [user, repo, _b, branch, ...rest] = p; u.hostname="raw.githubusercontent.com"; u.pathname=`/${user}/${repo}/${branch}/${rest.join("/")}`; u.search=""; } }
+  if (u.hostname === "gist.github.com") { const p = u.pathname.split("/").filter(Boolean); if (p.length >= 2) { const [user, hash] = p; u.hostname="gist.githubusercontent.com"; u.pathname=`/${user}/${hash}/raw`; u.search=""; } }
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) { const id = u.pathname.split("/")[3]; u.pathname="/uc"; u.search=""; u.searchParams.set("export","download"); u.searchParams.set("id", id); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url) return res.status(400).json({ error: "Missing ?url=" });
+
+    const normalized = normalizeLeagueUrl(url);
+    const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
+
+    const upstream = await fetch(normalized, {
+      redirect: "follow",
+      headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      return res
+        .status(upstream.status || 502)
+        .json({ error: `Fetch failed: remote ${upstream.status} ${upstream.statusText}` });
+    }
+
+    const ct = upstream.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+
+    const ce = upstream.headers.get("content-encoding");
+    const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+    if (ce) res.setHeader("X-Content-Encoding", ce);
+    else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+
+    res.setHeader("Cache-Control", "no-store");
+    Readable.fromWeb(upstream.body as any).pipe(res);
+  } catch (e: any) {
+    res.status(400).json({ error: String(e?.message || e) });
+  }
+}
+
+
+And vercel.json:
+
+{
+  "functions": {
+    "api/**": { "maxDuration": 60 }
+  }
+}
+
+
+Build settings in Vercel:
+
+Framework: Vite
+
+Build command: npm run build
+
+Output directory: dist/public
+
+4) Important behavior changes
+
+Do NOT POST the giant league object to your server anymore (that caused PayloadTooLarge). Keep it all in the browser like BBGM.
+
+For URLs, the client always calls /api/fetch-league?url=... (same path in dev & prod), reads bytes, and uses parseLeague(...).
+
+For local files, read with file.arrayBuffer() and parse in the browser.
+
+5) Quick test checklist
+
+Replit preview
+
+Open /api/ping → { ok: true, where: "express-dev" }
+
+Open /api/fetch-league?url=<your dropbox .gz> → streams bytes (not HTML)
+
+In the app: paste the Dropbox/GitHub/Drive link → loads
+
+Upload .json and .gz files → load
+
+Spinner stops even on errors
+
+Vercel (after push)
+
+/api/fetch-league?url=<same link> → streams bytes
+
+In the app: same link + local files → load without “Invalid JSON” or 413 errors
