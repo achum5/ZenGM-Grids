@@ -2002,8 +2002,6 @@ app.get("/api/debug/matches", async (req, res) => {
     }
   });
 
-
-
-  // CORS proxy for URL downloads\n  app.get(\"/api/download\", async (req, res) => {\n    const url = req.query.url as string;\n    if (!url) {\n      return res.status(400).json({ message: \"missing url parameter\" });\n    }\n\n    try {\n      const response = await fetch(url);\n      if (!response.ok) {\n        return res.status(502).json({ \n          message: `remote ${response.status} ${response.statusText}` \n        });\n      }\n\n      const buffer = Buffer.from(await response.arrayBuffer());\n      res.set({\n        \"Content-Type\": \"application/octet-stream\",\n        \"Access-Control-Allow-Origin\": \"*\",\n        \"Cache-Control\": \"no-cache\"\n      });\n      res.send(buffer);\n    } catch (error) {\n      console.error(\"Download proxy error:\", error);\n      res.status(502).json({ message: \"Failed to fetch URL\" });\n    }\n  });\n  \n  // Add a new client-side processing endpoint\n  app.post(\"/api/process-league\", async (req, res) => {\n    try {\n      const leagueData = req.body;\n      \n      // Process the league data using the same logic as existing upload endpoints\n      const { players: processedPlayers, teams, achievements } = await processLeague(leagueData);\n      \n      // Store the processed data\n      storage.setPlayers(processedPlayers);\n      \n      res.json({\n        players: processedPlayers,\n        teams,\n        achievements,\n      });\n    } catch (error) {\n      console.error(\"Process league error:\", error);\n      res.status(400).json({ \n        message: error instanceof Error ? error.message : \"Failed to process league data\" \n      });\n    }\n  });\n\n  const httpServer = createServer(app);
-  const httpServer = createServer(app);\n  return httpServer;
+  const httpServer = createServer(app);
+  return httpServer;
 }
