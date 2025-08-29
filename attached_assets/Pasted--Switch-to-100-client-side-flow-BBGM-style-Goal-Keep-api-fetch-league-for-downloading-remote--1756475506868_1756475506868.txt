@@ -1,0 +1,284 @@
+“Switch to 100% client-side flow (BBGM style)”
+
+Goal
+
+Keep /api/fetch-league for downloading remote files (Dropbox/GitHub/Drive).
+
+Do parse + transform + grid generation entirely in the browser (Web Worker for heavy parse).
+
+Remove all other /api/* calls from the client (e.g., /api/process-league, /api/generate-grid, /api/new-game, etc.).
+
+Pass data to the play screen via sessionStorage (or local state), not server.
+
+0) Confirm only these server endpoints remain
+
+/api/ping (optional health)
+
+/api/fetch-league (URL proxy)
+
+No other /api/* is called by the client
+
+Search and remove:
+
+Find: fetch('/api/ and axios('/api/
+
+Replace any remaining calls (except /api/fetch-league) with client functions below.
+
+1) Client: downloader + worker parser (already added? keep it)
+
+(If these files already exist from earlier steps, keep them. Otherwise create them.)
+
+client/src/lib/leagueIO.ts
+
+import { gunzipSync } from "fflate";
+
+// Normalize links to direct files
+export function normalizeLeagueUrl(input: string): string {
+  const u = new URL(input.trim());
+  if (u.hostname === "www.dropbox.com" || u.hostname === "dropbox.com" || u.hostname === "dl.dropbox.com" || u.hostname.endsWith("dropbox.com")) {
+    u.hostname = "dl.dropboxusercontent.com";
+    u.searchParams.set("dl", "1");
+  }
+  if (u.hostname === "github.com") {
+    const p = u.pathname.split("/").filter(Boolean);
+    if (p.length >= 5 && p[2] === "blob") {
+      const [user, repo, _blob, branch, ...rest] = p;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+      u.search = "";
+    }
+  }
+  if (u.hostname === "gist.github.com") {
+    const p = u.pathname.split("/").filter(Boolean);
+    if (p.length >= 2) {
+      const [user, hash] = p;
+      u.hostname = "gist.githubusercontent.com";
+      u.pathname = `/${user}/${hash}/raw`;
+      u.search = "";
+    }
+  }
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc";
+    u.search = "";
+    u.searchParams.set("export", "download");
+    u.searchParams.set("id", id);
+  }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+export async function fetchLeagueBytes(rawUrl: string) {
+  const r = await fetch(`/api/fetch-league?url=${encodeURIComponent(rawUrl)}`);
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`URL fetch failed (${r.status}): ${text || r.statusText}`);
+  }
+  const hinted = r.headers.get("x-content-encoding") as ("gzip" | null);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { bytes, hinted };
+}
+
+export async function fileToBytes(file: File) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const hinted = file.name.toLowerCase().endsWith(".gz") ? ("gzip" as const) : null;
+  return { bytes, hinted };
+}
+
+// Synchronous fallback (small files)
+export function parseLeagueSync(bytes: Uint8Array, hinted?: "gzip" | null) {
+  const needGunzip = hinted === "gzip" || (bytes[0] === 0x1f && bytes[1] === 0x8b);
+  const raw = needGunzip ? gunzipSync(bytes) : bytes;
+  const text = new TextDecoder().decode(raw);
+  return JSON.parse(text);
+}
+
+
+client/src/workers/leagueParse.worker.ts
+
+import { gunzip } from "fflate";
+
+function isGzip(u8: Uint8Array) { return u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b; }
+const gunzipAsync = (u8: Uint8Array) => new Promise<Uint8Array>((res, rej) => gunzip(u8, (e, out) => e ? rej(e) : res(out)));
+
+self.onmessage = async (e: MessageEvent) => {
+  try {
+    const { bytes, hinted } = e.data as { bytes: ArrayBuffer; hinted?: "gzip" | null };
+    let u8 = new Uint8Array(bytes); // transferred, zero-copy
+    if (hinted === "gzip" || isGzip(u8)) u8 = await gunzipAsync(u8);
+    const text = new TextDecoder().decode(u8);
+    const league = JSON.parse(text);
+    (self as any).postMessage({ ok: true, league });
+  } catch (err: any) {
+    (self as any).postMessage({ ok: false, error: String(err?.message || err) });
+  }
+};
+
+
+Helper to use the worker:
+
+// add to client/src/lib/leagueIO.ts
+export async function parseLeagueInWorker(bytes: Uint8Array, hinted: "gzip" | null) {
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const worker = new Worker(new URL("../workers/leagueParse.worker.ts", import.meta.url), { type: "module" });
+  return new Promise<any>((resolve, reject) => {
+    const cleanup = () => worker.terminate();
+    worker.onmessage = (e) => { cleanup(); const { ok, league, error } = e.data || {}; ok ? resolve(league) : reject(new Error(error || "Parse failed")); };
+    worker.onerror = (ev) => { cleanup(); reject(new Error(ev.message || "Worker error")); };
+    worker.postMessage({ bytes: ab, hinted }, [ab as any]); // transfer
+  });
+}
+
+2) Client: transform league → minimal grid data (no server)
+
+client/src/lib/processLeague.ts
+
+// Extract only what grid generation needs.
+// Adjust mapping as needed based on your league JSON shape.
+
+export type GridTeam = { tid: number; name: string; abbrev?: string };
+export type GridPlayer = { pid: number; name: string; teams: Array<{ tid: number; season?: number }> };
+
+export function toGridDataset(league: any): { teams: GridTeam[]; players: GridPlayer[] } {
+  const teams: GridTeam[] =
+    league?.teams?.map((t: any) => ({ tid: t.tid ?? t.teamId ?? t.id, name: t.name || t.region || t.teamName, abbrev: t.abbrev })) ?? [];
+
+  const players: GridPlayer[] =
+    league?.players?.map((p: any) => ({
+      pid: p.pid ?? p.playerId ?? p.id,
+      name: p.name || [p.firstName, p.lastName].filter(Boolean).join(" ") || "Unknown",
+      teams: (p.stats || p.careerStats || p.teamHistory || []).map((s: any) => ({
+        tid: s.tid ?? s.teamId ?? s.tidBefore ?? s.tidAfter ?? s.teamID,
+        season: s.season ?? s.year,
+      })).filter((x: any) => x && x.tid != null),
+    })) ?? [];
+
+  return { teams, players };
+}
+
+
+Very simple grid skeleton (replace with your existing grid logic if you have it):
+
+// client/src/lib/grid.ts
+import type { GridTeam, GridPlayer } from "./processLeague";
+
+export type Grid = {
+  rows: GridTeam[];
+  cols: GridTeam[];
+  // Add whatever your UI expects (solutions, ids, etc.)
+};
+
+export function buildGrid(data: { teams: GridTeam[]; players: GridPlayer[] }): Grid {
+  // Example: pick first 3 + next 3 teams. Replace with your real criteria logic.
+  const rows = data.teams.slice(0, 3);
+  const cols = data.teams.slice(3, 6);
+  return { rows, cols };
+}
+
+3) Client: stash results for the play screen (no server)
+
+client/src/lib/session.ts
+
+export function setSessionJSON(key: string, value: any) { sessionStorage.setItem(key, JSON.stringify(value)); }
+export function getSessionJSON<T = any>(key: string): T | null {
+  const s = sessionStorage.getItem(key); if (!s) return null;
+  try { return JSON.parse(s) as T; } catch { return null; }
+}
+
+4) Update the uploader to use the client flow and stop calling any other /api/*
+
+Edit client/src/components/file-upload.tsx (only the key parts):
+
+import { fetchLeagueBytes, fileToBytes, parseLeagueInWorker, parseLeagueSync } from "@/lib/leagueIO";
+import { toGridDataset } from "@/lib/processLeague";
+import { buildGrid } from "@/lib/grid";
+import { setSessionJSON } from "@/lib/session";
+import { useNavigate } from "wouter"; // or your router
+
+const navigate = useNavigate();
+
+async function loadLeagueFromUrl(inputUrl: string) {
+  setLoading(true);
+  try {
+    const { bytes, hinted } = await fetchLeagueBytes(inputUrl);
+    // Worker for big files; fallback to sync for tiny ones if you want
+    const league = await parseLeagueInWorker(bytes, hinted);
+    const ds = toGridDataset(league);
+    const grid = buildGrid(ds);
+
+    // Save to session for the play screen
+    setSessionJSON("grid-dataset", ds);
+    setSessionJSON("grid", grid);
+
+    navigate("/play"); // or wherever
+  } catch (e: any) {
+    toast.error(e.message || "Failed to load URL");
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function loadLeagueFromFile(file: File) {
+  setLoading(true);
+  try {
+    const { bytes, hinted } = await fileToBytes(file);
+    const league = await parseLeagueInWorker(bytes, hinted); // worker parse
+    const ds = toGridDataset(league);
+    const grid = buildGrid(ds);
+    setSessionJSON("grid-dataset", ds);
+    setSessionJSON("grid", grid);
+    navigate("/play");
+  } catch (e: any) {
+    toast.error(e.message || "Failed to load file");
+  } finally {
+    setLoading(false);
+  }
+}
+
+
+Ensure the file input accepts gz:
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />
+
+5) Play screen: read from session instead of calling server
+
+Where the play screen previously fetched /api/generate-grid (or similar), replace with:
+
+import { getSessionJSON } from "@/lib/session";
+
+const dataset = getSessionJSON("grid-dataset");
+const grid = getSessionJSON("grid");
+
+// if null, redirect back to upload
+
+6) Keep Vercel function for URL proxy only
+
+You already created:
+
+api/ping.ts
+
+api/fetch-league.ts
+
+vercel.json with:
+
+{ "functions": { "api/**": { "maxDuration": 60 } } }
+
+
+Vercel settings:
+
+Framework: Vite
+
+Build command: npm run build
+
+Output directory: dist/public
+
+What this changes (and why it fixes your 404s/crashes)
+
+The client never calls /api/process-league, /api/generate-grid, etc. → no 404 HTML pages returned → no “Unexpected token 'T'”.
+
+Parsing/decompression runs in a Web Worker → no main-thread lockups or “load then crash”.
+
+All data stays in the browser → no payload limits on Vercel.
+
+The only server piece left is /api/fetch-league used to download remote files safely.

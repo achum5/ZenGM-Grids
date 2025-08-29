@@ -1,5 +1,8 @@
-// Client-side league processing to replace server-side /api/process-league endpoint
-import type { FileUploadData, TeamInfo } from "@shared/schema";
+// Extract only what grid generation needs.
+// Adjust mapping as needed based on your league JSON shape.
+
+export type GridTeam = { tid: number; name: string; abbrev?: string };
+export type GridPlayer = { pid: number; name: string; teams: Array<{ tid: number; season?: number }> };
 
 interface BBGMPlayer {
   firstName?: string;
@@ -44,7 +47,29 @@ interface BBGMLeague {
   teams?: BBGMTeam[];
 }
 
-export function processLeagueData(leagueData: BBGMLeague): FileUploadData {
+export function toGridDataset(league: any): { teams: GridTeam[]; players: GridPlayer[] } {
+  const teams: GridTeam[] =
+    league?.teams?.map((t: any) => ({ 
+      tid: t.tid ?? t.teamId ?? t.id, 
+      name: (t.region && t.name) ? `${t.region} ${t.name}` : (t.name || t.region || t.teamName), 
+      abbrev: t.abbrev 
+    })) ?? [];
+
+  const players: GridPlayer[] =
+    league?.players?.map((p: any) => ({
+      pid: p.pid ?? p.playerId ?? p.id,
+      name: p.name || [p.firstName, p.lastName].filter(Boolean).join(" ") || "Unknown",
+      teams: (p.stats || p.careerStats || p.teamHistory || []).map((s: any) => ({
+        tid: s.tid ?? s.teamId ?? s.tidBefore ?? s.tidAfter ?? s.teamID,
+        season: s.season ?? s.year,
+      })).filter((x: any) => x && x.tid != null),
+    })) ?? [];
+
+  return { teams, players };
+}
+
+// Legacy function for compatibility - now just calls toGridDataset
+export function processLeagueData(leagueData: any): { teams: GridTeam[]; players: GridPlayer[] } {
   console.log("🚀 CLIENT-SIDE LEAGUE PROCESSING STARTED");
   console.log("League data keys:", Object.keys(leagueData));
   
@@ -215,17 +240,5 @@ export function processLeagueData(leagueData: BBGMLeague): FileUploadData {
 
   console.log(`✅ CLIENT-SIDE PROCESSING COMPLETE: ${players.length} players, ${teams.length} teams, ${achievements.length} achievements`);
 
-  return {
-    players: players.map(p => ({
-      name: p.name,
-      teams: p.teams,
-      years: p.years,
-      achievements: p.achievements,
-      stats: p.stats || undefined,
-      careerWinShares: p.careerWinShares || 0,
-      quality: p.quality || 50
-    })),
-    teams,
-    achievements
-  };
+  return toGridDataset(leagueData);
 }

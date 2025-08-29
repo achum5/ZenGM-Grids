@@ -3,14 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CloudUpload, FileCheck, X, Play, Loader2, Link } from "lucide-react";
+import { CloudUpload, FileCheck, X, Loader2, Link } from "lucide-react";
 import { useDropzone } from "react-dropzone";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { fetchLeagueBytes, fileToBytes, parseLeague } from "@/lib/leagueIO";
-import { processLeagueData } from "@/lib/processLeague";
-import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
+import { useLocation } from "wouter";
+import { fetchLeagueBytes, fileToBytes, parseLeagueInWorker, parseLeagueSync } from "@/lib/leagueIO";
+import { toGridDataset } from "@/lib/processLeague";
+import { buildGrid } from "@/lib/grid";
+import { setSessionJSON } from "@/lib/session";
+import type { Game, TeamInfo } from "@shared/schema";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -19,89 +20,79 @@ interface FileUploadProps {
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [urlInput, setUrlInput] = useState('');
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
+  async function loadLeagueFromUrl(inputUrl: string) {
+    setLoading(true);
+    try {
+      const { bytes, hinted } = await fetchLeagueBytes(inputUrl);
+      // Worker for big files; fallback to sync for tiny ones if you want
+      const league = await parseLeagueInWorker(bytes, hinted);
+      const ds = toGridDataset(league);
+      const grid = buildGrid(ds);
 
+      // Save to session for the play screen
+      setSessionJSON("grid-dataset", ds);
+      setSessionJSON("grid", grid);
 
-  const uploadMutation = useMutation({
-    mutationFn: async (fileOrUrl: File | string): Promise<FileUploadData> => {
-      let leagueData: any;
-      
-      if (typeof fileOrUrl === 'string') {
-        // URL upload - use proxy to avoid CORS issues
-        const { bytes, hintedEncoding } = await fetchLeagueBytes(fileOrUrl);
-        leagueData = parseLeague(bytes, hintedEncoding);
-      } else {
-        // File upload - process entirely in browser
-        const { bytes, hintedEncoding } = await fileToBytes(fileOrUrl);
-        leagueData = parseLeague(bytes, hintedEncoding);
-      }
-
-      // Process the league data entirely in the browser (no server POST)
-      const processedData = processLeagueData(leagueData);
-      
-      // Save the processed player data to the server for game generation
-      // Only send the minimal processed data, not the huge raw league
-      await fetch("/api/players/bulk-create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ players: processedData.players }),
-      });
-      
-      return processedData;
-    },
-    onSuccess: (data) => {
-      setUploadData(data);
-      onTeamDataUpdate?.(data.teams);
       toast({
-        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
-        description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
+        title: "URL loaded successfully",
+        description: `Loaded ${ds.players.length} players from ${ds.teams.length} teams`,
       });
-      // Automatically generate a new grid after successful upload
-      generateGameMutation.mutate();
-    },
-    onError: (error) => {
+
+      setLocation("/play"); // Navigate to play screen
+    } catch (e: any) {
       toast({
-        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
-        description: error.message,
+        title: "URL loading failed",
+        description: e.message || "Failed to load URL",
         variant: "destructive",
       });
-      setUploadedFile(null);
-    },
-  });
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const generateGameMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
-    },
-    onSuccess: (game) => {
-      onGameGenerated(game);
+  async function loadLeagueFromFile(file: File) {
+    setLoading(true);
+    try {
+      const { bytes, hinted } = await fileToBytes(file);
+      const league = await parseLeagueInWorker(bytes, hinted); // worker parse
+      const ds = toGridDataset(league);
+      const grid = buildGrid(ds);
+      
+      // Save to session for the play screen
+      setSessionJSON("grid-dataset", ds);
+      setSessionJSON("grid", grid);
+
       toast({
-        title: "New grid generated",
-        description: "Ready to play!",
-        duration: 1000,
+        title: "File uploaded successfully",
+        description: `Loaded ${ds.players.length} players from ${ds.teams.length} teams`,
       });
-    },
-    onError: (error) => {
+      
+      setLocation("/play"); // Navigate to play screen
+    } catch (e: any) {
       toast({
-        title: "Failed to generate grid",
-        description: error.message,
+        title: "Upload failed", 
+        description: e.message || "Failed to load file",
         variant: "destructive",
       });
-    },
-  });
+    } finally {
+      setLoading(false);
+    }
+  }
+
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
       setUploadedFile(file);
-      uploadMutation.mutate(file);
+      loadLeagueFromFile(file);
     }
-  }, [uploadMutation]);
+  }, []);
 
   const handleUrlUpload = () => {
     if (!urlInput.trim()) {
@@ -114,7 +105,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     }
     
     setUploadedFile(null);
-    uploadMutation.mutate(urlInput.trim());
+    loadLeagueFromUrl(urlInput.trim());
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -122,18 +113,14 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     accept: {
       'application/json': ['.json'],
       'application/gzip': ['.gz'],
-      'application/x-gzip': ['.gz']
+      'application/x-gzip': ['.gz'],
+      'text/plain': ['.gz'], // Some servers send .gz as text/plain
     },
     multiple: false,
   });
 
   const removeFile = () => {
     setUploadedFile(null);
-    setUploadData(null);
-  };
-
-  const generateGrid = () => {
-    generateGameMutation.mutate();
   };
 
   return (
@@ -167,10 +154,10 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
-                disabled={uploadMutation.isPending}
+                disabled={loading}
                 data-testid="button-browse-files"
               >
-                {uploadMutation.isPending ? (
+                {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Uploading...
@@ -200,20 +187,20 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
+                    if (e.key === 'Enter' && urlInput.trim() && !loading) {
                       handleUrlUpload();
                     }
                   }}
                   className="flex-1 url-upload-input"
-                  disabled={uploadMutation.isPending}
+                  disabled={loading}
                 />
                 <Button
                   onClick={handleUrlUpload}
                   className="bg-basketball text-white hover:bg-orange-600"
-                  disabled={uploadMutation.isPending || !urlInput.trim()}
+                  disabled={loading || !urlInput.trim()}
                   data-testid="button-upload-url"
                 >
-                  {uploadMutation.isPending ? (
+                  {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading...
@@ -250,36 +237,6 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
           </div>
         )}
 
-        {uploadData && (
-          <div className="space-y-4">
-            <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-              <p data-testid="text-players-count">Players: {uploadData.players.length}</p>
-              <p data-testid="text-teams-count">Teams: {uploadData.teams.length}</p>
-              <p data-testid="text-achievements-count">Achievements: {uploadData.achievements.length}</p>
-            </div>
-            
-            <div className="text-center">
-              <Button 
-                onClick={generateGrid}
-                disabled={generateGameMutation.isPending}
-                className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold"
-                data-testid="button-generate-grid"
-              >
-                {generateGameMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-5 w-5" />
-                    Generate New Grid
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
 
       </CardContent>
     </Card>
