@@ -54,7 +54,6 @@
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "facesjs": "^5.0.1",
-    "fflate": "^0.8.2",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
@@ -79,8 +78,7 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0",
-    "zustand": "^5.0.8"
+    "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.2.8",

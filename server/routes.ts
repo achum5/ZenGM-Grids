@@ -268,30 +268,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // CORS proxy for downloading files when direct fetch fails
-  app.get("/api/download", async (req, res) => {
-    try {
-      const url = req.query.url as string;
-      if (!url) {
-        return res.status(400).json({ message: "missing url" });
-      }
-
-      const upstream = await fetch(url);
-      if (!upstream.ok) {
-        return res.status(502).json({ message: `remote ${upstream.status} ${upstream.statusText}` });
-      }
-
-      const buffer = Buffer.from(await upstream.arrayBuffer());
-      
-      res.setHeader("Content-Type", "application/octet-stream");
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.send(buffer);
-    } catch (error: any) {
-      console.error("Download proxy error:", error);
-      res.status(500).json({ message: error.message || "Download failed" });
-    }
-  });
-
   // Comprehensive league-level achievement processing
   // Helper functions for robust league data parsing (per ChatGPT guide)
   function seasonGamesLookup(league: any): Map<number, number> {
@@ -1292,17 +1268,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/games/generate", async (req, res) => {
     console.log("🚨 GRID GENERATION STARTED - This should always appear");
     try {
-      console.log("🔧 Grid generation with client data");
+      console.log("🔧 TESTING: Running league-level processing during grid generation...");
       
-      // Accept players data from request body or fallback to storage
-      let players: any[] = [];
-      if (req.body && req.body.players && Array.isArray(req.body.players)) {
-        players = req.body.players;
-        console.log(`Using ${players.length} players from request body`);
-      } else {
-        players = await storage.getPlayers();
-        console.log(`Using ${players.length} players from storage`);
-      }
+      const players = await storage.getPlayers();
       
       // TEMPORARY: Force league-level processing on existing players to test
       if (players.length > 0) {
