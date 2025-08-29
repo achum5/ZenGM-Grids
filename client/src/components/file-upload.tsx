@@ -9,6 +9,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { fetchLeagueBytes, fileToBytes, parseLeague } from "@/lib/leagueIO";
+import { processLeagueData } from "@/lib/processLeague";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 
 interface FileUploadProps {
@@ -39,19 +40,18 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         leagueData = parseLeague(bytes, hintedEncoding);
       }
 
-      // Process the league data to extract player information
-      const response = await fetch("/api/process-league", {
+      // Process the league data entirely in the browser (no server POST)
+      const processedData = processLeagueData(leagueData);
+      
+      // Save the processed player data to the server for game generation
+      // Only send the minimal processed data, not the huge raw league
+      await fetch("/api/players/bulk-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leagueData }),
+        body: JSON.stringify({ players: processedData.players }),
       });
       
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to process league data");
-      }
-      
-      return response.json() as Promise<FileUploadData>;
+      return processedData;
     },
     onSuccess: (data) => {
       setUploadData(data);
