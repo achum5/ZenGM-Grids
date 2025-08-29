@@ -9,7 +9,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
-import { fetchLeagueBytesViaVercel, fileToBytes, parseLeague } from "@/lib/leagueIO";
+import { fetchLeagueBytesViaVercel, fileToBytes, parseLeagueInWorker } from "@/lib/leagueIO";
 import { setLeagueInMemory } from "@/lib/leagueMemory";
 
 interface FileUploadProps {
@@ -84,7 +84,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     setIsLoading(true);
     try {
       const { bytes, hinted } = await fetchLeagueBytesViaVercel(urlInput.trim());
-      const league = parseLeague(bytes, hinted);
+      const league = await parseLeagueInWorker(bytes, hinted);
       await processLeague(league);
     } catch (e: any) {
       console.error(e);
@@ -104,7 +104,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     setIsLoading(true);
     try {
       const { bytes, hinted } = await fileToBytes(file);
-      const league = parseLeague(bytes, hinted);
+      const league = await parseLeagueInWorker(bytes, hinted);
       await processLeague(league);
     } catch (e: any) {
       console.error(e);
