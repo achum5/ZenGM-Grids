@@ -339,10 +339,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const leaders = new Map<number, Record<LeaderKey, Set<number>>>();
     const EPS = 1e-9;
-    for (const [season, arr] of bySeason) {
+    for (const [season, arr] of Array.from(bySeason.entries())) {
       const MIN = Math.ceil(0.58 * (numGamesBySeason.get(season) ?? 82));
       let max = { ppg: -Infinity, rpg: -Infinity, apg: -Infinity, spg: -Infinity, bpg: -Infinity };
-      const rows = arr.map(({pid, s}) => {
+      const rows = arr.map(({pid, s}: {pid: number, s: any}) => {
         const gp = s.gp ?? 0, ok = gp >= MIN;
         const ppg = (s.pts ?? 0) / (gp || 1);
         const rpg = ((s.orb ?? 0) + (s.drb ?? 0)) / (gp || 1);   // REB = ORB+DRB
@@ -358,7 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         return {pid, ok, ppg, rpg, apg, spg, bpg};
       });
-      const set = (sel: LeaderKey) => new Set(rows.filter(r => r.ok && r[sel] >= max[sel] - EPS).map(r => r.pid));
+      const set = (sel: LeaderKey) => new Set(rows.filter((r: any) => r.ok && r[sel] >= max[sel] - EPS).map((r: any) => r.pid));
       leaders.set(season, { ppg: set("ppg"), rpg: set("rpg"), apg: set("apg"), spg: set("spg"), bpg: set("bpg") });
     }
     return leaders;
@@ -458,7 +458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 3) Evaluator must use the leaders index for the right key
   function ledLeague(pid: number, key: LeaderKey, leadersBySeason: Map<number, any>) {
-    for (const sets of leadersBySeason.values()) if (sets[key]?.has(pid)) return true;
+    for (const sets of Array.from(leadersBySeason.values())) if (sets[key]?.has(pid)) return true;
     return false;
   }
 
@@ -1190,9 +1190,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // DEBUG: Verify achievements are stored (ChatGPT's suggestion F) 
       const all = await storage.getPlayers();
       const asJson = JSON.stringify(all);
-      function count(label: string) { 
+      const count = (label: string) => { 
         return (asJson.match(new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}"`,"g"))||[]).length; 
-      }
+      };
       console.log("🏁 Stored counts (final 10 focus):", {
         LedPTS: count("Led League in Scoring"),
         LedREB: count("Led League in Rebounds"),
@@ -1753,9 +1753,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const key = ACH_LEADERS[achievementId as keyof typeof ACH_LEADERS].key;
           const bogus = eligiblePlayers.filter(p => {
             const pid = p.pid;
-            if (pid === undefined) return false;
+            if (pid === undefined || pid === null) return false;
             // Check if player is NOT actually a leader according to the index
-            for (const sets of Array.from(globalIndices.leadersBySeason.values())) {
+            for (const sets of Array.from(globalIndices?.leadersBySeason?.values() || [])) {
               if (sets[key]?.has(pid)) return false; // Player IS a leader, so not bogus
             }
             return true; // Player is NOT a leader, so this is bogus
@@ -2004,6 +2004,50 @@ app.get("/api/debug/matches", async (req, res) => {
 
 
 
-  // CORS proxy for URL downloads\n  app.get(\"/api/download\", async (req, res) => {\n    const url = req.query.url as string;\n    if (!url) {\n      return res.status(400).json({ message: \"missing url parameter\" });\n    }\n\n    try {\n      const response = await fetch(url);\n      if (!response.ok) {\n        return res.status(502).json({ \n          message: `remote ${response.status} ${response.statusText}` \n        });\n      }\n\n      const buffer = Buffer.from(await response.arrayBuffer());\n      res.set({\n        \"Content-Type\": \"application/octet-stream\",\n        \"Access-Control-Allow-Origin\": \"*\",\n        \"Cache-Control\": \"no-cache\"\n      });\n      res.send(buffer);\n    } catch (error) {\n      console.error(\"Download proxy error:\", error);\n      res.status(502).json({ message: \"Failed to fetch URL\" });\n    }\n  });\n  \n  // Add a new client-side processing endpoint\n  app.post(\"/api/process-league\", async (req, res) => {\n    try {\n      const leagueData = req.body;\n      \n      // Process the league data using the same logic as existing upload endpoints\n      const { players: processedPlayers, teams, achievements } = await processLeague(leagueData);\n      \n      // Store the processed data\n      storage.setPlayers(processedPlayers);\n      \n      res.json({\n        players: processedPlayers,\n        teams,\n        achievements,\n      });\n    } catch (error) {\n      console.error(\"Process league error:\", error);\n      res.status(400).json({ \n        message: error instanceof Error ? error.message : \"Failed to process league data\" \n      });\n    }\n  });\n\n  const httpServer = createServer(app);
-  const httpServer = createServer(app);\n  return httpServer;
+  // CORS proxy for URL downloads
+  app.get("/api/download", async (req, res) => {
+    const url = req.query.url as string;
+    if (!url) {
+      return res.status(400).json({ message: "missing url parameter" });
+    }
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        return res.status(502).json({ 
+          message: `remote ${response.status} ${response.statusText}` 
+        });
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      res.set({
+        "Content-Type": "application/octet-stream",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-cache"
+      });
+      res.send(buffer);
+    } catch (error) {
+      console.error("Download proxy error:", error);
+      res.status(502).json({ message: "Failed to fetch URL" });
+    }
+  });
+  
+  // Add a new client-side processing endpoint
+  app.post("/api/process-league", async (req, res) => {
+    try {
+      const leagueData = req.body;
+      
+      // Process the league data using the same logic as existing upload endpoints
+      const buffer = Buffer.from(JSON.stringify(leagueData));
+      await processLeagueFile(buffer, 'league-data.json', res);
+    } catch (error) {
+      console.error("Process league error:", error);
+      res.status(400).json({ 
+        message: error instanceof Error ? error.message : "Failed to process league data" 
+      });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
 }

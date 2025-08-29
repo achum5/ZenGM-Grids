@@ -153,7 +153,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     
     try {
       // Auto-convert Dropbox www URLs to dl URLs
-      let processedUrl = parsed.data.url;
+      let processedUrl = parsed.data.mode === "url" ? parsed.data.url : "";
       if (processedUrl.includes("www.dropbox.com")) {
         processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
         if (processedUrl.includes("dl=0")) {
