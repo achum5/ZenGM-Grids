@@ -33,12 +33,10 @@ export default function Home() {
       // Build the input the exact same way the server route does
       const input = buildGenerateInput(league);
       
-      // Add debugging logs to confirm shape
+      // Quick sanity log so we can see counts
       console.debug("GEN INPUT", {
-        hasPlayers: Array.isArray(input.players),
-        playersCount: input.players?.length,
-        firstPlayerHasTeams: input.players?.[0]?.teams ? Array.isArray(input.players[0].teams) : false,
-        firstPlayerHasAchievements: input.players?.[0]?.achievements ? Array.isArray(input.players[0].achievements) : false,
+        players: input.players?.length,
+        teams: input.teams?.length,
       });
       
       const grid = await generateGrid(input);
