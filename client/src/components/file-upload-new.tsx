@@ -49,36 +49,22 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
-
-
-  const uploadMutation = useMutation({
-    mutationFn: async (fileOrUrl: File | string) => {
-      if (typeof fileOrUrl === 'string') {
-        // URL upload
-        const response = await fetch("/api/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: fileOrUrl }),
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "URL upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
-      } else {
-        // File upload
-        const formData = new FormData();
-        formData.append("file", fileOrUrl);
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+  // Process league data client-side and send to server
+  const processLeague = useMutation({
+    mutationFn: async (leagueData: any) => {
+      // For now, use existing endpoint - can be switched to /api/process-league later
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(leagueData),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Processing failed");
       }
+      
+      return response.json() as Promise<FileUploadData>;
     },
     onSuccess: (data) => {
       setUploadData(data);
@@ -87,6 +73,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
+      setIsProcessing(false);
       // Automatically generate a new grid after successful upload
       generateGameMutation.mutate();
     },
@@ -97,6 +84,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         variant: "destructive",
       });
       setUploadedFile(null);
+      setIsProcessing(false);
     },
   });
 
@@ -122,43 +110,107 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
   });
 
+  // Handle file upload with client-side parsing
+  const handleFileUpload = async (file: File) => {
+    setIsProcessing(true);
+    try {
+      const arr = new Uint8Array(await file.arrayBuffer());
+      const leagueData = await parseLeagueBytes(arr);
+      processLeague.mutate(leagueData);
+    } catch (error: any) {
+      toast({
+        title: "File parsing failed",
+        description: error?.message ?? "Failed to read file.",
+        variant: "destructive",
+      });
+      setIsProcessing(false);
+    }
+  };
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
       setUploadedFile(file);
-      uploadMutation.mutate(file);
+      handleFileUpload(file);
     }
-  }, [uploadMutation]);
+  }, []);
 
-  const handleUrlUpload = () => {
-    if (!urlInput.trim()) {
+  // Handle URL upload with client-side parsing
+  const handleUrlUpload = async () => {
+    const candidate = { mode: "url" as const, url: urlInput.trim() };
+    const parsed = UploadSchema.safeParse(candidate);
+    if (!parsed.success) {
       toast({
         title: "Invalid URL",
-        description: "Please enter a valid URL",
+        description: parsed.error.issues[0]?.message ?? "Invalid URL",
         variant: "destructive",
       });
       return;
     }
-    
-    // Auto-convert Dropbox www URLs to dl URLs
-    let processedUrl = urlInput.trim();
-    if (processedUrl.includes("www.dropbox.com")) {
-      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
-      // Also ensure the dl=0 parameter is set to dl=1 for direct download
-      if (processedUrl.includes("dl=0")) {
-        processedUrl = processedUrl.replace("dl=0", "dl=1");
-      } else if (!processedUrl.includes("dl=1")) {
-        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
-      }
-    }
-    
+
+    setIsProcessing(true);
     setUploadedFile(null);
-    uploadMutation.mutate(processedUrl);
+    
+    try {
+      // Auto-convert Dropbox www URLs to dl URLs
+      let processedUrl = parsed.data.url;
+      if (processedUrl.includes("www.dropbox.com")) {
+        processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
+        if (processedUrl.includes("dl=0")) {
+          processedUrl = processedUrl.replace("dl=0", "dl=1");
+        } else if (!processedUrl.includes("dl=1")) {
+          processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
+        }
+      }
+      
+      // Try direct fetch first - if CORS blocks, the existing /api/upload-url endpoint handles it
+      try {
+        const response = await fetch(processedUrl);
+        if (response.ok) {
+          const arr = new Uint8Array(await response.arrayBuffer());
+          const leagueData = await parseLeagueBytes(arr);
+          processLeague.mutate(leagueData);
+          return;
+        }
+      } catch (corsError) {
+        // CORS blocked - fall back to server proxy (existing endpoint)
+        console.log("Direct fetch blocked by CORS, using server proxy");
+      }
+      
+      // Use existing server endpoint as fallback
+      const response = await fetch("/api/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: processedUrl }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "URL loading failed");
+      }
+      
+      const data = await response.json();
+      setUploadData(data);
+      onTeamDataUpdate?.(data.teams);
+      toast({
+        title: "URL loaded successfully",
+        description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
+      });
+      setIsProcessing(false);
+      generateGameMutation.mutate();
+      
+    } catch (error: any) {
+      toast({
+        title: "URL loading failed",
+        description: error?.message ?? "Could not fetch that URL.",
+        variant: "destructive",
+      });
+      setIsProcessing(false);
+    }
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    // Accept any file - let backend validate content
     multiple: false,
   });
 
@@ -202,13 +254,13 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
-                disabled={uploadMutation.isPending}
+                disabled={isProcessing || processLeague.isPending}
                 data-testid="button-browse-files"
               >
-                {uploadMutation.isPending ? (
+                {isProcessing || processLeague.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading...
+                    Processing...
                   </>
                 ) : (
                   "Browse Files"
@@ -235,20 +287,20 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
+                    if (e.key === 'Enter' && urlInput.trim() && !isProcessing && !processLeague.isPending) {
                       handleUrlUpload();
                     }
                   }}
                   className="flex-1 url-upload-input"
-                  disabled={uploadMutation.isPending}
+                  disabled={isProcessing || processLeague.isPending}
                 />
                 <Button
                   onClick={handleUrlUpload}
                   className="bg-basketball text-white hover:bg-orange-600"
-                  disabled={uploadMutation.isPending || !urlInput.trim()}
+                  disabled={isProcessing || processLeague.isPending || !urlInput.trim()}
                   data-testid="button-upload-url"
                 >
-                  {uploadMutation.isPending ? (
+                  {isProcessing || processLeague.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading...
