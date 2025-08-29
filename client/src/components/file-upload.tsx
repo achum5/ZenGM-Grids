@@ -10,6 +10,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { fetchLeagueBytesViaVercel, fileToBytes, parseLeague } from "@/lib/leagueIO";
+import { setLeagueInMemory } from "@/lib/leagueMemory";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -27,8 +28,8 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const [isLoading, setIsLoading] = useState(false);
 
-  // Process league data client-side
-  const processLeague = (league: any) => {
+  // Process league data client-side and populate server storage
+  const processLeague = async (league: any) => {
     // Extract players, teams, and achievements from league data
     const players = league.players || [];
     const teams = league.teams || [];
@@ -43,13 +44,27 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     
     setUploadData(data);
     onTeamDataUpdate?.(data.teams);
+    
+    // Store league data in memory for grid generation
+    setLeagueInMemory(league);
+    
+    // Also populate server storage for grid generation (existing system compatibility)
+    try {
+      const response = await apiRequest("POST", "/api/debug/process-league-achievements", {
+        body: JSON.stringify(league),
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!response.ok) {
+        console.warn("Failed to populate server storage, but continuing with client-side data");
+      }
+    } catch (error) {
+      console.warn("Server storage population failed, but continuing with client-side data:", error);
+    }
+    
     toast({
       title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
       description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
     });
-    
-    // Store league data in sessionStorage for grid generation
-    sessionStorage.setItem('leagueData', JSON.stringify(league));
     
     // Automatically generate a new grid after successful upload
     generateGameMutation.mutate();
@@ -70,7 +85,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     try {
       const { bytes, hinted } = await fetchLeagueBytesViaVercel(urlInput.trim());
       const league = parseLeague(bytes, hinted);
-      processLeague(league);
+      await processLeague(league);
     } catch (e: any) {
       console.error(e);
       toast({
@@ -90,7 +105,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     try {
       const { bytes, hinted } = await fileToBytes(file);
       const league = parseLeague(bytes, hinted);
-      processLeague(league);
+      await processLeague(league);
     } catch (e: any) {
       console.error(e);
       toast({
