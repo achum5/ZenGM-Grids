@@ -10,7 +10,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { parseLeagueFromUrlInWorker, parseLeagueFromFileInWorker } from "@/lib/leagueIO";
-import { setLeagueInMemory } from "@/lib/leagueMemory";
+import { setLeagueInMemory, getLeagueInMemory } from "@/lib/leagueMemory";
+import { generateGrid } from "@shared/grid/generate";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -120,8 +121,15 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const generateGameMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
+      const league = getLeagueInMemory();
+      if (!league) {
+        throw new Error("Please upload a league file first.");
+      }
+
+      // Pass only what the generator actually needs (players + teams)
+      const input = { players: league.players, teams: league.teams };
+      const grid = await generateGrid(input);
+      return grid as Game;
     },
     onSuccess: (game) => {
       onGameGenerated(game);

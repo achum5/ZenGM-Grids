@@ -10,6 +10,7 @@ import { promisify } from "util";
 import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria, type Player } from "@shared/schema";
 import { EligibilityChecker, buildLeadersBySeason, EVALS, auditLeaders, ACH_LEADERS } from "./eligibility";
 import { sampleUniform } from "@shared/utils/rng";
+import { generateGrid } from "@shared/grid/generate";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -1300,41 +1301,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/games/generate", async (req, res) => {
     console.log("🚨 GRID GENERATION STARTED - This should always appear");
     try {
-      console.log("🔧 TESTING: Running league-level processing during grid generation...");
-      
       const players = await storage.getPlayers();
-      
-      // TEMPORARY: Force league-level processing on existing players to test
-      if (players.length > 0) {
-        console.log("🔧 TEMP: Processing league achievements on existing players...");
-        const mutablePlayers = players.map(p => ({
-          ...p,
-          achievements: [...p.achievements],
-          careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
-          quality: p.quality ?? 50, // Ensure non-null
-          stats: p.stats ?? undefined // Fix null stats
-        }));
-        
-        await processLeagueLevelAchievements({}, mutablePlayers);
-        
-        // Update storage if achievements were added
-        let hadChanges = false;
-        for (let i = 0; i < mutablePlayers.length; i++) {
-          if (mutablePlayers[i].achievements.length !== players[i].achievements.length) {
-            hadChanges = true;
-            break;
-          }
-        }
-        
-        if (hadChanges) {
-          console.log("🔧 Detected changes, updating storage...");
-          await storage.clearPlayers();
-          for (const player of mutablePlayers) {
-            await storage.createPlayer(player);
-          }
-          console.log("🔧 Storage updated with league-level achievements");
-        }
-      }
       
       if (players.length === 0) {
         return res.status(400).json({ 
@@ -1342,87 +1309,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get unique teams from player data
-      const allTeams = Array.from(new Set(players.flatMap(p => p.teams)));
-      console.log("🔧 All teams in database:", allTeams.length, "total teams");
-      console.log("🔧 Sample teams:", allTeams.slice(0, 10));
+      // Use shared grid generator
+      const input = { players };
+      const grid = await generateGrid(input);
       
-      // Use all teams that have sufficient players (supports custom leagues)
-      // This ensures teams like St. Louis Spirits and Columbus Crush appear
-      const teams = allTeams.filter(team => {
-        const teamPlayerCount = players.filter(p => p.teams.includes(team)).length;
-        return teamPlayerCount >= 10; // Minimum players for a team to appear in grids
+      // Store in database for dev compatibility
+      const gameData = insertGameSchema.parse({
+        columnCriteria: grid.columnCriteria,
+        rowCriteria: grid.rowCriteria,
+        correctAnswers: grid.correctAnswers,
       });
-      
-      console.log("🔧 Eligible teams for grids:", teams.length, "teams");
-      console.log("🔧 Checking for St. Louis Spirits:", teams.includes("St. Louis Spirits"));
-      console.log("🔧 Checking for Columbus Crush:", teams.includes("Columbus Crush"));
-      const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
-      
-      // Complete list of 34 achievements for uniform sampling (as specified in brief)
-      const ACHIEVEMENTS: readonly string[] = [
-        // Career Milestones (6)
-        "20,000+ Career Points",
-        "10,000+ Career Rebounds", 
-        "5,000+ Career Assists",
-        "2,000+ Career Steals",
-        "1,500+ Career Blocks",
-        "2,000+ Made Threes",
-        
-        // Single-Season Statistical Achievements (6)
-        "Averaged 30+ PPG in a Season",
-        "Averaged 10+ APG in a Season",
-        "Averaged 15+ RPG in a Season", 
-        "Averaged 3+ BPG in a Season",
-        "Averaged 2.5+ SPG in a Season",
-        "Shot 50/40/90 in a Season",
-        
-        // League Leadership (5)
-        "Led League in Scoring",
-        "Led League in Rebounds",
-        "Led League in Assists",
-        "Led League in Steals", 
-        "Led League in Blocks",
-        
-        // Game Performance Feats (5)
-        "Scored 50+ in a Game",
-        "Triple-Double in a Game",
-        "20+ Rebounds in a Game",
-        "20+ Assists in a Game",
-        "10+ Threes in a Game",
-        
-        // Major Awards (6)
-        "MVP Winner",
-        "Defensive Player of the Year", 
-        "Rookie of the Year",
-        "Sixth Man of the Year",
-        "Most Improved Player",
-        "Finals MVP",
-        
-        // Team Honors (4)
-        "All-League Team",
-        "All-Defensive Team", 
-        "All-Star Selection",
-        "NBA Champion",
-        
-        // Career Length & Draft (5)
-        "Played 15+ Seasons",
-        "#1 Overall Draft Pick",
-        "Undrafted Player",
-        "First Round Pick",
-        "2nd Round Pick",
-        
-        // Special Categories (5)
-        "Made All-Star Team at Age 35+",
-        "Only One Team",
-        "Champion",
-        "Hall of Fame",
-        "Teammate of All-Time Greats"
-        
-        // Note: BBGM Player easter egg excluded from grid generation for uniform sampling
-      ];
 
-      // Add dynamic "Teammate of All-Time Greats" criteria based on career Win Shares
+      const newGame = await storage.createGame(gameData);
+      return res.json(newGame);
+    } catch (error: any) {
+      console.error("Generate game error:", error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to generate game" 
+      });
+    }
+  });
+
+  // Get a specific game by ID
+  app.get("/api/games/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const game = await storage.getGame(id);
+      
+      if (!game) {
+        return res.status(404).json({ message: "Game not found" });
+      }
+      
+      res.json(game);
+    } catch (error) {
+      console.error("Get game error:", error);
+      res.status(500).json({ message: "Failed to retrieve game" });
+    }
+  });
+
+  // Search players
+  app.get("/api/players/search", async (req, res) => {
+    try {
+      const { q } = searchQuerySchema.parse(req.query);
+      const players = await storage.searchPlayers(q);
+      res.json(players);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid search query" });
+    }
+  });
+
+  // Get top players for a cell (for "Other Top Answers" section)
+  app.get("/api/players/top-for-cell", async (req, res) => {
+    try {
+      const { columnCriteria, rowCriteria, excludePlayer, includeGuessed } = req.query;
+      const players = await storage.getPlayers();
+      
+      if (!columnCriteria || !rowCriteria) {
+        return res.status(400).json({ message: "Column and row criteria required" });
+      }
+
+      // Parse criteria from query strings
+      const colCriteria = JSON.parse(columnCriteria as string);
+      const rowCriteria_item = JSON.parse(rowCriteria as string);
+      
+      console.log("DEBUG: top-for-cell request");
+      console.log("Column criteria:", colCriteria);
+      console.log("Row criteria:", rowCriteria_item);
       const allTimeGreats = players
         .filter(p => p.careerWinShares && p.careerWinShares >= 150) // Very high threshold for all-time greats
         .sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
