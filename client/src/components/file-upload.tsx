@@ -12,6 +12,7 @@ import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { UploadSchema } from "@/lib/uploadValidation";
 import { parseFile, parseUrl } from "@/lib/clientParser";
 import { processLeagueData } from "@/lib/leagueProcessor";
+import { useLeagueStore } from "@/stores/useLeagueStore";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -20,12 +21,12 @@ interface FileUploadProps {
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
-  const [urlInput, setUrlInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
+  
+  const { players, teams, achievements, isLoaded, setLeague } = useLeagueStore();
 
   const processMutation = useMutation({
     mutationFn: async (leagueData: any): Promise<FileUploadData> => {
@@ -33,14 +34,15 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       return await processLeagueData(leagueData);
     },
     onSuccess: (data) => {
-      setUploadData(data);
+      // Store in global state instead of local component state
+      setLeague(null, data);
       onTeamDataUpdate?.(data.teams);
       toast({
         title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
-      // Store processed data and automatically generate a new grid
-      storeDataMutation.mutate(data);
+      // Automatically generate a new grid after successful upload
+      generateGameMutation.mutate();
     },
     onError: (error) => {
       toast({
@@ -52,30 +54,22 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
   });
 
-  const storeDataMutation = useMutation({
-    mutationFn: async (data: FileUploadData) => {
-      // Send processed data to server for storage
-      const response = await apiRequest("POST", "/api/players", {
-        body: JSON.stringify({ players: data.players }),
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      // After storing data, generate a new grid
-      generateGameMutation.mutate();
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to store data",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
   const generateGameMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
+      // Check if we have data in the store
+      const currentState = useLeagueStore.getState();
+      if (!currentState.isLoaded || currentState.players.length === 0) {
+        throw new Error("No players data available. Please upload a league file first.");
+      }
+      
+      // Send players data to the server for grid generation
+      const response = await apiRequest("POST", "/api/games/generate", {
+        body: JSON.stringify({ 
+          players: currentState.players,
+          teams: currentState.teams,
+          achievements: currentState.achievements
+        }),
+      });
       return response.json() as Promise<Game>;
     },
     onSuccess: (game) => {
@@ -167,7 +161,6 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const removeFile = () => {
     setUploadedFile(null);
-    setUploadData(null);
     setError(null);
   };
 
@@ -297,19 +290,19 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
           </div>
         )}
 
-        {uploadData && (
+        {isLoaded && (
           <div className="space-y-4">
             <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-              <p data-testid="text-players-count">Players: {uploadData.players.length}</p>
-              <p data-testid="text-teams-count">Teams: {uploadData.teams.length}</p>
-              <p data-testid="text-achievements-count">Achievements: {uploadData.achievements.length}</p>
+              <p data-testid="text-players-count">Players: {players.length}</p>
+              <p data-testid="text-teams-count">Teams: {teams.length}</p>
+              <p data-testid="text-achievements-count">Achievements: {achievements.length}</p>
             </div>
             
-            <div className="text-center">
+            <div className="flex gap-4 justify-center">
               <Button 
                 onClick={generateGrid}
-                disabled={generateGameMutation.isPending}
-                className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold"
+                disabled={generateGameMutation.isPending || !isLoaded || players.length === 0}
+                className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 data-testid="button-generate-grid"
               >
                 {generateGameMutation.isPending ? (
@@ -323,6 +316,15 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                     Generate New Grid
                   </>
                 )}
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => useLeagueStore.getState().clear()}
+                className="text-gray-600 border-gray-300 hover:bg-gray-50"
+                data-testid="button-clear-league"
+              >
+                <X className="mr-2 h-4 w-4" />
+                Clear League
               </Button>
             </div>
           </div>

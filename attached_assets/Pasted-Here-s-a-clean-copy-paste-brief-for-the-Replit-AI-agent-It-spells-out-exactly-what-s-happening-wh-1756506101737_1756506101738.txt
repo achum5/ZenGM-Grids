@@ -1,0 +1,218 @@
+Here’s a clean, copy-paste brief for the Replit AI agent. It spells out exactly what’s happening, what we expect, and what to change.
+
+⸻
+
+COPY/PASTE FOR REPLIT AI — Fix “Generate New Grid” after upload
+
+Current issue (seen in Replit preview)
+	•	After a file upload, we show “File uploaded successfully — Loaded 1100 players from 30 teams.”
+	•	When the user taps Generate New Grid, we get 400: {“message”:“No players data available. Please upload a league file first.”}
+	•	This proves the upload path parses the league and shows a toast, but the grid generator cannot see the players data (it’s not in the store/state the generator reads).
+
+Root cause
+
+Two data paths are out of sync:
+	•	Upload parses bytes client-side and reports counts (likely using local component state).
+	•	Generate New Grid reads from a different source (server API route, module-level memory, or a global store that was never populated by the upload).
+Result: the generator thinks there’s “no players”.
+
+What we want (definition of done)
+	1.	Single source of truth for loaded league data (players/teams) that both the Upload UI and the Generate button use.
+	2.	Client-only “easy way”: after a successful upload (file or URL), we store the parsed league/players in a global client store and generate the grid without requiring the server.
+	•	Keep/share-link APIs separate; grid creation itself should not depend on a prepopulated server cache.
+	3.	Generate New Grid is disabled until players exist; then it succeeds immediately using the stored data.
+	4.	The “No game loaded” banner disappears once a league is loaded, and a small summary appears (e.g., “1100 players • 30 teams”).
+	5.	URL uploads follow the same flow (bytes → parse → same store).
+
+Exact tasks for you (Replit):
+	1.	Locate the API/route that throws "No players data available" and stop calling it for grid creation OR change it to accept players in the request body.
+	•	Prefer: do not use the API for grid generation in the “easy way”. Generate on the client.
+	2.	Introduce a single global client store (Zustand or React Context). Example shape:
+
+// useLeagueStore.ts
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+type Player = any; type Team = any; type League = any;
+
+type State = {
+  league: League | null;
+  players: Player[];
+  teams: Team[];
+  setLeague: (league: League, players: Player[], teams: Team[]) => void;
+  clear: () => void;
+};
+
+export const useLeagueStore = create<State>()(
+  persist(
+    (set) => ({
+      league: null,
+      players: [],
+      teams: [],
+      setLeague: (league, players, teams) => set({ league, players, teams }),
+      clear: () => set({ league: null, players: [], teams: [] }),
+    }),
+    { name: "bbgm-grid-session", partialize: (s) => ({ league: null, players: s.players, teams: s.teams }) }
+  )
+);
+
+
+	3.	On successful upload/URL load, parse bytes client-side (as we already do), then populate this store:
+
+// after parsing JSON -> league
+const players = extractPlayersFromLeague(league);   // use existing helper if we have one
+const teams   = extractTeamsFromLeague(league);
+useLeagueStore.getState().setLeague(league, players, teams);
+
+Ensure our existing toast (“Loaded X players from Y teams”) reads from these exact arrays, not a local variable.
+
+	4.	Wire the Generate button to the store, not the server:
+
+import { useLeagueStore } from "@/stores/useLeagueStore";
+import { generateGrid } from "@/lib/generateGrid"; // existing function that can accept arrays
+
+const { players, teams } = useLeagueStore();
+const canGenerate = players.length > 0 && teams.length > 0;
+
+async function onGenerate() {
+  if (!canGenerate) { /* show error */ return; }
+  const grid = generateGrid(players, teams);  // pure client call
+  // put grid in state / route to play page / render component
+}
+
+If generateGrid currently lives on an API route and expects server memory, add a client wrapper that passes players/teams as arguments. If the API must be kept, change it to accept { players, teams } in the POST body and stop reading from a global server store.
+
+	5.	Keep the upload validators we added (discriminated union: file vs url) and the client-side parsing (gzip detection → JSON.parse).
+	•	URL path may use /api/download?url=… only to bypass CORS, but we still parse on the client and then populate the same store.
+	6.	UI states
+	•	Disable Generate New Grid until players.length > 0.
+	•	Replace “No game loaded” with a summary once the store has data.
+	•	Add a “Clear league” button to reset the store.
+
+Code you can use (unchanged from earlier guidance)
+
+Validation + Upload parsing (client)
+
+// validation.ts
+import { z } from "zod";
+
+const FileMode = z.object({
+  mode: z.literal("file"),
+  file: z.custom<File>((v) => v instanceof File && v.size > 0, "Choose a league file"),
+});
+
+const UrlMode = z.object({
+  mode: z.literal("url"),
+  url: z.string().url("Enter a valid http(s) URL"),
+});
+
+export const UploadSchema = z.discriminatedUnion("mode", [FileMode, UrlMode]);
+export type UploadInput = z.infer<typeof UploadSchema>;
+
+// UploadBox.tsx — "use client"
+import { useState } from "react";
+import { UploadSchema } from "./validation";
+import { gunzipSync, strFromU8 } from "fflate";
+import { useLeagueStore } from "@/stores/useLeagueStore";
+
+async function parseBytes(arr: Uint8Array) {
+  const isGz = arr[0] === 0x1f && arr[1] === 0x8b;
+  const txt = isGz ? strFromU8(gunzipSync(arr)) : new TextDecoder().decode(arr);
+  if (!txt.trim().startsWith("{") && !txt.trim().startsWith("[")) {
+    throw new Error("Not a valid league export (.json or .json.gz).");
+  }
+  return JSON.parse(txt);
+}
+
+export default function UploadBox() {
+  const [mode, setMode] = useState<"file" | "url">("file");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const setLeague = useLeagueStore((s) => s.setLeague);
+
+  async function onParsed(league: any) {
+    const players = extractPlayersFromLeague(league);
+    const teams   = extractTeamsFromLeague(league);
+    setLeague(league, players, teams);
+    // show toast: `Loaded ${players.length} players from ${teams.length} teams`
+  }
+
+  async function handleFile(file?: File) {
+    if (!file) return;
+    setError(null); setBusy(true);
+    try {
+      const MAX_BYTES = 75 * 1024 * 1024;
+      if (file.size > MAX_BYTES) throw new Error("This league is very large.");
+      const arr = new Uint8Array(await file.arrayBuffer());
+      const league = await parseBytes(arr);
+      await onParsed(league);
+    } catch (e: any) { setError(e?.message ?? "Failed to read file."); }
+    finally { setBusy(false); }
+  }
+
+  async function handleUrl(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const candidate = { mode: "url", url: String(fd.get("url") || "") } as const;
+    const parsed = UploadSchema.safeParse(candidate);
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? "Invalid URL"); return; }
+    setError(null); setBusy(true);
+    try {
+      // try direct, fallback to proxy for CORS
+      let res = await fetch(parsed.data.url);
+      if (!res.ok) res = await fetch(`/api/download?url=${encodeURIComponent(parsed.data.url)}`);
+      if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+      const arr = new Uint8Array(await res.arrayBuffer());
+      const league = await parseBytes(arr);
+      await onParsed(league);
+    } catch (e: any) { setError(e?.message ?? "Could not fetch that URL."); }
+    finally { setBusy(false); }
+  }
+
+  // … render tabs + file input + url form …
+}
+
+Optional CORS proxy (Node runtime)
+
+// /app/api/download/route.ts
+export const runtime = "nodejs";
+export async function GET(req: Request) {
+  const url = new URL(req.url).searchParams.get("url");
+  if (!url) return new Response("missing url", { status: 400 });
+  const upstream = await fetch(url);
+  if (!upstream.ok) return new Response(`remote ${upstream.status} ${upstream.statusText}`, { status: 502 });
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  return new Response(buf, { headers: { "Content-Type": "application/octet-stream", "Access-Control-Allow-Origin": "*" }});
+}
+
+Generate button (client)
+
+import { useLeagueStore } from "@/stores/useLeagueStore";
+import { generateGrid } from "@/lib/generateGrid";
+
+function GenerateButton() {
+  const players = useLeagueStore((s) => s.players);
+  const teams   = useLeagueStore((s) => s.teams);
+  const canGenerate = players.length > 0 && teams.length > 0;
+
+  return (
+    <button disabled={!canGenerate}
+            onClick={() => {
+              if (!canGenerate) return;
+              const grid = generateGrid(players, teams);
+              // setGrid(grid) / navigate / render
+            }}>
+      Generate New Grid
+    </button>
+  );
+}
+
+Acceptance criteria
+	•	After upload, store contains players/teams; “No game loaded” is replaced by a summary.
+	•	Generate New Grid is enabled and succeeds without calling a server route that depends on preloaded server memory.
+	•	The previous 400 error never appears again unless the store is empty (in which case the button should be disabled).
+	•	URL uploads behave identically (direct fetch or via proxy).
+
+⸻
+
+If you prefer to keep grid generation on the server, then POST the players/teams in the request body and stop reading from any global server cache; otherwise stay client-only as above.

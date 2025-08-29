@@ -1292,9 +1292,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/games/generate", async (req, res) => {
     console.log("🚨 GRID GENERATION STARTED - This should always appear");
     try {
-      console.log("🔧 TESTING: Running league-level processing during grid generation...");
+      console.log("🔧 Grid generation with client data");
       
-      const players = await storage.getPlayers();
+      // Accept players data from request body or fallback to storage
+      let players: any[] = [];
+      if (req.body && req.body.players && Array.isArray(req.body.players)) {
+        players = req.body.players;
+        console.log(`Using ${players.length} players from request body`);
+      } else {
+        players = await storage.getPlayers();
+        console.log(`Using ${players.length} players from storage`);
+      }
       
       // TEMPORARY: Force league-level processing on existing players to test
       if (players.length > 0) {
