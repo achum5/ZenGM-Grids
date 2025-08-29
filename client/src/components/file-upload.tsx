@@ -3,15 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CloudUpload, FileCheck, X, Loader2, Link } from "lucide-react";
+import { CloudUpload, FileCheck, X, Play, Loader2, Link } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
-import { fetchLeagueBytes, fileToBytes, parseLeagueInWorker, parseLeagueSync } from "@/lib/leagueIO";
-import { toGridDataset } from "@/lib/processLeague";
-import { buildGrid } from "@/lib/grid";
-import { setSessionJSON } from "@/lib/session";
-import type { Game, TeamInfo } from "@shared/schema";
+import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -20,79 +17,91 @@ interface FileUploadProps {
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [urlInput, setUrlInput] = useState('');
-  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
 
-  async function loadLeagueFromUrl(inputUrl: string) {
-    setLoading(true);
-    try {
-      const { bytes, hinted } = await fetchLeagueBytes(inputUrl);
-      // Worker for big files; fallback to sync for tiny ones if you want
-      const league = await parseLeagueInWorker(bytes, hinted);
-      const ds = toGridDataset(league);
-      const grid = buildGrid(ds);
 
-      // Save to session for the play screen
-      setSessionJSON("grid-dataset", ds);
-      setSessionJSON("grid", grid);
 
+  const uploadMutation = useMutation({
+    mutationFn: async (fileOrUrl: File | string) => {
+      if (typeof fileOrUrl === 'string') {
+        // URL upload
+        const response = await fetch("/api/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: fileOrUrl }),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "URL upload failed");
+        }
+        return response.json() as Promise<FileUploadData>;
+      } else {
+        // File upload
+        const formData = new FormData();
+        formData.append("file", fileOrUrl);
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Upload failed");
+        }
+        return response.json() as Promise<FileUploadData>;
+      }
+    },
+    onSuccess: (data) => {
+      setUploadData(data);
+      onTeamDataUpdate?.(data.teams);
       toast({
-        title: "URL loaded successfully",
-        description: `Loaded ${ds.players.length} players from ${ds.teams.length} teams`,
+        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
+        description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
-
-      setLocation("/play"); // Navigate to play screen
-    } catch (e: any) {
+      // Automatically generate a new grid after successful upload
+      generateGameMutation.mutate();
+    },
+    onError: (error) => {
       toast({
-        title: "URL loading failed",
-        description: e.message || "Failed to load URL",
+        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
+        description: error.message,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
-    }
-  }
+      setUploadedFile(null);
+    },
+  });
 
-  async function loadLeagueFromFile(file: File) {
-    setLoading(true);
-    try {
-      const { bytes, hinted } = await fileToBytes(file);
-      const league = await parseLeagueInWorker(bytes, hinted); // worker parse
-      const ds = toGridDataset(league);
-      const grid = buildGrid(ds);
-      
-      // Save to session for the play screen
-      setSessionJSON("grid-dataset", ds);
-      setSessionJSON("grid", grid);
-
+  const generateGameMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/games/generate");
+      return response.json() as Promise<Game>;
+    },
+    onSuccess: (game) => {
+      onGameGenerated(game);
       toast({
-        title: "File uploaded successfully",
-        description: `Loaded ${ds.players.length} players from ${ds.teams.length} teams`,
+        title: "New grid generated",
+        description: "Ready to play!",
+        duration: 1000,
       });
-      
-      setLocation("/play"); // Navigate to play screen
-    } catch (e: any) {
+    },
+    onError: (error) => {
       toast({
-        title: "Upload failed", 
-        description: e.message || "Failed to load file",
+        title: "Failed to generate grid",
+        description: error.message,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
-    }
-  }
-
+    },
+  });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
       setUploadedFile(file);
-      loadLeagueFromFile(file);
+      uploadMutation.mutate(file);
     }
-  }, []);
+  }, [uploadMutation]);
 
   const handleUrlUpload = () => {
     if (!urlInput.trim()) {
@@ -104,23 +113,35 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       return;
     }
     
+    // Auto-convert Dropbox www URLs to dl URLs
+    let processedUrl = urlInput.trim();
+    if (processedUrl.includes("www.dropbox.com")) {
+      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
+      // Also ensure the dl=0 parameter is set to dl=1 for direct download
+      if (processedUrl.includes("dl=0")) {
+        processedUrl = processedUrl.replace("dl=0", "dl=1");
+      } else if (!processedUrl.includes("dl=1")) {
+        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
+      }
+    }
+    
     setUploadedFile(null);
-    loadLeagueFromUrl(urlInput.trim());
+    uploadMutation.mutate(processedUrl);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'application/json': ['.json'],
-      'application/gzip': ['.gz'],
-      'application/x-gzip': ['.gz'],
-      'text/plain': ['.gz'], // Some servers send .gz as text/plain
-    },
+    // Accept any file - let backend validate content
     multiple: false,
   });
 
   const removeFile = () => {
     setUploadedFile(null);
+    setUploadData(null);
+  };
+
+  const generateGrid = () => {
+    generateGameMutation.mutate();
   };
 
   return (
@@ -154,10 +175,10 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
-                disabled={loading}
+                disabled={uploadMutation.isPending}
                 data-testid="button-browse-files"
               >
-                {loading ? (
+                {uploadMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Uploading...
@@ -187,20 +208,20 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && urlInput.trim() && !loading) {
+                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
                       handleUrlUpload();
                     }
                   }}
                   className="flex-1 url-upload-input"
-                  disabled={loading}
+                  disabled={uploadMutation.isPending}
                 />
                 <Button
                   onClick={handleUrlUpload}
                   className="bg-basketball text-white hover:bg-orange-600"
-                  disabled={loading || !urlInput.trim()}
+                  disabled={uploadMutation.isPending || !urlInput.trim()}
                   data-testid="button-upload-url"
                 >
-                  {loading ? (
+                  {uploadMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading...
@@ -237,6 +258,36 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
           </div>
         )}
 
+        {uploadData && (
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+              <p data-testid="text-players-count">Players: {uploadData.players.length}</p>
+              <p data-testid="text-teams-count">Teams: {uploadData.teams.length}</p>
+              <p data-testid="text-achievements-count">Achievements: {uploadData.achievements.length}</p>
+            </div>
+            
+            <div className="text-center">
+              <Button 
+                onClick={generateGrid}
+                disabled={generateGameMutation.isPending}
+                className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold"
+                data-testid="button-generate-grid"
+              >
+                {generateGameMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-5 w-5" />
+                    Generate New Grid
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
 
       </CardContent>
     </Card>
