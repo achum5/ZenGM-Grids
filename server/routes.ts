@@ -2004,6 +2004,69 @@ app.get("/api/debug/matches", async (req, res) => {
 
 
 
+  // Add league processing endpoint for client-side parsed data
+  app.post("/api/process-league", async (req, res) => {
+    try {
+      const { league } = req.body;
+      if (!league) {
+        return res.status(400).json({ message: "Missing league data" });
+      }
+
+      // Process the league data the same way as the old upload endpoints
+      const { players: playersData, teams: teamsData, achievements: achievementsData } = league;
+      
+      if (!playersData || !Array.isArray(playersData)) {
+        throw new Error("Invalid or missing players data in league file");
+      }
+
+      // Store players data
+      await storage.clearPlayers();
+      const playerResults = await Promise.all(
+        playersData.map(async (playerData: any) => {
+          try {
+            const validatedPlayer = insertPlayerSchema.parse(playerData);
+            return await storage.createPlayer(validatedPlayer);
+          } catch (error) {
+            console.warn(`Skipping invalid player:`, error);
+            return null;
+          }
+        })
+      );
+
+      const validPlayers = playerResults.filter((p): p is NonNullable<typeof p> => p !== null);
+      console.log(`Processed ${validPlayers.length} valid players out of ${playersData.length} total`);
+
+      // Build global indices for leader evaluations
+      globalIndices = { leadersBySeason: buildLeadersBySeason(validPlayers) };
+
+      // Audit leaders and log results
+      const auditResults = auditLeaders(validPlayers, globalIndices, ACH_LEADERS);
+      console.log("Achievement audit results:", auditResults);
+
+      // Extract unique teams from players
+      const teamNames = new Set<string>();
+      validPlayers.forEach(player => {
+        player.teams.forEach((team: string) => teamNames.add(team));
+      });
+
+      const teams = Array.from(teamNames).map(name => ({ name, logo: undefined }));
+      const achievements = achievementsData || Object.values(ACH_LEADERS).map(config => config.label);
+
+      const uploadData: FileUploadData = {
+        players: validPlayers,
+        teams,
+        achievements
+      };
+
+      res.json(uploadData);
+    } catch (error) {
+      console.error("League processing error:", error);
+      res.status(400).json({ 
+        message: error instanceof Error ? error.message : "Failed to process league data" 
+      });
+    }
+  });
+
   // Add proxy route for league URL fetching (dev parity with Vercel)
   app.get("/api/fetch-league", async (req, res) => {
     try {
