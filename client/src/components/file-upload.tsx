@@ -1,152 +1,22 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CloudUpload, FileCheck, X, Play, Loader2, Link } from "lucide-react";
 import { useDropzone } from "react-dropzone";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
-import { fetchLeagueBytes, fileToBytes, parseLeagueInWorker } from "@/lib/leagueIO";
+import { parseLeagueFromUrlInWorker, parseLeagueFromFileInWorker } from "@/lib/leagueIO";
+import { setLeagueInMemory, getLeagueInMemory } from "@/lib/leagueMemory";
+import { generateGrid as generateGridFromMemory } from "@shared/grid/generate";
+import { buildGenerateInput } from "@shared/grid/buildInput";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
-}
-
-// Pure client-side league processing - NO server POST
-function processLeagueClientSide(league: any): FileUploadData {
-  console.log("Processing league client-side...", league);
-  
-  // Extract players from league
-  const playersData = league.players || [];
-  if (!Array.isArray(playersData)) {
-    throw new Error("Invalid or missing players data in league file");
-  }
-
-  // Process players and extract data
-  const players = playersData
-    .map((playerData: any) => {
-      try {
-        // Convert BBGM player format to our format
-        const teams = new Set<string>();
-        const years: { team: string; start: number; end: number }[] = [];
-        
-        // Process player stats to extract teams and years
-        if (Array.isArray(playerData.stats)) {
-          playerData.stats.forEach((stat: any) => {
-            if (stat.tid !== undefined && league.teams?.[stat.tid]) {
-              const team = league.teams[stat.tid];
-              const teamName = team.region ? `${team.region} ${team.name}` : team.name;
-              teams.add(teamName);
-              
-              // Add year range
-              const existingYear = years.find(y => y.team === teamName);
-              if (existingYear) {
-                existingYear.start = Math.min(existingYear.start, stat.season);
-                existingYear.end = Math.max(existingYear.end, stat.season);
-              } else {
-                years.push({ team: teamName, start: stat.season, end: stat.season });
-              }
-            }
-          });
-        }
-
-        // Calculate basic achievements and stats
-        const achievements: string[] = [];
-        let careerPoints = 0;
-        let careerRebounds = 0;
-        let careerAssists = 0;
-        let careerSteals = 0;
-        let careerBlocks = 0;
-        let careerThrees = 0;
-
-        if (Array.isArray(playerData.stats)) {
-          playerData.stats.forEach((stat: any) => {
-            if (!stat.playoffs) { // Regular season only
-              careerPoints += stat.pts || 0;
-              careerRebounds += (stat.orb || 0) + (stat.drb || 0);
-              careerAssists += stat.ast || 0;
-              careerSteals += stat.stl || 0;
-              careerBlocks += stat.blk || 0;
-              careerThrees += stat.tp || 0;
-            }
-          });
-        }
-
-        // Basic achievement calculations
-        if (careerPoints >= 20000) achievements.push("20,000+ Career Points");
-        if (careerRebounds >= 10000) achievements.push("10,000+ Career Rebounds");
-        if (careerAssists >= 5000) achievements.push("5,000+ Career Assists");
-        if (careerSteals >= 2000) achievements.push("2,000+ Career Steals");
-        if (careerBlocks >= 1500) achievements.push("1,500+ Career Blocks");
-        if (careerThrees >= 2000) achievements.push("2,000+ Made Threes");
-
-        // Check for season averages
-        if (Array.isArray(playerData.stats)) {
-          for (const stat of playerData.stats) {
-            if (!stat.playoffs && stat.gp > 0) {
-              const ppg = stat.pts / stat.gp;
-              const apg = stat.ast / stat.gp;
-              const rpg = ((stat.orb || 0) + (stat.drb || 0)) / stat.gp;
-              const bpg = (stat.blk || 0) / stat.gp;
-
-              if (ppg >= 30 && !achievements.includes("Averaged 30+ PPG in a Season")) {
-                achievements.push("Averaged 30+ PPG in a Season");
-              }
-              if (apg >= 10 && !achievements.includes("Averaged 10+ APG in a Season")) {
-                achievements.push("Averaged 10+ APG in a Season");
-              }
-              if (rpg >= 15 && !achievements.includes("Averaged 15+ RPG in a Season")) {
-                achievements.push("Averaged 15+ RPG in a Season");
-              }
-              if (bpg >= 3 && !achievements.includes("Averaged 3+ BPG in a Season")) {
-                achievements.push("Averaged 3+ BPG in a Season");
-              }
-            }
-          }
-        }
-
-        return {
-          name: `${playerData.firstName} ${playerData.lastName}`,
-          teams: Array.from(teams),
-          years,
-          achievements,
-          careerWinShares: playerData.careerStats?.ws || 0,
-          quality: 50, // Default quality
-          pid: playerData.pid,
-          stats: null,
-          face: playerData.face || null,
-          imageUrl: null
-        };
-      } catch (error) {
-        console.warn(`Skipping invalid player:`, error);
-        return null;
-      }
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null);
-
-  // Extract unique teams
-  const teamNames = new Set<string>();
-  players.forEach(player => {
-    if (player) {
-      player.teams.forEach(team => teamNames.add(team));
-    }
-  });
-
-  const teams = Array.from(teamNames).map(name => ({ name, logo: undefined }));
-  
-  // Basic achievements list
-  const achievements = [
-    "20,000+ Career Points", "10,000+ Career Rebounds", "5,000+ Career Assists",
-    "2,000+ Career Steals", "1,500+ Career Blocks", "2,000+ Made Threes",
-    "Averaged 30+ PPG in a Season", "Averaged 10+ APG in a Season",
-    "Averaged 15+ RPG in a Season", "Averaged 3+ BPG in a Season"
-  ];
-
-  return { players, teams, achievements };
 }
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
@@ -156,66 +26,115 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
   const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
 
-  const uploadMutation = useMutation({
-    mutationFn: async (fileOrUrl: File | string) => {
-      console.log("Spawning parse worker…");
-      let league: any;
-      
-      if (typeof fileOrUrl === 'string') {
-        // URL upload with client-side parsing
-        const { bytes, hinted } = await fetchLeagueBytes(fileOrUrl);
-        
-        // Check if the response looks like HTML (error page)
-        const text = new TextDecoder().decode(bytes.slice(0, 100));
-        if (text.trim().startsWith('<')) {
-          throw new Error("This link returns a web page, not a file. Make sure it's a direct download link.");
-        }
-        
-        league = await parseLeagueInWorker(bytes, hinted);
-      } else {
-        // File upload with client-side parsing
-        const { bytes, hinted } = await fileToBytes(fileOrUrl);
-        league = await parseLeagueInWorker(bytes, hinted);
-      }
-      
-      // Process the league data entirely on the client side
-      return processLeagueClientSide(league);
-    },
-    onSuccess: async (data) => {
-      setUploadData(data);
-      onTeamDataUpdate?.(data.teams);
-      
-      // Send processed data to server for storage (but not processing)
-      try {
-        const response = await apiRequest("POST", "/api/store-players", { players: data.players });
-        await response.json();
-      } catch (error) {
-        console.warn("Failed to store players on server:", error);
-        // Continue anyway - the game can work with client-side data
-      }
-      
+
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Process league data client-side and populate server storage
+  const processLeague = async (league: any) => {
+    // Extract players, teams, and achievements from league data
+    const players = league.players || [];
+    const teams = league.teams || [];
+    const achievements = league.achievements || [];
+    
+    // Create the upload data structure
+    const data: FileUploadData = {
+      players,
+      teams,
+      achievements
+    };
+    
+    setUploadData(data);
+    onTeamDataUpdate?.(data.teams);
+    
+    // Store league data in memory for grid generation
+    setLeagueInMemory(league);
+    
+    // Debug log to verify upload
+    console.debug("Uploaded league summary", {
+      players: league.players?.length,
+      teams: league.teams?.length,
+    });
+    
+    toast({
+      title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
+      description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
+    });
+    
+    // Automatically generate a new grid after successful upload
+    generateGameMutation.mutate();
+  };
+
+  // URL upload handler
+  const handleUrlUpload = async () => {
+    if (!urlInput.trim()) {
       toast({
-        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
-        description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
+        title: "Invalid URL",
+        description: "Please enter a valid URL",
+        variant: "destructive",
       });
-      
-      // Automatically generate a new grid after successful upload
-      generateGameMutation.mutate();
-    },
-    onError: (error) => {
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const league = await parseLeagueFromUrlInWorker(urlInput.trim());
+      await processLeague(league);
+    } catch (e: any) {
+      console.error(e);
       toast({
-        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
-        description: error.message,
+        title: "URL loading failed",
+        description: e.message || "Failed to load URL",
         variant: "destructive",
       });
       setUploadedFile(null);
-    },
-  });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // File upload handler
+  const handleFileUpload = async (file: File) => {
+    setIsLoading(true);
+    try {
+      const hinted = file.name.toLowerCase().endsWith(".gz") ? ("gzip" as const) : null;
+      const league = await parseLeagueFromFileInWorker(file, hinted);
+      await processLeague(league);
+    } catch (e: any) {
+      console.error(e);
+      toast({
+        title: "Upload failed",
+        description: e.message || "Failed to load file",
+        variant: "destructive",
+      });
+      setUploadedFile(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const generateGameMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
+      const league = getLeagueInMemory();
+      if (!league) {
+        throw new Error("Please upload a league file first.");
+      }
+
+      // Build the input the exact same way the server route does
+      const input = buildGenerateInput(league);
+      
+      // Quick sanity log so we can see counts
+      console.debug("GEN INPUT", {
+        players: input.players?.length,
+        teams: input.teams?.length,
+      });
+      
+      const grid = await generateGridFromMemory(input);
+      // Convert Date to string for Game type compatibility
+      return {
+        ...grid,
+        createdAt: grid.createdAt.toISOString(),
+      } as Game;
     },
     onSuccess: (game) => {
       onGameGenerated(game);
@@ -238,30 +157,16 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     const file = acceptedFiles[0];
     if (file) {
       setUploadedFile(file);
-      uploadMutation.mutate(file);
+      handleFileUpload(file);
     }
-  }, [uploadMutation]);
-
-  const handleUrlUpload = () => {
-    if (!urlInput.trim()) {
-      toast({
-        title: "Invalid URL",
-        description: "Please enter a valid URL",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setUploadedFile(null);
-    uploadMutation.mutate(urlInput.trim());
-  };
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'application/json': ['.json'],
       'application/gzip': ['.gz'],
-      'application/x-gzip': ['.gz'],
+      'application/x-gzip': ['.gz']
     },
     multiple: false,
   });
@@ -306,13 +211,13 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
-                disabled={uploadMutation.isPending}
+                disabled={isLoading}
                 data-testid="button-browse-files"
               >
-                {uploadMutation.isPending ? (
+                {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    Uploading...
                   </>
                 ) : (
                   "Browse Files"
@@ -335,24 +240,24 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <div className="flex gap-2">
                 <Input
                   type="url"
-                  placeholder="Paste league file URL (Dropbox, GitHub, Drive, etc.)"
+                  placeholder="Paste league file URL"
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
+                    if (e.key === 'Enter' && urlInput.trim() && !isLoading) {
                       handleUrlUpload();
                     }
                   }}
                   className="flex-1 url-upload-input"
-                  disabled={uploadMutation.isPending}
+                  disabled={isLoading}
                 />
                 <Button
                   onClick={handleUrlUpload}
                   className="bg-basketball text-white hover:bg-orange-600"
-                  disabled={uploadMutation.isPending || !urlInput.trim()}
+                  disabled={isLoading || !urlInput.trim()}
                   data-testid="button-upload-url"
                 >
-                  {uploadMutation.isPending ? (
+                  {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading...

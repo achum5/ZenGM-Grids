@@ -1,0 +1,202 @@
+IMPORTANT – DO NOT CHANGE UI/GAME CODE.
+Do not modify routes, pages, components, styles, state, search, or grid logic. Only add/modify the upload plumbing as described below. If a change would alter visuals or gameplay, skip it.
+
+Allowed files to edit/create:
+
+api/fetch-league.ts (Vercel function)
+
+vercel.json
+
+server/routes.ts (add dev-only proxy route)
+
+client/src/lib/leagueIO.ts (helper)
+
+client/src/lib/leagueMemory.ts (in-memory handoff)
+
+Upload component only: replace its file/URL handlers to call the helper; do not change any other UI.
+
+Do-only-this checklist (works on Vercel & Replit preview)
+
+Install dependency
+
+npm i fflate
+
+
+Create Vercel function (production URL proxy)
+api/fetch-league.ts
+
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { Readable } from "node:stream";
+
+export const config = { maxDuration: 60 };
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+function normalize(input: string) {
+  const u = new URL(input.trim());
+  if (u.hostname.endsWith("dropbox.com")) { u.hostname = "dl.dropboxusercontent.com"; u.searchParams.set("dl","1"); }
+  if (u.hostname === "github.com") {
+    const p = u.pathname.split("/").filter(Boolean);
+    if (p.length >= 5 && p[2] === "blob") {
+      const [user, repo, _b, branch, ...rest] = p;
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`; u.search = "";
+    }
+  }
+  if (u.hostname === "gist.github.com") {
+    const p = u.pathname.split("/").filter(Boolean);
+    if (p.length >= 2) { const [user, hash] = p; u.hostname = "gist.githubusercontent.com"; u.pathname = `/${user}/${hash}/raw`; u.search = ""; }
+  }
+  if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+    const id = u.pathname.split("/")[3];
+    u.pathname = "/uc"; u.search = ""; u.searchParams.set("export","download"); u.searchParams.set("id", id);
+  }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url) return res.status(400).json({ error: "Missing ?url=" });
+
+    const normalized = normalize(url);
+    const looksGzip = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
+
+    const upstream = await fetch(normalized, { redirect: "follow", headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" }});
+    if (!upstream.ok || !upstream.body) return res.status(upstream.status || 502).json({ error: `Remote ${upstream.status} ${upstream.statusText}` });
+
+    const ct = upstream.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+    const ce = upstream.headers.get("content-encoding");
+    const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+    if (ce) res.setHeader("X-Content-Encoding", ce);
+    else if (looksGzip || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+
+    res.setHeader("Cache-Control", "no-store");
+    Readable.fromWeb(upstream.body as any).pipe(res);
+  } catch (e:any) { res.status(400).json({ error: String(e?.message || e) }); }
+}
+
+
+vercel.json
+
+{
+  "functions": { "api/**": { "maxDuration": 60 } }
+}
+
+
+Add dev proxy route (Replit preview only)
+Add this before your SPA/static catch-all in server/routes.ts:
+
+import { Readable } from "node:stream";
+
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+function normDev(input: string){ const u = new URL(input.trim());
+  if (u.hostname.endsWith("dropbox.com")) { u.hostname = "dl.dropboxusercontent.com"; u.searchParams.set("dl","1"); }
+  if (u.hostname === "github.com"){ const p = u.pathname.split("/").filter(Boolean);
+    if (p.length>=5 && p[2]==="blob"){ const [user,repo,_b,branch,...rest]=p; u.hostname="raw.githubusercontent.com"; u.pathname=`/${user}/${repo}/${branch}/${rest.join("/")}`; u.search="";}}
+  if (u.hostname === "gist.github.com"){ const p = u.pathname.split("/").filter(Boolean);
+    if (p.length>=2){ const [user,hash]=p; u.hostname="gist.githubusercontent.com"; u.pathname=`/${user}/${hash}/raw`; u.search="";}}
+  if (u.hostname==="drive.google.com" && u.pathname.startsWith("/file/")){ const id=u.pathname.split("/")[3]; u.pathname="/uc"; u.search=""; u.searchParams.set("export","download"); u.searchParams.set("id", id); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+  return u.toString();
+}
+app.get("/api/fetch-league", async (req, res) => {
+  try {
+    const url = typeof req.query.url === "string" ? req.query.url : "";
+    if (!url) return res.status(400).json({ error: "Missing ?url=" });
+    const normalized = normDev(url);
+    const looksGzip = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
+    const upstream = await fetch(normalized, { redirect:"follow", headers:{ "User-Agent": UA, Accept:"*/*", "Accept-Encoding":"identity" }});
+    if (!upstream.ok || !upstream.body) return res.status(upstream.status || 502).json({ error: `Remote ${upstream.status} ${upstream.statusText}` });
+    const ct = upstream.headers.get("content-type") || "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+    const ce = upstream.headers.get("content-encoding");
+    const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+    if (ce) res.setHeader("X-Content-Encoding", ce); else if (looksGzip || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+    res.setHeader("Cache-Control", "no-store");
+    Readable.fromWeb(upstream.body as any).pipe(res);
+  } catch (e:any) { res.status(400).json({ error: String(e?.message || e) }); }
+});
+
+
+Client helper (read bytes + gzip + JSON)
+client/src/lib/leagueIO.ts
+
+import { gunzipSync } from "fflate";
+
+export async function fetchLeagueBytesViaVercel(rawUrl: string) {
+  const r = await fetch(`/api/fetch-league?url=${encodeURIComponent(rawUrl)}`);
+  if (!r.ok) { const t = await r.text().catch(()=> ""); throw new Error(`URL fetch failed (${r.status}): ${t || r.statusText}`); }
+  const hinted = r.headers.get("x-content-encoding") as ("gzip" | null);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  return { bytes, hinted };
+}
+export async function fileToBytes(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const hinted = file.name.toLowerCase().endsWith(".gz") ? ("gzip" as const) : null;
+  return { bytes, hinted };
+}
+export function parseLeague(bytes: Uint8Array, hinted?: "gzip" | null) {
+  const isGz = hinted === "gzip" || (bytes[0] === 0x1f && bytes[1] === 0x8b);
+  const raw = isGz ? gunzipSync(bytes) : bytes;
+  const text = new TextDecoder().decode(raw);
+  return JSON.parse(text);
+}
+
+
+In-memory handoff (prevents quota errors)
+client/src/lib/leagueMemory.ts
+
+let _leagueData: any = null;
+export function setLeagueInMemory(v:any){ _leagueData = v; }
+export function getLeagueInMemory<T=any>(): T | null { return _leagueData as T | null; }
+
+
+Upload component – replace handlers only (no UI changes)
+
+Use the helper to load; do not POST the full league to any /api/*.
+
+Store in memory instead of localStorage/sessionStorage.
+
+import { fetchLeagueBytesViaVercel, fileToBytes, parseLeague } from "@/lib/leagueIO";
+import { setLeagueInMemory } from "@/lib/leagueMemory";
+
+// URL path
+async function onUrlSubmit(url: string) {
+  setLoading(true);
+  try {
+    const { bytes, hinted } = await fetchLeagueBytesViaVercel(url);
+    const league = parseLeague(bytes, hinted);
+    setLeagueInMemory(league);
+    // call existing UI/game function as before
+  } catch (e:any) { console.error(e); toast?.error?.(e.message || "Failed to load URL"); }
+  finally { setLoading(false); }
+}
+
+// File path
+async function onFileChosen(file: File) {
+  setLoading(true);
+  try {
+    const { bytes, hinted } = await fileToBytes(file);
+    const league = parseLeague(bytes, hinted);
+    setLeagueInMemory(league);
+    // call existing UI/game function as before
+  } catch (e:any) { console.error(e); toast?.error?.(e.message || "Failed to load file"); }
+  finally { setLoading(false); }
+}
+
+
+Make sure file input accepts gzip
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />
+
+Why this won’t change your game/UI
+
+We only add the proxy + helper + tiny storage shim.
+
+Your upload component still hands the parsed league to the same functions you already use.
+
+No pages, styles, routes, or gameplay logic are touched.
+
+Once this is in, uploads will work in both Replit preview and Vercel, and your site will look/play exactly the same.

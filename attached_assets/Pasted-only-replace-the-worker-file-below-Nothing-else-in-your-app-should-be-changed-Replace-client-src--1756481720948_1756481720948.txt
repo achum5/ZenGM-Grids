@@ -1,0 +1,84 @@
+only replace the worker file below. Nothing else in your app should be changed.
+
+Replace client/src/workers/leagueParse.worker.ts with:
+
+// Web Worker: safely parse large BBGM league files without main-thread OOM.
+// Uses DecompressionStream('gzip') if available; otherwise falls back to fflate AsyncGunzip
+// and decodes via Response/Blob (no TextDecoder stream option required).
+
+import { AsyncGunzip } from "fflate";
+
+type MsgIn = { buffer: ArrayBuffer; hinted?: "gzip" | null };
+type MsgOut = { ok: true; league: any } | { ok: false; error: string };
+
+function isGzip(u8: Uint8Array) {
+  return u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b;
+}
+
+// Helper: decode a stream or list of Uint8Array chunks to text without relying on TextDecoder options
+async function chunksToText(chunks: Uint8Array[] | ReadableStream<Uint8Array>): Promise<string> {
+  if ("ReadableStream" in self && chunks instanceof ReadableStream) {
+    // Let the browser decode the stream
+    return await new Response(chunks).text();
+  }
+  // Combine chunks as a Blob and let the browser decode once
+  const blob = new Blob(chunks as Uint8Array[], { type: "application/octet-stream" });
+  return await new Response(blob).text();
+}
+
+self.onmessage = async (e: MessageEvent<MsgIn>) => {
+  try {
+    const hinted = e.data.hinted ?? null;
+    let u8 = new Uint8Array(e.data.buffer); // transferred, zero-copy
+
+    // Non-gzip → decode directly via Response
+    if (!(hinted === "gzip" || isGzip(u8))) {
+      const text = await new Response(new Blob([u8])).text();
+      const league = JSON.parse(text);
+      (self as any).postMessage({ ok: true, league } as MsgOut);
+      return;
+    }
+
+    // Gzip path
+    // Preferred: native streaming gunzip
+    if (typeof (self as any).DecompressionStream === "function") {
+      const ds = new (self as any).DecompressionStream("gzip");
+      // Stream the ArrayBuffer through the decompressor
+      const stream = new Blob([u8]).stream().pipeThrough(ds) as ReadableStream<Uint8Array>;
+      const text = await new Response(stream).text();
+      const league = JSON.parse(text);
+      (self as any).postMessage({ ok: true, league } as MsgOut);
+      return;
+    }
+
+    // Fallback: fflate AsyncGunzip → collect chunks → decode via Response/Blob
+    const gunzip = new AsyncGunzip();
+    const chunks: Uint8Array[] = [];
+    const textPromise = new Promise<string>((resolve, reject) => {
+      gunzip.ondata = (chunk, final) => {
+        chunks.push(chunk);
+        if (final) {
+          chunksToText(chunks).then(resolve).catch(reject);
+        }
+      };
+      gunzip.onerr = (msg, code) => reject(new Error(`${msg} (${code})`));
+    });
+
+    gunzip.push(u8, true); // true = final
+
+    const text = await textPromise;
+    const league = JSON.parse(text);
+    (self as any).postMessage({ ok: true, league } as MsgOut);
+  } catch (err: any) {
+    (self as any).postMessage({ ok: false, error: String(err?.message || err) } as MsgOut);
+  }
+};
+
+
+This removes the TextDecoder.decode(..., { stream }) usage that’s failing in your environment and keeps decompression+parse off the main thread, so you also avoid the “Out of memory” tab crash.
+
+No UI/game changes
+
+Keep your upload handlers exactly as we set them up: they call parseLeagueInWorker(bytes, hinted) and then hand the resulting league to your existing game code.
+
+Do not store the full league in localStorage/sessionStorage; keep using the in-memory helper to avoid quota issues.

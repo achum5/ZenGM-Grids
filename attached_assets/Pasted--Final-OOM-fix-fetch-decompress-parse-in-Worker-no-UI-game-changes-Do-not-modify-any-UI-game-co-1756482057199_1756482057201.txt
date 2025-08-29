@@ -1,3 +1,15 @@
+“Final OOM fix: fetch+decompress+parse in Worker (no UI/game changes)”
+
+Do not modify any UI/game code except the two upload handlers.
+We’re only adding a worker and small helpers.
+
+0) Make sure fflate is installed
+npm i fflate
+
+1) Replace the worker with a fetch-in-worker version
+
+Create/replace: client/src/workers/leagueParse.worker.ts
+
 // Worker: fetch/decompress/parse big BBGM leagues without main-thread memory spikes.
 // - URL case: worker fetches /api/fetch-league?url=... (no big ArrayBuffer on main)
 // - File case: pass File/Blob to worker; stream it through DecompressionStream if needed
@@ -127,3 +139,73 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
     (self as any).postMessage({ ok: false, error: String(err?.message || err) } as MsgOut);
   }
 };
+
+2) Update the helper to use the worker directly (no ArrayBuffer on main)
+
+Create/replace: client/src/lib/leagueIO.ts
+
+// Helper: dispatch work to the worker. No ArrayBuffer allocations on main thread.
+
+export function parseLeagueFromUrlInWorker(url: string, hinted?: "gzip" | null): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("../workers/leagueParse.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (ev: MessageEvent<{ ok: boolean; league?: any; error?: string }>) => {
+      if (ev.data.ok) resolve(ev.data.league);
+      else reject(new Error(ev.data.error || "Worker parse failed"));
+      worker.terminate();
+    };
+    worker.onerror = (e) => { reject(new Error(e.message || "Worker error")); worker.terminate(); };
+    worker.postMessage({ kind: "url", url, hinted: hinted ?? null });
+  });
+}
+
+export function parseLeagueFromFileInWorker(file: File, hinted?: "gzip" | null): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("../workers/leagueParse.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (ev: MessageEvent<{ ok: boolean; league?: any; error?: string }>) => {
+      if (ev.data.ok) resolve(ev.data.league);
+      else reject(new Error(ev.data.error || "Worker parse failed"));
+      worker.terminate();
+    };
+    worker.onerror = (e) => { reject(new Error(e.message || "Worker error")); worker.terminate(); };
+    worker.postMessage({ kind: "file", file, hinted: hinted ?? null });
+  });
+}
+
+
+Note: We no longer create Uint8Array/arrayBuffer() on the main thread at all.
+
+3) Change ONLY the two upload handlers to call these helpers
+
+(Do not change any other UI/game code.)
+
+import { parseLeagueFromUrlInWorker, parseLeagueFromFileInWorker } from "@/lib/leagueIO";
+import { setLeagueInMemory } from "@/lib/leagueMemory";
+
+// URL handler (unchanged UI)
+async function onUrlSubmit(url: string) {
+  setLoading(true);
+  try {
+    const league = await parseLeagueFromUrlInWorker(url);
+    setLeagueInMemory(league);
+    // call your existing game/UI function with `league`
+  } catch (e: any) { console.error(e); toast?.error?.(e.message || "Failed to load URL"); }
+  finally { setLoading(false); }
+}
+
+// File handler (unchanged UI)
+async function onFileChosen(file: File) {
+  setLoading(true);
+  try {
+    const hinted = file.name.toLowerCase().endsWith(".gz") ? ("gzip" as const) : null;
+    const league = await parseLeagueFromFileInWorker(file, hinted);
+    setLeagueInMemory(league);
+    // call your existing game/UI function with `league`
+  } catch (e: any) { console.error(e); toast?.error?.(e.message || "Failed to load file"); }
+  finally { setLoading(false); }
+}
+
+
+Ensure your file input accepts gzip:
+
+<input type="file" accept=".json,.gz,application/gzip,application/x-gzip" />

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { Player, TeamInfo, GridCriteria } from "@shared/schema";
 import { PlayerFace } from "./player-face";
 import { PlayerProfileModal } from "./player-profile-modal";
@@ -92,55 +92,181 @@ function getRarityColor(rarity: number): string {
 interface NameFitResult {
   mode: 'one-line-full' | 'two-line-full' | 'one-line-truncated' | 'two-line-truncated' | 'minimal';
   lines: string[];
+  fontSize: number;
 }
 
-function formatPlayerName(fullName: string, containerWidth: number, containerHeight: number): NameFitResult {
+// Font size cache to avoid repeated calculations
+const fontSizeCache = new Map<string, number>();
+
+function getFontSizeForText(
+  text: string,
+  availableWidth: number,
+  availableHeight: number,
+  isMultiline: boolean,
+  minFont: number,
+  maxFont: number
+): number {
+  const cacheKey = `${text}-${availableWidth}-${availableHeight}-${isMultiline}-${minFont}-${maxFont}`;
+  if (fontSizeCache.has(cacheKey)) {
+    return fontSizeCache.get(cacheKey)!;
+  }
+
+  // Create temporary canvas for accurate text measurement
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+
+  // Binary search for the largest font that fits
+  let low = minFont;
+  let high = maxFont;
+  let bestFit = minFont;
+
+  while (low <= high) {
+    const fontSize = Math.floor((low + high) / 2);
+    ctx.font = `bold ${fontSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+    
+    let totalWidth = 0;
+    let totalHeight = fontSize * (isMultiline ? 2.2 : 1.2); // Line height factor
+
+    if (isMultiline) {
+      const lines = text.split('\n');
+      totalWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
+    } else {
+      totalWidth = ctx.measureText(text).width;
+    }
+
+    if (totalWidth <= availableWidth && totalHeight <= availableHeight) {
+      bestFit = fontSize;
+      low = fontSize + 1;
+    } else {
+      high = fontSize - 1;
+    }
+  }
+
+  fontSizeCache.set(cacheKey, bestFit);
+  return bestFit;
+}
+
+function formatPlayerNameWithAutoFit(
+  fullName: string, 
+  containerWidth: number, 
+  containerHeight: number
+): NameFitResult {
   const nameParts = fullName.trim().split(/\s+/);
-  if (nameParts.length === 0) return { mode: 'minimal', lines: [''] };
+  if (nameParts.length === 0) return { mode: 'minimal', lines: [''], fontSize: 11 };
   
   const firstName = nameParts[0];
   const firstInitial = firstName.charAt(0) + '.';
   const lastNameFull = nameParts.slice(1).join(' ');
   
-  // Estimate available space (rough calculation based on container size)
-  const baseFontSize = Math.max(10, Math.min(14, containerWidth * 0.08));
-  const estimateWidth = (text: string) => text.length * baseFontSize * 0.6;
-  const maxWidth = containerWidth * 0.9;
+  // Define name band dimensions (bottom 24-30% of tile)
+  const nameBandHeight = Math.max(24, Math.min(containerHeight * 0.3, 40));
+  const nameBandWidth = containerWidth * 0.9; // Leave some padding
   
-  // Try fitting modes in order
+  // Font size bounds
+  const minFont = 11;
+  const maxFontOneLine = Math.max(minFont, Math.min(containerWidth * 0.07, 20));
+  const maxFontTwoLine = Math.max(minFont, Math.min(containerWidth * 0.06, 18));
+
+  // Try fitting modes in order with auto-sizing
   
   // 1. One-line full: "F. Lastname"
   const oneLineFull = `${firstInitial} ${lastNameFull}`;
-  if (estimateWidth(oneLineFull) <= maxWidth) {
-    return { mode: 'one-line-full', lines: [oneLineFull] };
+  const oneLineFullFont = getFontSizeForText(
+    oneLineFull, 
+    nameBandWidth, 
+    nameBandHeight, 
+    false, 
+    minFont, 
+    maxFontOneLine
+  );
+  
+  if (oneLineFullFont > minFont) {
+    return { 
+      mode: 'one-line-full', 
+      lines: [oneLineFull], 
+      fontSize: oneLineFullFont 
+    };
   }
   
   // 2. Two-line full: "F." on line 1, "Lastname" on line 2
-  if (estimateWidth(firstInitial) <= maxWidth && estimateWidth(lastNameFull) <= maxWidth) {
-    return { mode: 'two-line-full', lines: [firstInitial, lastNameFull] };
+  const twoLineFull = `${firstInitial}\n${lastNameFull}`;
+  const twoLineFullFont = getFontSizeForText(
+    twoLineFull, 
+    nameBandWidth, 
+    nameBandHeight, 
+    true, 
+    minFont, 
+    maxFontTwoLine
+  );
+  
+  if (twoLineFullFont > minFont) {
+    return { 
+      mode: 'two-line-full', 
+      lines: [firstInitial, lastNameFull], 
+      fontSize: twoLineFullFont 
+    };
   }
   
   // 3. One-line truncated: "F. Lastna..."
-  const availableForLastName = maxWidth - estimateWidth(firstInitial + ' ');
-  if (availableForLastName > estimateWidth('...')) {
-    const maxLastNameChars = Math.floor(availableForLastName / (baseFontSize * 0.6)) - 3;
-    if (maxLastNameChars > 0) {
-      const truncatedLastName = lastNameFull.substring(0, maxLastNameChars) + '...';
-      return { mode: 'one-line-truncated', lines: [`${firstInitial} ${truncatedLastName}`] };
+  // Try progressively shorter truncations
+  for (let chars = lastNameFull.length - 1; chars >= 3; chars--) {
+    const truncatedLastName = lastNameFull.substring(0, chars) + '...';
+    const oneLineTruncated = `${firstInitial} ${truncatedLastName}`;
+    const oneLineTruncatedFont = getFontSizeForText(
+      oneLineTruncated, 
+      nameBandWidth, 
+      nameBandHeight, 
+      false, 
+      minFont, 
+      maxFontOneLine
+    );
+    
+    if (oneLineTruncatedFont >= minFont) {
+      return { 
+        mode: 'one-line-truncated', 
+        lines: [oneLineTruncated], 
+        fontSize: oneLineTruncatedFont 
+      };
     }
   }
   
   // 4. Two-line truncated: "F." on line 1, "Lastna..." on line 2
-  if (estimateWidth(firstInitial) <= maxWidth) {
-    const maxLastNameChars = Math.floor(maxWidth / (baseFontSize * 0.6)) - 3;
-    if (maxLastNameChars > 0) {
-      const truncatedLastName = lastNameFull.substring(0, maxLastNameChars) + '...';
-      return { mode: 'two-line-truncated', lines: [firstInitial, truncatedLastName] };
+  for (let chars = lastNameFull.length - 1; chars >= 3; chars--) {
+    const truncatedLastName = lastNameFull.substring(0, chars) + '...';
+    const twoLineTruncated = `${firstInitial}\n${truncatedLastName}`;
+    const twoLineTruncatedFont = getFontSizeForText(
+      twoLineTruncated, 
+      nameBandWidth, 
+      nameBandHeight, 
+      true, 
+      minFont, 
+      maxFontTwoLine
+    );
+    
+    if (twoLineTruncatedFont >= minFont) {
+      return { 
+        mode: 'two-line-truncated', 
+        lines: [firstInitial, truncatedLastName], 
+        fontSize: twoLineTruncatedFont 
+      };
     }
   }
   
   // 5. Minimal fallback: just "F."
-  return { mode: 'minimal', lines: [firstInitial] };
+  const minimalFont = getFontSizeForText(
+    firstInitial, 
+    nameBandWidth, 
+    nameBandHeight, 
+    false, 
+    minFont, 
+    maxFontOneLine
+  );
+  
+  return { 
+    mode: 'minimal', 
+    lines: [firstInitial], 
+    fontSize: Math.max(minimalFont, minFont) 
+  };
 }
 
 export default function PlayerCellInfo({ 
@@ -157,7 +283,13 @@ export default function PlayerCellInfo({
 }: PlayerCellInfoProps) {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [containerSize, setContainerSize] = useState({ width: 100, height: 100 });
+  const [nameFormat, setNameFormat] = useState<NameFitResult>({ 
+    mode: 'minimal', 
+    lines: [''], 
+    fontSize: 11 
+  });
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout>();
   
   const { data: players = [] } = useQuery<Player[]>({
     queryKey: ["/api/players/search", playerName],
@@ -169,7 +301,27 @@ export default function PlayerCellInfo({
 
   const player = players.find(p => p.name === playerName);
 
-  // Measure container size
+  // Debounced name fitting function
+  const updateNameFormat = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    debounceTimerRef.current = setTimeout(() => {
+      if (containerSize.width > 0 && containerSize.height > 0) {
+        requestAnimationFrame(() => {
+          const newFormat = formatPlayerNameWithAutoFit(
+            playerName, 
+            containerSize.width, 
+            containerSize.height
+          );
+          setNameFormat(newFormat);
+        });
+      }
+    }, 50); // 50ms debounce
+  }, [playerName, containerSize.width, containerSize.height]);
+
+  // Measure container size and update name format
   useEffect(() => {
     const measureContainer = () => {
       if (containerRef.current) {
@@ -185,15 +337,34 @@ export default function PlayerCellInfo({
       resizeObserver.observe(containerRef.current);
     }
 
-    window.addEventListener('resize', measureContainer);
-    window.addEventListener('orientationchange', measureContainer);
+    const handleResize = () => measureContainer();
+    const handleOrientationChange = () => {
+      // Small delay to account for orientation change animation
+      setTimeout(measureContainer, 100);
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleOrientationChange);
 
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener('resize', measureContainer);
-      window.removeEventListener('orientationchange', measureContainer);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
     };
   }, []);
+
+  // Update name format when container size or player name changes
+  useEffect(() => {
+    updateNameFormat();
+  }, [updateNameFormat]);
+
+  // Clear cache when player changes (ensures fresh calculations)
+  useEffect(() => {
+    fontSizeCache.clear();
+  }, [playerName]);
 
   if (!player) {
     return (
@@ -214,10 +385,15 @@ export default function PlayerCellInfo({
   // Calculate responsive sizes
   const badgeSize = Math.max(16, Math.min(24, containerSize.width * 0.15));
   const faceSize = Math.max(40, Math.min(80, containerSize.width * 0.6));
-  const nameFormat = formatPlayerName(playerName, containerSize.width, containerSize.height);
   
   // Calculate avatar positioning to avoid badge overlap
-  const avatarOffset = isCorrect ? { marginTop: badgeSize * 0.3, marginLeft: -badgeSize * 0.2 } : {};
+  const avatarOffset = isCorrect ? { 
+    marginTop: Math.max(4, badgeSize * 0.3), 
+    marginLeft: Math.max(-8, -badgeSize * 0.2) 
+  } : {};
+
+  // Calculate name band height (24-30% of container height)
+  const nameBandHeight = Math.max(24, Math.min(containerSize.height * 0.3, 40));
 
   return (
     <>
@@ -255,7 +431,7 @@ export default function PlayerCellInfo({
           className="flex items-center justify-center flex-shrink-0"
           style={{
             ...avatarOffset,
-            marginBottom: '8px',
+            marginBottom: `${Math.max(4, nameBandHeight * 0.2)}px`,
           }}
         >
           <PlayerFace 
@@ -268,21 +444,22 @@ export default function PlayerCellInfo({
           />
         </div>
         
-        {/* Player name with dynamic fitting */}
+        {/* Player name with dynamic auto-fit */}
         <div 
           className="absolute bottom-1 left-1 right-1 bg-black bg-opacity-80 text-white text-center rounded border border-gray-600 flex flex-col items-center justify-center"
           style={{
-            padding: '4px 2px',
-            minHeight: nameFormat.lines.length === 1 ? '24px' : '32px',
+            height: `${nameBandHeight}px`,
+            padding: '2px 4px',
           }}
         >
           {nameFormat.lines.map((line, index) => (
             <div 
               key={index}
-              className="font-bold leading-tight"
+              className="font-bold"
               style={{
-                fontSize: `${Math.max(10, Math.min(14, containerSize.width * 0.08))}px`,
-                lineHeight: '1.1',
+                fontSize: `${nameFormat.fontSize}px`,
+                lineHeight: nameFormat.lines.length === 1 ? '1.2' : '1.1',
+                fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
               }}
               title={playerName}
             >
