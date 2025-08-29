@@ -49,18 +49,11 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     // Store league data in memory for grid generation
     setLeagueInMemory(league);
     
-    // Also populate server storage for grid generation (existing system compatibility)
-    try {
-      const response = await apiRequest("POST", "/api/debug/process-league-achievements", {
-        body: JSON.stringify(league),
-        headers: { "Content-Type": "application/json" }
-      });
-      if (!response.ok) {
-        console.warn("Failed to populate server storage, but continuing with client-side data");
-      }
-    } catch (error) {
-      console.warn("Server storage population failed, but continuing with client-side data:", error);
-    }
+    // Debug log to verify upload
+    console.debug("Uploaded league summary", {
+      players: league.players?.length,
+      teams: league.teams?.length,
+    });
     
     toast({
       title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
