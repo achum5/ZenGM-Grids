@@ -5,14 +5,22 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CloudUpload, FileCheck, X, Play, Loader2, Link } from "lucide-react";
 import { useDropzone } from "react-dropzone";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
+import { fetchLeagueBytes, fileToBytes, parseLeagueInWorker } from "@/lib/leagueIO";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
+}
+
+// Helper to process league data into the expected format
+async function processLeague(league: any): Promise<FileUploadData> {
+  // Send the parsed league data to the server for processing
+  const response = await apiRequest("POST", "/api/process-league", { league });
+  return response.json() as Promise<FileUploadData>;
 }
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
@@ -22,36 +30,29 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
   const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
 
-
-
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
+      let league: any;
+      
       if (typeof fileOrUrl === 'string') {
-        // URL upload
-        const response = await fetch("/api/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: fileOrUrl }),
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "URL upload failed");
+        // URL upload with client-side parsing
+        const { bytes, hinted } = await fetchLeagueBytes(fileOrUrl);
+        
+        // Check if the response looks like HTML (error page)
+        const text = new TextDecoder().decode(bytes.slice(0, 100));
+        if (text.trim().startsWith('<')) {
+          throw new Error("This link returns a web page, not a file. Make sure it's a direct download link.");
         }
-        return response.json() as Promise<FileUploadData>;
+        
+        league = await parseLeagueInWorker(bytes, hinted);
       } else {
-        // File upload
-        const formData = new FormData();
-        formData.append("file", fileOrUrl);
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+        // File upload with client-side parsing
+        const { bytes, hinted } = await fileToBytes(fileOrUrl);
+        league = await parseLeagueInWorker(bytes, hinted);
       }
+      
+      // Process the league data
+      return await processLeague(league);
     },
     onSuccess: (data) => {
       setUploadData(data);
@@ -113,25 +114,17 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       return;
     }
     
-    // Auto-convert Dropbox www URLs to dl URLs
-    let processedUrl = urlInput.trim();
-    if (processedUrl.includes("www.dropbox.com")) {
-      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
-      // Also ensure the dl=0 parameter is set to dl=1 for direct download
-      if (processedUrl.includes("dl=0")) {
-        processedUrl = processedUrl.replace("dl=0", "dl=1");
-      } else if (!processedUrl.includes("dl=1")) {
-        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
-      }
-    }
-    
     setUploadedFile(null);
-    uploadMutation.mutate(processedUrl);
+    uploadMutation.mutate(urlInput.trim());
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    // Accept any file - let backend validate content
+    accept: {
+      'application/json': ['.json'],
+      'application/gzip': ['.gz'],
+      'application/x-gzip': ['.gz'],
+    },
     multiple: false,
   });
 
@@ -181,7 +174,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                 {uploadMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading...
+                    Processing...
                   </>
                 ) : (
                   "Browse Files"
@@ -204,7 +197,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <div className="flex gap-2">
                 <Input
                   type="url"
-                  placeholder="Paste league file URL"
+                  placeholder="Paste league file URL (Dropbox, GitHub, Drive, etc.)"
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {

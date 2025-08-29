@@ -2004,6 +2004,90 @@ app.get("/api/debug/matches", async (req, res) => {
 
 
 
+  // Add proxy route for league URL fetching (dev parity with Vercel)
+  app.get("/api/fetch-league", async (req, res) => {
+    try {
+      const raw = String(req.query.url || "");
+      if (!raw) return res.status(400).json({ error: "Missing ?url=" });
+
+      const normalize = (input: string) => {
+        const u = new URL(input.trim());
+        if (
+          u.hostname === "www.dropbox.com" ||
+          u.hostname === "dropbox.com" ||
+          u.hostname === "dl.dropbox.com" ||
+          u.hostname.endsWith("dropbox.com")
+        ) {
+          u.hostname = "dl.dropboxusercontent.com";
+          u.searchParams.set("dl", "1");
+        }
+        if (u.hostname === "github.com") {
+          const p = u.pathname.split("/").filter(Boolean);
+          if (p.length >= 5 && p[2] === "blob") {
+            const [user, repo, _blob, branch, ...rest] = p;
+            u.hostname = "raw.githubusercontent.com";
+            u.pathname = `/${user}/${repo}/${branch}/${rest.join("/")}`;
+            u.search = "";
+          }
+        }
+        if (u.hostname === "gist.github.com") {
+          const p = u.pathname.split("/").filter(Boolean);
+          if (p.length >= 2) {
+            const [user, hash] = p;
+            u.hostname = "gist.githubusercontent.com";
+            u.pathname = `/${user}/${hash}/raw`;
+            u.search = "";
+          }
+        }
+        if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
+          const id = u.pathname.split("/")[3];
+          u.pathname = "/uc";
+          u.search = "";
+          u.searchParams.set("export", "download");
+          u.searchParams.set("id", id);
+        }
+        if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
+        return u.toString();
+      };
+
+      const normalized = normalize(raw);
+      const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
+
+      const upstream = await fetch(normalized, {
+        redirect: "follow",
+        headers: { "User-Agent": "ReplitDevProxy/1.0", Accept: "*/*", "Accept-Encoding": "identity" },
+      });
+
+      if (!upstream.ok || !upstream.body) {
+        return res
+          .status(upstream.status || 502)
+          .json({ error: `Fetch failed: remote ${upstream.status} ${upstream.statusText}` });
+      }
+
+      const ct = upstream.headers.get("content-type") || "application/octet-stream";
+      res.setHeader("Content-Type", ct);
+      const ce = upstream.headers.get("content-encoding");
+      const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
+      if (ce) res.setHeader("X-Content-Encoding", ce);
+      else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+
+      res.setHeader("Cache-Control", "no-store");
+      
+      // Stream the response
+      if (upstream.body) {
+        const reader = upstream.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        res.end();
+      }
+    } catch (err: any) {
+      res.status(400).json({ error: String(err?.message || err) });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
