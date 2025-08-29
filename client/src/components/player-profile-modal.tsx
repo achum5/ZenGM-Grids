@@ -100,7 +100,9 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
                   <div className="text-sm text-gray-300">
                     Ranked {eligibleCount && rank ? eligibleCount - rank + 1 : rank} out of {eligibleCount} eligible players for this cell
                   </div>
-                  
+                  <div className="text-xs text-gray-400">
+                    1 = rarest · {eligibleCount} = most common
+                  </div>
                 </div>
               </div>
             )
@@ -121,13 +123,13 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {player.years && player.years.length > 0 ? (
                 // Sort teams chronologically by start year
-                ([...player.years]
+                [...player.years]
                   .sort((a, b) => a.start - b.start)
                   .map((teamYear, idx) => (
                     <div key={`${teamYear.team}-${teamYear.start}-${idx}`} className="text-sm truncate">
                       {teamYear.team} ({teamYear.start === teamYear.end ? teamYear.start : `${teamYear.start}–${teamYear.end}`})
                     </div>
-                  )))
+                  ))
               ) : (
                 player.teams.map((team, idx) => (
                   <div key={team} className="text-sm truncate">{team}</div>
@@ -138,7 +140,7 @@ export function PlayerProfileModal({ player, open, onOpenChange, columnCriteria,
 
           {/* Other Top Answers Section */}
           <div className="bg-slate-700 rounded-lg p-4">
-            <h3 className="font-semibold text-yellow-300 mb-2">Most Common Answers</h3>
+            <h3 className="font-semibold text-yellow-300 mb-2">Other Top Answers</h3>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {topPlayers && topPlayers.length > 0 ? (
                 topPlayers.map((topPlayer, idx) => (

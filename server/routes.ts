@@ -2,7 +2,6 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import { Readable } from "node:stream";
 
 import { z } from "zod";
 import { gunzip } from "zlib";
@@ -10,8 +9,6 @@ import { promisify } from "util";
 import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type FileUploadData, type GridCriteria, type Player } from "@shared/schema";
 import { EligibilityChecker, buildLeadersBySeason, EVALS, auditLeaders, ACH_LEADERS } from "./eligibility";
 import { sampleUniform } from "@shared/utils/rng";
-import { generateGrid } from "@shared/grid/generate";
-import { buildGenerateInput } from "@shared/grid/buildInput";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -269,37 +266,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Upload error:", error);
       res.status(500).json({ message: error.message || "Upload failed" });
     }
-  });
-
-  // Dev proxy route for Replit preview (URL fetching)
-  const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-  function normDev(input: string){ 
-    const u = new URL(input.trim());
-    if (u.hostname.endsWith("dropbox.com")) { u.hostname = "dl.dropboxusercontent.com"; u.searchParams.set("dl","1"); }
-    if (u.hostname === "github.com"){ const p = u.pathname.split("/").filter(Boolean);
-      if (p.length>=5 && p[2]==="blob"){ const [user,repo,_b,branch,...rest]=p; u.hostname="raw.githubusercontent.com"; u.pathname=`/${user}/${repo}/${branch}/${rest.join("/")}`; u.search="";}}
-    if (u.hostname === "gist.github.com"){ const p = u.pathname.split("/").filter(Boolean);
-      if (p.length>=2){ const [user,hash]=p; u.hostname="gist.githubusercontent.com"; u.pathname=`/${user}/${hash}/raw`; u.search="";}}
-    if (u.hostname==="drive.google.com" && u.pathname.startsWith("/file/")){ const id=u.pathname.split("/")[3]; u.pathname="/uc"; u.search=""; u.searchParams.set("export","download"); u.searchParams.set("id", id); }
-    if (!/^https?:$/.test(u.protocol)) throw new Error("Only http(s) URLs are allowed.");
-    return u.toString();
-  }
-  app.get("/api/fetch-league", async (req, res) => {
-    try {
-      const url = typeof req.query.url === "string" ? req.query.url : "";
-      if (!url) return res.status(400).json({ error: "Missing ?url=" });
-      const normalized = normDev(url);
-      const looksGzip = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
-      const upstream = await fetch(normalized, { redirect:"follow", headers:{ "User-Agent": UA, Accept:"*/*", "Accept-Encoding":"identity" }});
-      if (!upstream.ok || !upstream.body) return res.status(upstream.status || 502).json({ error: `Remote ${upstream.status} ${upstream.statusText}` });
-      const ct = upstream.headers.get("content-type") || "application/octet-stream";
-      res.setHeader("Content-Type", ct);
-      const ce = upstream.headers.get("content-encoding");
-      const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
-      if (ce) res.setHeader("X-Content-Encoding", ce); else if (looksGzip || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
-      res.setHeader("Cache-Control", "no-store");
-      Readable.fromWeb(upstream.body as any).pipe(res);
-    } catch (e:any) { res.status(400).json({ error: String(e?.message || e) }); }
   });
 
   // Comprehensive league-level achievement processing
@@ -1302,7 +1268,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/games/generate", async (req, res) => {
     console.log("🚨 GRID GENERATION STARTED - This should always appear");
     try {
+      console.log("🔧 TESTING: Running league-level processing during grid generation...");
+      
       const players = await storage.getPlayers();
+      
+      // TEMPORARY: Force league-level processing on existing players to test
+      if (players.length > 0) {
+        console.log("🔧 TEMP: Processing league achievements on existing players...");
+        const mutablePlayers = players.map(p => ({
+          ...p,
+          achievements: [...p.achievements],
+          careerWinShares: p.careerWinShares ?? 0, // Ensure non-null
+          quality: p.quality ?? 50, // Ensure non-null
+          stats: p.stats ?? undefined // Fix null stats
+        }));
+        
+        await processLeagueLevelAchievements({}, mutablePlayers);
+        
+        // Update storage if achievements were added
+        let hadChanges = false;
+        for (let i = 0; i < mutablePlayers.length; i++) {
+          if (mutablePlayers[i].achievements.length !== players[i].achievements.length) {
+            hadChanges = true;
+            break;
+          }
+        }
+        
+        if (hadChanges) {
+          console.log("🔧 Detected changes, updating storage...");
+          await storage.clearPlayers();
+          for (const player of mutablePlayers) {
+            await storage.createPlayer(player);
+          }
+          console.log("🔧 Storage updated with league-level achievements");
+        }
+      }
       
       if (players.length === 0) {
         return res.status(400).json({ 
@@ -1310,72 +1310,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Use shared grid generator with proper input building
-      const input = buildGenerateInput({ players });
-      const grid = await generateGrid(input);
+      // Get unique teams from player data
+      const allTeams = Array.from(new Set(players.flatMap(p => p.teams)));
+      console.log("🔧 All teams in database:", allTeams.length, "total teams");
+      console.log("🔧 Sample teams:", allTeams.slice(0, 10));
       
-      // Store in database for dev compatibility
-      const gameData = insertGameSchema.parse({
-        columnCriteria: grid.columnCriteria,
-        rowCriteria: grid.rowCriteria,
-        correctAnswers: grid.correctAnswers,
+      // Use all teams that have sufficient players (supports custom leagues)
+      // This ensures teams like St. Louis Spirits and Columbus Crush appear
+      const teams = allTeams.filter(team => {
+        const teamPlayerCount = players.filter(p => p.teams.includes(team)).length;
+        return teamPlayerCount >= 10; // Minimum players for a team to appear in grids
       });
-
-      const newGame = await storage.createGame(gameData);
-      return res.json(newGame);
-    } catch (error: any) {
-      console.error("Generate game error:", error);
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Failed to generate game" 
-      });
-    }
-  });
-
-  // Get a specific game by ID
-  app.get("/api/games/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const game = await storage.getGame(id);
       
-      if (!game) {
-        return res.status(404).json({ message: "Game not found" });
-      }
+      console.log("🔧 Eligible teams for grids:", teams.length, "teams");
+      console.log("🔧 Checking for St. Louis Spirits:", teams.includes("St. Louis Spirits"));
+      console.log("🔧 Checking for Columbus Crush:", teams.includes("Columbus Crush"));
+      const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
       
-      res.json(game);
-    } catch (error) {
-      console.error("Get game error:", error);
-      res.status(500).json({ message: "Failed to retrieve game" });
-    }
-  });
+      // Complete list of 34 achievements for uniform sampling (as specified in brief)
+      const ACHIEVEMENTS: readonly string[] = [
+        // Career Milestones (6)
+        "20,000+ Career Points",
+        "10,000+ Career Rebounds", 
+        "5,000+ Career Assists",
+        "2,000+ Career Steals",
+        "1,500+ Career Blocks",
+        "2,000+ Made Threes",
+        
+        // Single-Season Statistical Achievements (6)
+        "Averaged 30+ PPG in a Season",
+        "Averaged 10+ APG in a Season",
+        "Averaged 15+ RPG in a Season", 
+        "Averaged 3+ BPG in a Season",
+        "Averaged 2.5+ SPG in a Season",
+        "Shot 50/40/90 in a Season",
+        
+        // League Leadership (5)
+        "Led League in Scoring",
+        "Led League in Rebounds",
+        "Led League in Assists",
+        "Led League in Steals", 
+        "Led League in Blocks",
+        
+        // Game Performance Feats (5)
+        "Scored 50+ in a Game",
+        "Triple-Double in a Game",
+        "20+ Rebounds in a Game",
+        "20+ Assists in a Game",
+        "10+ Threes in a Game",
+        
+        // Major Awards (6)
+        "MVP Winner",
+        "Defensive Player of the Year", 
+        "Rookie of the Year",
+        "Sixth Man of the Year",
+        "Most Improved Player",
+        "Finals MVP",
+        
+        // Team Honors (4)
+        "All-League Team",
+        "All-Defensive Team", 
+        "All-Star Selection",
+        "NBA Champion",
+        
+        // Career Length & Draft (5)
+        "Played 15+ Seasons",
+        "#1 Overall Draft Pick",
+        "Undrafted Player",
+        "First Round Pick",
+        "2nd Round Pick",
+        
+        // Special Categories (5)
+        "Made All-Star Team at Age 35+",
+        "Only One Team",
+        "Champion",
+        "Hall of Fame",
+        "Teammate of All-Time Greats"
+        
+        // Note: BBGM Player easter egg excluded from grid generation for uniform sampling
+      ];
 
-  // Search players
-  app.get("/api/players/search", async (req, res) => {
-    try {
-      const { q } = searchQuerySchema.parse(req.query);
-      const players = await storage.searchPlayers(q);
-      res.json(players);
-    } catch (error) {
-      res.status(400).json({ message: "Invalid search query" });
-    }
-  });
-
-  // Get top players for a cell (for "Other Top Answers" section)
-  app.get("/api/players/top-for-cell", async (req, res) => {
-    try {
-      const { columnCriteria, rowCriteria, excludePlayer, includeGuessed } = req.query;
-      const players = await storage.getPlayers();
-      
-      if (!columnCriteria || !rowCriteria) {
-        return res.status(400).json({ message: "Column and row criteria required" });
-      }
-
-      // Parse criteria from query strings
-      const colCriteria = JSON.parse(columnCriteria as string);
-      const rowCriteria_item = JSON.parse(rowCriteria as string);
-      
-      console.log("DEBUG: top-for-cell request");
-      console.log("Column criteria:", colCriteria);
-      console.log("Row criteria:", rowCriteria_item);
+      // Add dynamic "Teammate of All-Time Greats" criteria based on career Win Shares
       const allTimeGreats = players
         .filter(p => p.careerWinShares && p.careerWinShares >= 150) // Very high threshold for all-time greats
         .sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
@@ -1721,19 +1736,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const colCriteria = JSON.parse(columnCriteria as string);
       const rowCriteria_item = JSON.parse(rowCriteria as string);
       
-      console.log("DEBUG: top-for-cell request");
-      console.log("Column criteria:", colCriteria);
-      console.log("Row criteria:", rowCriteria_item);
-      
       // FIXED: Use EVALS system with proper indices (never string matching)
       
       // Get all eligible players using intersection with proper indices
       const eligiblePlayers = players.filter(p => 
         eligibleForCell(p, rowCriteria_item, colCriteria, globalIndices)
       );
-      
-      console.log(`Found ${eligiblePlayers.length} eligible players for cell`);
-      console.log("Sample eligible players:", eligiblePlayers.slice(0, 5).map(p => p.name));
       
       // Add invariant check for leader achievements  
       const isLeaderAchievement = colCriteria.label?.includes("Led League in") || rowCriteria_item.label?.includes("Led League in");
@@ -1765,9 +1773,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const eligibilityChecker = new EligibilityChecker(players);
       const sortedPlayers = eligibilityChecker.sortByWinShares(eligiblePlayers);
       
-      console.log(`Sorted players list length: ${sortedPlayers.length}`);
-      console.log("Top 3 sorted players:", sortedPlayers.slice(0, 3).map(p => p.name));
-      
       let topPlayers;
       if (includeGuessed === 'true') {
         // Include guessed player if they're in top 10
@@ -1782,7 +1787,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .map(p => ({ name: p.name, teams: p.teams }));
       }
       
-      console.log(`Returning ${topPlayers.length} top players`);
       res.json(topPlayers);
     } catch (error) {
       console.error("Get top players error:", error);
