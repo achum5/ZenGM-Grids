@@ -1,0 +1,204 @@
+Here’s a crisp, copy-paste brief for the Replit AI agent. It tells it exactly what to do and what “done” looks like.
+
+⸻
+
+COPY/PASTE FOR REPLIT AI — Fix Vercel Uploads (BBGM “easy way”)
+
+Problem (current behavior)
+	•	On the Vercel deployment, both File Upload and URL Upload show the same toast: “The string did not match the expected pattern.”
+	•	This fires before the file/URL is actually read, so users can’t load any league.
+	•	Root cause: the client validation treats both modes as a string/URL (regex or z.string().url()), so even when a real File is chosen, the code still validates a string field (often an empty url), causing the pattern error. Replit preview didn’t hit this path; Vercel prod does.
+
+Goal (what we want)
+	•	One unified client-side flow that works in Replit preview and Vercel:
+	•	File mode: accept .json or .json.gz, read bytes in the browser, detect gzip, JSON.parse, then pass the parsed league object to the grid builder.
+	•	URL mode: fetch the bytes client-side and do the same decode/parse. If CORS blocks, fallback to a tiny /api/download proxy that returns the raw bytes.
+	•	Validation separated by mode so file uploads never run through a URL/regex check.
+	•	Clear, user-friendly errors (bad URL, not JSON, too large, remote fetch failure).
+	•	No server upload of the file (we’re using the BBGM “easy way”).
+
+Non-Goals (for now)
+	•	No streaming/low-memory “hard way”.
+	•	No direct-to-blob storage.
+(We can add that later.)
+
+⸻
+
+Tasks (exact steps)
+	1.	Refactor validation to a discriminated union.
+	•	Use Zod (or equivalent) to separate the two modes:
+	•	mode: "file" → requires a File object (non-empty).
+	•	mode: "url"  → requires a valid http(s) URL string.
+	•	Remove/avoid any schema where url is required for both modes or where a regex runs for file mode.
+
+// validation.ts
+import { z } from "zod";
+
+const FileMode = z.object({
+  mode: z.literal("file"),
+  file: z.custom<File>((v) => v instanceof File && v.size > 0, "Choose a league file"),
+});
+
+const UrlMode = z.object({
+  mode: z.literal("url"),
+  url: z.string().url("Enter a valid http(s) URL"),
+});
+
+export const UploadSchema = z.discriminatedUnion("mode", [FileMode, UrlMode]);
+export type UploadInput = z.infer<typeof UploadSchema>;
+
+
+	2.	Implement client-only parsing (no server upload).
+	•	Read bytes with file.arrayBuffer() or fetch(url).arrayBuffer().
+	•	Detect gzip by magic bytes 0x1f 0x8b; if gz, gunzip; else decode UTF-8.
+	•	JSON.parse; on success, hand the object to the existing grid builder.
+
+// UploadBox.tsx — "use client"
+import { useState } from "react";
+import { UploadSchema } from "./validation";
+import { gunzipSync, strFromU8 } from "fflate";
+
+async function parseBytes(arr: Uint8Array) {
+  const isGz = arr[0] === 0x1f && arr[1] === 0x8b;
+  const txt = isGz ? strFromU8(gunzipSync(arr)) : new TextDecoder().decode(arr);
+  if (!txt.trim().startsWith("{") && !txt.trim().startsWith("[")) {
+    throw new Error("Not a valid league export (.json or .json.gz).");
+  }
+  return JSON.parse(txt);
+}
+
+export default function UploadBox({ onLeague }: { onLeague: (lg: any) => void }) {
+  const [mode, setMode] = useState<"file" | "url">("file");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFile(file?: File) {
+    if (!file) return;
+    setError(null); setBusy(true);
+    try {
+      // Optional size guard for “easy way” (tune as needed)
+      const MAX_BYTES = 75 * 1024 * 1024;
+      if (file.size > MAX_BYTES) throw new Error("This league is very large. Try trimming seasons or use the advanced uploader later.");
+      const arr = new Uint8Array(await file.arrayBuffer());
+      const league = await parseBytes(arr);
+      onLeague(league);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to read file.");
+    } finally { setBusy(false); }
+  }
+
+  async function handleUrl(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const candidate = { mode: "url", url: String(fd.get("url") || "") } as const;
+    const parsed = UploadSchema.safeParse(candidate);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Invalid URL");
+      return;
+    }
+    setError(null); setBusy(true);
+    try {
+      // Try direct fetch first
+      let res = await fetch(parsed.data.url);
+      if (!res.ok || !res.body) {
+        // If CORS/other blocks, fallback to proxy
+        res = await fetch(`/api/download?url=${encodeURIComponent(parsed.data.url)}`);
+        if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+      }
+      const arr = new Uint8Array(await res.arrayBuffer());
+      const league = await parseBytes(arr);
+      onLeague(league);
+    } catch (e: any) {
+      setError(e?.message ?? "Could not fetch that URL.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button type="button" onClick={() => setMode("file")} aria-pressed={mode==="file"}>File Upload</button>
+        <button type="button" onClick={() => setMode("url")}  aria-pressed={mode==="url"}>URL Upload</button>
+      </div>
+
+      {mode === "file" ? (
+        <label style={{ display: "block", border: "2px dashed #f60", padding: 24, borderRadius: 12 }}>
+          <input
+            type="file"
+            accept=".json,.json.gz,application/json,application/gzip,application/x-gzip"
+            style={{ display: "none" }}
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+          <div>Drag & drop your league file here</div>
+        </label>
+      ) : (
+        <form onSubmit={handleUrl} style={{ display: "flex", gap: 8 }}>
+          <input name="url" type="url" placeholder="https://…/league.json or .json.gz" required />
+          <button type="submit" disabled={busy}>Load</button>
+        </form>
+      )}
+
+      {busy && <div>Processing league…</div>}
+      {error && <div style={{ color: "#b00020", marginTop: 8 }}>{error}</div>}
+    </div>
+  );
+}
+
+
+	3.	Add a tiny CORS proxy for URLs (Node runtime).
+	•	Only used when direct fetch fails due to CORS.
+	•	If using Next.js app router:
+
+// /app/api/download/route.ts
+export const runtime = "nodejs";
+
+export async function GET(req: Request) {
+  const url = new URL(req.url).searchParams.get("url");
+  if (!url) return new Response("missing url", { status: 400 });
+
+  const upstream = await fetch(url);
+  if (!upstream.ok) return new Response(`remote ${upstream.status} ${upstream.statusText}`, { status: 502 });
+
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  return new Response(buf, {
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Access-Control-Allow-Origin": "*",
+    }
+  });
+}
+
+	•	If using Next.js pages router, create /pages/api/download.ts with export const config = { api: { bodyParser: false }, runtime: "nodejs" } and similar logic.
+
+	4.	Remove/disable any code path that posts the file to our API.
+	•	We are not uploading files to the server for the “easy way”.
+	•	Keep any share-link logic separate; this change only affects the initial loading of a league.
+	5.	User-facing errors (exact strings to show).
+	•	File mode, empty: “Choose a league file”
+	•	Not JSON/gzip: “Not a valid league export (.json or .json.gz).”
+	•	Too large (optional cap): “This league is very large. Try trimming seasons or use the advanced uploader later.”
+	•	URL fetch failed: “Download failed:  ”
+	•	URL invalid: “Enter a valid http(s) URL”
+	•	CORS blocked then proxy fails: “Could not fetch that URL.”
+	6.	Instrumentation & sanity checks.
+	•	Before parsing, log: mode, file.size (if file), and content-length equivalent (length of fetched buffer).
+	•	Ensure the file mode never evaluates a URL regex. (Console-log the UploadSchema result to verify.)
+
+⸻
+
+Acceptance criteria (done = ✅)
+	•	✅ File upload of a small .json works on Vercel and Replit preview; no pattern error.
+	•	✅ File upload of a .json.gz works (gzip detected by magic bytes; correctly parsed).
+	•	✅ URL upload works for a CORS-friendly host without using the proxy.
+	•	✅ URL upload to a CORS-blocked host works via /api/download.
+	•	✅ The exact toast “The string did not match the expected pattern.” never appears in file mode.
+	•	✅ No server receives the raw file bytes during initial load (client-only parse).
+	•	✅ Errors display the strings listed above.
+
+⸻
+
+Notes
+	•	This implements the BBGM dev’s “easy way”. We can add the “hard way” later (streaming/low-memory or direct-to-blob + server parsing) once this is stable.
+
+⸻
+
+That’s everything Replit should do and how we’ll judge it.

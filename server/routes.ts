@@ -268,6 +268,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // CORS proxy for downloading files when direct fetch fails
+  app.get("/api/download", async (req, res) => {
+    try {
+      const url = req.query.url as string;
+      if (!url) {
+        return res.status(400).json({ message: "missing url" });
+      }
+
+      const upstream = await fetch(url);
+      if (!upstream.ok) {
+        return res.status(502).json({ message: `remote ${upstream.status} ${upstream.statusText}` });
+      }
+
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.send(buffer);
+    } catch (error: any) {
+      console.error("Download proxy error:", error);
+      res.status(500).json({ message: error.message || "Download failed" });
+    }
+  });
+
   // Comprehensive league-level achievement processing
   // Helper functions for robust league data parsing (per ChatGPT guide)
   function seasonGamesLookup(league: any): Map<number, number> {
