@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,11 +16,137 @@ interface FileUploadProps {
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
 }
 
-// Helper to process league data into the expected format
-async function processLeague(league: any): Promise<FileUploadData> {
-  // Send the parsed league data to the server for processing
-  const response = await apiRequest("POST", "/api/process-league", { league });
-  return response.json() as Promise<FileUploadData>;
+// Pure client-side league processing - NO server POST
+function processLeagueClientSide(league: any): FileUploadData {
+  console.log("Processing league client-side...", league);
+  
+  // Extract players from league
+  const playersData = league.players || [];
+  if (!Array.isArray(playersData)) {
+    throw new Error("Invalid or missing players data in league file");
+  }
+
+  // Process players and extract data
+  const players = playersData
+    .map((playerData: any) => {
+      try {
+        // Convert BBGM player format to our format
+        const teams = new Set<string>();
+        const years: { team: string; start: number; end: number }[] = [];
+        
+        // Process player stats to extract teams and years
+        if (Array.isArray(playerData.stats)) {
+          playerData.stats.forEach((stat: any) => {
+            if (stat.tid !== undefined && league.teams?.[stat.tid]) {
+              const team = league.teams[stat.tid];
+              const teamName = team.region ? `${team.region} ${team.name}` : team.name;
+              teams.add(teamName);
+              
+              // Add year range
+              const existingYear = years.find(y => y.team === teamName);
+              if (existingYear) {
+                existingYear.start = Math.min(existingYear.start, stat.season);
+                existingYear.end = Math.max(existingYear.end, stat.season);
+              } else {
+                years.push({ team: teamName, start: stat.season, end: stat.season });
+              }
+            }
+          });
+        }
+
+        // Calculate basic achievements and stats
+        const achievements: string[] = [];
+        let careerPoints = 0;
+        let careerRebounds = 0;
+        let careerAssists = 0;
+        let careerSteals = 0;
+        let careerBlocks = 0;
+        let careerThrees = 0;
+
+        if (Array.isArray(playerData.stats)) {
+          playerData.stats.forEach((stat: any) => {
+            if (!stat.playoffs) { // Regular season only
+              careerPoints += stat.pts || 0;
+              careerRebounds += (stat.orb || 0) + (stat.drb || 0);
+              careerAssists += stat.ast || 0;
+              careerSteals += stat.stl || 0;
+              careerBlocks += stat.blk || 0;
+              careerThrees += stat.tp || 0;
+            }
+          });
+        }
+
+        // Basic achievement calculations
+        if (careerPoints >= 20000) achievements.push("20,000+ Career Points");
+        if (careerRebounds >= 10000) achievements.push("10,000+ Career Rebounds");
+        if (careerAssists >= 5000) achievements.push("5,000+ Career Assists");
+        if (careerSteals >= 2000) achievements.push("2,000+ Career Steals");
+        if (careerBlocks >= 1500) achievements.push("1,500+ Career Blocks");
+        if (careerThrees >= 2000) achievements.push("2,000+ Made Threes");
+
+        // Check for season averages
+        if (Array.isArray(playerData.stats)) {
+          for (const stat of playerData.stats) {
+            if (!stat.playoffs && stat.gp > 0) {
+              const ppg = stat.pts / stat.gp;
+              const apg = stat.ast / stat.gp;
+              const rpg = ((stat.orb || 0) + (stat.drb || 0)) / stat.gp;
+              const bpg = (stat.blk || 0) / stat.gp;
+
+              if (ppg >= 30 && !achievements.includes("Averaged 30+ PPG in a Season")) {
+                achievements.push("Averaged 30+ PPG in a Season");
+              }
+              if (apg >= 10 && !achievements.includes("Averaged 10+ APG in a Season")) {
+                achievements.push("Averaged 10+ APG in a Season");
+              }
+              if (rpg >= 15 && !achievements.includes("Averaged 15+ RPG in a Season")) {
+                achievements.push("Averaged 15+ RPG in a Season");
+              }
+              if (bpg >= 3 && !achievements.includes("Averaged 3+ BPG in a Season")) {
+                achievements.push("Averaged 3+ BPG in a Season");
+              }
+            }
+          }
+        }
+
+        return {
+          name: `${playerData.firstName} ${playerData.lastName}`,
+          teams: Array.from(teams),
+          years,
+          achievements,
+          careerWinShares: playerData.careerStats?.ws || 0,
+          quality: 50, // Default quality
+          pid: playerData.pid,
+          stats: null,
+          face: playerData.face || null,
+          imageUrl: null
+        };
+      } catch (error) {
+        console.warn(`Skipping invalid player:`, error);
+        return null;
+      }
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
+  // Extract unique teams
+  const teamNames = new Set<string>();
+  players.forEach(player => {
+    if (player) {
+      player.teams.forEach(team => teamNames.add(team));
+    }
+  });
+
+  const teams = Array.from(teamNames).map(name => ({ name, logo: undefined }));
+  
+  // Basic achievements list
+  const achievements = [
+    "20,000+ Career Points", "10,000+ Career Rebounds", "5,000+ Career Assists",
+    "2,000+ Career Steals", "1,500+ Career Blocks", "2,000+ Made Threes",
+    "Averaged 30+ PPG in a Season", "Averaged 10+ APG in a Season",
+    "Averaged 15+ RPG in a Season", "Averaged 3+ BPG in a Season"
+  ];
+
+  return { players, teams, achievements };
 }
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
@@ -32,6 +158,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
 
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
+      console.log("Spawning parse worker…");
       let league: any;
       
       if (typeof fileOrUrl === 'string') {
@@ -51,16 +178,27 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         league = await parseLeagueInWorker(bytes, hinted);
       }
       
-      // Process the league data
-      return await processLeague(league);
+      // Process the league data entirely on the client side
+      return processLeagueClientSide(league);
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setUploadData(data);
       onTeamDataUpdate?.(data.teams);
+      
+      // Send processed data to server for storage (but not processing)
+      try {
+        const response = await apiRequest("POST", "/api/store-players", { players: data.players });
+        await response.json();
+      } catch (error) {
+        console.warn("Failed to store players on server:", error);
+        // Continue anyway - the game can work with client-side data
+      }
+      
       toast({
         title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
+      
       // Automatically generate a new grid after successful upload
       generateGameMutation.mutate();
     },
