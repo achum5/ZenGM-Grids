@@ -1,3 +1,7 @@
+only replace the worker file below. Nothing else in your app should be changed.
+
+Replace client/src/workers/leagueParse.worker.ts with:
+
 // Web Worker: safely parse large BBGM league files without main-thread OOM.
 // Uses DecompressionStream('gzip') if available; otherwise falls back to fflate AsyncGunzip
 // and decodes via Response/Blob (no TextDecoder stream option required).
@@ -69,3 +73,12 @@ self.onmessage = async (e: MessageEvent<MsgIn>) => {
     (self as any).postMessage({ ok: false, error: String(err?.message || err) } as MsgOut);
   }
 };
+
+
+This removes the TextDecoder.decode(..., { stream }) usage that’s failing in your environment and keeps decompression+parse off the main thread, so you also avoid the “Out of memory” tab crash.
+
+No UI/game changes
+
+Keep your upload handlers exactly as we set them up: they call parseLeagueInWorker(bytes, hinted) and then hand the resulting league to your existing game code.
+
+Do not store the full league in localStorage/sessionStorage; keep using the in-memory helper to avoid quota issues.
