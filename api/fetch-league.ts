@@ -9,7 +9,7 @@ const UA =
 function normalize(input: string) {
   const u = new URL(input.trim());
 
-  // Dropbox -> direct download (keep tokens)
+  // Dropbox → direct (keep tokens; force dl=1)
   if (
     u.hostname === "www.dropbox.com" ||
     u.hostname === "dropbox.com" ||
@@ -20,7 +20,7 @@ function normalize(input: string) {
     u.searchParams.set("dl", "1");
   }
 
-  // GitHub blob -> raw
+  // GitHub blob → raw
   if (u.hostname === "github.com") {
     const p = u.pathname.split("/").filter(Boolean);
     if (p.length >= 5 && p[2] === "blob") {
@@ -31,7 +31,7 @@ function normalize(input: string) {
     }
   }
 
-  // Gist -> raw
+  // Gist page → raw
   if (u.hostname === "gist.github.com") {
     const p = u.pathname.split("/").filter(Boolean);
     if (p.length >= 2) {
@@ -42,7 +42,7 @@ function normalize(input: string) {
     }
   }
 
-  // Google Drive /file/... -> direct
+  // Google Drive file → direct
   if (u.hostname === "drive.google.com" && u.pathname.startsWith("/file/")) {
     const id = u.pathname.split("/")[3];
     u.pathname = "/uc";
@@ -61,26 +61,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!url) return res.status(400).json({ error: "Missing ?url=" });
 
     const normalized = normalize(url);
-    const looksGzip = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
+    const looksGzipByExt = /\.json\.gz$|\.gz$/i.test(new URL(normalized).pathname);
 
     const upstream = await fetch(normalized, {
       redirect: "follow",
-      headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" },
+      headers: { "User-Agent": UA, Accept: "*/*", "Accept-Encoding": "identity" }, // avoid extra gzip
     });
 
     if (!upstream.ok || !upstream.body) {
       return res
         .status(upstream.status || 502)
-        .json({ error: `Remote ${upstream.status} ${upstream.statusText}` });
+        .json({ error: `Fetch failed: remote ${upstream.status} ${upstream.statusText}` });
     }
 
     const ct = upstream.headers.get("content-type") || "application/octet-stream";
     res.setHeader("Content-Type", ct);
 
+    // Hint gzip to client even if server omits Content-Encoding
     const ce = upstream.headers.get("content-encoding");
     const isGzipType = /\b(gzip|x-gzip)\b/i.test(ct) || /application\/(gzip|x-gzip)/i.test(ct);
     if (ce) res.setHeader("X-Content-Encoding", ce);
-    else if (looksGzip || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
+    else if (looksGzipByExt || isGzipType) res.setHeader("X-Content-Encoding", "gzip");
 
     res.setHeader("Cache-Control", "no-store");
     Readable.fromWeb(upstream.body as any).pipe(res);
