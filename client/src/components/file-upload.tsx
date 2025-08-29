@@ -1,44 +1,18 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CloudUpload, FileCheck, X, Play, Loader2, Link } from "lucide-react";
 import { useDropzone } from "react-dropzone";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { gunzipSync, strFromU8 } from "fflate";
-import { z } from "zod";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
-
-// Discriminated union for file vs URL validation
-const FileMode = z.object({
-  mode: z.literal("file"),
-  file: z.custom<File>((v) => v instanceof File && v.size > 0, "Choose a league file"),
-});
-
-const UrlMode = z.object({
-  mode: z.literal("url"),
-  url: z.string().url("Enter a valid http(s) URL"),
-});
-
-const UploadSchema = z.discriminatedUnion("mode", [FileMode, UrlMode]);
-type UploadInput = z.infer<typeof UploadSchema>;
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
-}
-
-// Client-side parsing function for league data
-async function parseLeagueBytes(arr: Uint8Array): Promise<any> {
-  const isGzip = arr[0] === 0x1f && arr[1] === 0x8b;
-  const txt = isGzip ? strFromU8(gunzipSync(arr)) : new TextDecoder().decode(arr);
-  if (!txt.trim().startsWith("{") && !txt.trim().startsWith("[")) {
-    throw new Error("Not a valid league export (.json or .json.gz).");
-  }
-  return JSON.parse(txt);
 }
 
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
@@ -46,7 +20,6 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [urlInput, setUrlInput] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
 
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileUpload } from "@/components/file-upload-new";
+import { FileUpload } from "@/components/file-upload";
 import { GameGrid } from "@/components/game-grid";
 import { RulesModal } from "@/components/rules-modal";
 import { Button } from "@/components/ui/button";
