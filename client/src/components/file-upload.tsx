@@ -12,6 +12,7 @@ import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { parseLeagueFromUrlInWorker, parseLeagueFromFileInWorker } from "@/lib/leagueIO";
 import { setLeagueInMemory, getLeagueInMemory } from "@/lib/leagueMemory";
 import { generateGrid as generateGridFromMemory } from "@shared/grid/generate";
+import { buildGenerateInput } from "@shared/grid/buildInput";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -119,8 +120,17 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         throw new Error("Please upload a league file first.");
       }
 
-      // Pass only what the generator actually needs (players)
-      const input = { players: league.players };
+      // Build the input the exact same way the server route does
+      const input = buildGenerateInput(league);
+      
+      // Add debugging logs to confirm shape
+      console.debug("GEN INPUT", {
+        hasPlayers: Array.isArray(input.players),
+        playersCount: input.players?.length,
+        firstPlayerHasTeams: input.players?.[0]?.teams ? Array.isArray(input.players[0].teams) : false,
+        firstPlayerHasAchievements: input.players?.[0]?.achievements ? Array.isArray(input.players[0].achievements) : false,
+      });
+      
       const grid = await generateGridFromMemory(input);
       // Convert Date to string for Game type compatibility
       return {

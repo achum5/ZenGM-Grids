@@ -11,6 +11,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { Game, SessionStats, TeamInfo, GameSession } from "@shared/schema";
 import { getLeagueInMemory } from "@/lib/leagueMemory";
 import { generateGrid } from "@shared/grid/generate";
+import { buildGenerateInput } from "@shared/grid/buildInput";
 
 export default function Home() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
@@ -29,8 +30,17 @@ export default function Home() {
         throw new Error("Please upload a league file first.");
       }
 
-      // Pass only what the generator actually needs (players)
-      const input = { players: league.players };
+      // Build the input the exact same way the server route does
+      const input = buildGenerateInput(league);
+      
+      // Add debugging logs to confirm shape
+      console.debug("GEN INPUT", {
+        hasPlayers: Array.isArray(input.players),
+        playersCount: input.players?.length,
+        firstPlayerHasTeams: input.players?.[0]?.teams ? Array.isArray(input.players[0].teams) : false,
+        firstPlayerHasAchievements: input.players?.[0]?.achievements ? Array.isArray(input.players[0].achievements) : false,
+      });
+      
       const grid = await generateGrid(input);
       // Convert Date to string for Game type compatibility
       return {

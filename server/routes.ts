@@ -11,6 +11,7 @@ import { insertPlayerSchema, insertGameSchema, insertGameSessionSchema, type Fil
 import { EligibilityChecker, buildLeadersBySeason, EVALS, auditLeaders, ACH_LEADERS } from "./eligibility";
 import { sampleUniform } from "@shared/utils/rng";
 import { generateGrid } from "@shared/grid/generate";
+import { buildGenerateInput } from "@shared/grid/buildInput";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -1309,8 +1310,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Use shared grid generator
-      const input = { players };
+      // Use shared grid generator with proper input building
+      const input = buildGenerateInput({ players });
       const grid = await generateGrid(input);
       
       // Store in database for dev compatibility
