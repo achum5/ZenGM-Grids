@@ -29,10 +29,14 @@ export default function Home() {
         throw new Error("Please upload a league file first.");
       }
 
-      // Pass only what the generator actually needs (players + teams)
-      const input = { players: league.players, teams: league.teams };
+      // Pass only what the generator actually needs (players)
+      const input = { players: league.players };
       const grid = await generateGrid(input);
-      return grid as Game;
+      // Convert Date to string for Game type compatibility
+      return {
+        ...grid,
+        createdAt: grid.createdAt.toISOString(),
+      } as Game;
     },
     onSuccess: (game) => {
       handleGameGenerated(game);

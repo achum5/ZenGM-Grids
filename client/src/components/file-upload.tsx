@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { parseLeagueFromUrlInWorker, parseLeagueFromFileInWorker } from "@/lib/leagueIO";
 import { setLeagueInMemory, getLeagueInMemory } from "@/lib/leagueMemory";
-import { generateGrid } from "@shared/grid/generate";
+import { generateGrid as generateGridFromMemory } from "@shared/grid/generate";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -119,10 +119,14 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         throw new Error("Please upload a league file first.");
       }
 
-      // Pass only what the generator actually needs (players + teams)
-      const input = { players: league.players, teams: league.teams };
-      const grid = await generateGrid(input);
-      return grid as Game;
+      // Pass only what the generator actually needs (players)
+      const input = { players: league.players };
+      const grid = await generateGridFromMemory(input);
+      // Convert Date to string for Game type compatibility
+      return {
+        ...grid,
+        createdAt: grid.createdAt.toISOString(),
+      } as Game;
     },
     onSuccess: (game) => {
       onGameGenerated(game);
