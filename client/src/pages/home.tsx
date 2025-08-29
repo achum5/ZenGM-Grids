@@ -9,6 +9,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game, SessionStats, TeamInfo, GameSession } from "@shared/schema";
+import { getLeagueInMemory } from "@/lib/leagueMemory";
+import { generateGrid } from "@shared/grid/generate";
+import { buildGenerateInput } from "@shared/grid/buildInput";
 
 export default function Home() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
@@ -22,8 +25,26 @@ export default function Home() {
   // Generate new grid mutation
   const generateGameMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
+      const league = getLeagueInMemory();
+      if (!league) {
+        throw new Error("Please upload a league file first.");
+      }
+
+      // Build the input the exact same way the server route does
+      const input = buildGenerateInput(league);
+      
+      // Quick sanity log so we can see counts
+      console.debug("GEN INPUT", {
+        players: input.players?.length,
+        teams: input.teams?.length,
+      });
+      
+      const grid = await generateGrid(input);
+      // Convert Date to string for Game type compatibility
+      return {
+        ...grid,
+        createdAt: grid.createdAt.toISOString(),
+      } as Game;
     },
     onSuccess: (game) => {
       handleGameGenerated(game);

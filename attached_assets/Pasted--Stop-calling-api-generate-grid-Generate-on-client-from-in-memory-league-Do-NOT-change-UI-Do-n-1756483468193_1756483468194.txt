@@ -1,0 +1,95 @@
+“Stop calling /api/generate-grid. Generate on client from in-memory league. Do NOT change UI.”
+
+Do not change visuals or gameplay logic. Only do the steps below.
+
+1) Ensure uploads are saving the parsed league to memory
+
+In both upload paths (file + URL), after successful parse, we must call:
+
+import { setLeagueInMemory } from "@/lib/leagueMemory";
+setLeagueInMemory(league);
+
+
+Add a quick log after upload to verify:
+
+import { getLeagueInMemory } from "@/lib/leagueMemory";
+console.debug("Uploaded league summary", {
+  players: getLeagueInMemory()?.players?.length,
+  teams: getLeagueInMemory()?.teams?.length,
+});
+
+2) Extract the existing grid generator into a shared module
+
+Find the function the server route /api/generate-grid uses (search for that route in server/** and see what it calls).
+
+Move that pure generator code into a new shared file so it can run in the browser:
+
+Create: shared/grid/generate.ts
+
+// Move the exact pure logic the server uses here.
+// No Node-only imports. Export the same function signature
+// the server used (e.g., players+teams in, grid out).
+
+export type GenerateInput = {
+  players: any[];
+  teams: any[];
+  // include any other small fields your generator expects
+};
+
+export async function generateGrid(input: GenerateInput) {
+  // === paste/move the server’s pure generation logic here ===
+  // Make sure it returns the same shape your UI expects.
+}
+
+
+Update the server route to import from the shared module so dev API still works:
+
+// in server route file
+import { generateGrid } from "../../shared/grid/generate";
+
+3) Change ONLY the Generate button handler to call the shared generator
+
+Locate the handler used by the Generate New Grid button (the one that currently does fetch('/api/generate-grid')).
+
+Replace just the handler implementation with:
+
+import { getLeagueInMemory } from "@/lib/leagueMemory";
+import { generateGrid } from "@/shared/grid/generate"; // fix path if needed
+
+async function onGenerateClick() {
+  const league = getLeagueInMemory();
+  if (!league) {
+    toast?.error?.("Please upload a league file first.");
+    return;
+  }
+  setLoading(true);
+  try {
+    const input = {
+      players: league.players ?? [],
+      teams: league.teams ?? [],
+      // add any other tiny fields your generator expects
+    };
+    const grid = await generateGrid(input);
+
+    // Update state exactly as we previously did with the API response.
+    // e.g. setGrid(grid); setGameLoaded(true); etc.
+    setGrid(grid);
+  } catch (e: any) {
+    console.error(e);
+    toast?.error?.(e.message || "Failed to generate grid");
+  } finally {
+    setLoading(false);
+  }
+}
+
+
+Remove the fetch('/api/generate-grid') call. No other UI code should change.
+
+4) Sanity checks
+
+After upload, open the console: you should see the “Uploaded league summary” log with players and teams counts > 0.
+
+Click Generate New Grid → it should build without any network request to /api/generate-grid.
+
+Test with both a .json and a .gz league, and with a URL (Dropbox/GitHub/Drive).
+Upload -> log shows counts -> Generate works.

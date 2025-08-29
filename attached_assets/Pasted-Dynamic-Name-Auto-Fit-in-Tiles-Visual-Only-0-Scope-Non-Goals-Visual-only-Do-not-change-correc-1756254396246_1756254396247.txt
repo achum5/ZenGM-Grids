@@ -1,0 +1,110 @@
+Dynamic Name Auto-Fit in Tiles (Visual Only)
+0) Scope / Non-Goals
+
+Visual only. Do not change correctness, scoring, rarity, or any validation logic.
+
+Feature: auto-size the player name’s font to the maximum size that fits in its allotted area inside each tile, across all window sizes.
+
+1) Inputs & Constraints
+
+Name tokens/formatting and the dynamic fit order remain as previously specified:
+
+One-line full (“F. Lastname”)
+
+Two-line full (F. / Lastname)
+
+One-line truncated (F. + truncated last name with end ellipsis)
+
+Two-line truncated (F. on line 1, truncated last name with end ellipsis on line 2)
+
+No hyphenation. Never break mid-word. Truncate only at the end of the last name.
+
+The name block must never overlap the avatar or the rarity badge.
+
+Keep a minimum readable font size (e.g., ~11–12px CSS equivalent) and a maximum derived from tile size.
+
+2) Reserved Layout Areas
+
+Each tile has:
+
+Avatar zone (center)
+
+Badge zone (top-right) with a “safe margin”
+
+Name band (bottom area) = where the label lives
+
+The name band height should scale with tile height (e.g., ~24–30% of tile height, clamped). This is the only space the name may occupy.
+
+3) Auto-Fit Algorithm (font size)
+
+Use a measure-then-fit approach per tile:
+
+Determine mode via the dynamic fit order (1→2→3→4), but before truncating try to fit by shrinking the font down to minFont.
+
+If the text still doesn’t fit at minFont, then proceed to the next option in the fit order (eventually truncating if necessary).
+
+Compute bounds per tile:
+
+maxFont = a function of tile width (e.g., ~6–7% of tile width for one-line, ~5–6% for two-line), clamped to a desktop/mobile min/max.
+
+minFont = readability floor.
+
+Apply consistent line height and vertical padding.
+
+Fit loop (fast + stable):
+
+Start at maxFont.
+
+If the rendered label overflows the name band (either width or height), reduce size.
+
+Use a binary search (or step-down with early exit) between maxFont and minFont to find the largest font that fits.
+
+“Fits” means: rendered width ≤ band width and rendered height ≤ band height, for the current mode (1-line or 2-line).
+
+Fallback to truncation only if:
+
+At minFont the candidate still overflows.
+
+Then advance to the next option in the 1→2→3→4 order and repeat the fit loop there.
+
+Cache & reuse:
+
+Cache the last computed font size for a given (tile size bucket, label length bucket, mode) to avoid repeated measurement when many tiles are similar.
+
+Recompute only when the tile’s size or label changes.
+
+4) When to (Re)Fit
+
+On grid mount, tile mount, and after avatar image loads (since layout can shift slightly).
+
+On window resize and orientation change.
+
+On grid regeneration or when a tile’s content changes.
+
+Use a ResizeObserver on the tile/name band; debounce the fit work (~50ms) and run updates in requestAnimationFrame to avoid jitter.
+
+5) Performance / UX Guardrails
+
+Avoid layout thrash: read measurements once per cycle; then apply styles.
+
+Don’t animate font size during fitting; compute then set to the final size to prevent flicker.
+
+Respect the badge and avatar safe zones; the name band must not collide with them.
+
+Keep pointer behavior unchanged.
+
+6) Acceptance Criteria
+
+Dynamic size: On desktop, names appear large and crisp; on small mobile tiles they shrink just enough to fit, staying readable.
+
+Order preserved: The algorithm always tries: 1-line full → 2-line full → 1-line trunc → 2-line trunc, with auto-sizing attempted before truncation at each step.
+
+No mid-word breaks / no hyphenation; truncation only on the end of last name.
+
+No overlap: Names never overlap the avatar or the top-right badge; no clipping.
+
+Smooth reflow: Rotating the phone or resizing the window refits all labels without jitter or flicker.
+
+Visual-only: Correct/incorrect logic, rarity, scoring, and totals remain exactly the same.
+
+Result: Player names always use the largest readable font that fits their tile—first trying to show the full label, only truncating when strictly necessary—while remaining performant and rock-solid on any screen size.
