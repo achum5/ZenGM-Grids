@@ -1,0 +1,122 @@
+Name Plate Width Still Too Small (Fix)
+0) Scope
+
+Visual/layout only. Do not change correctness, scoring, rarity, or any validation logic.
+
+1) Problem recap (from screenshot)
+
+The name plate is still content-sized (shrinks to the text), not to the tile width.
+
+It sits higher than expected and looks cramped; the text isn’t using the available width.
+
+We previously “set 94% width,” but some parent/child style is overriding or constraining it.
+
+2) What we want (definition of done)
+
+The name plate fills ~94% of the tile’s inner width (within 92–96%), centered, with small left/right margins.
+
+The text inside uses nearly that entire width and grows as large as possible while still fitting our name rules (no hyphenation, dynamic fit order).
+
+The plate stays in the bottom band of the tile, never overlaps the avatar or rarity badge.
+
+It looks correct on iPhone 16 and across desktop/tablet sizes.
+
+3) Likely causes to remove (check all, remove any that exist)
+
+Shrink-to-content styles on the plate or its container:
+
+display: inline-flex, width: auto, max-width caps, or fit-content.
+
+Parent constraints:
+
+A parent wrapper with max-width, inline-size, gap, or padding that prevents full expansion.
+
+Flexbox min-width trap:
+
+Flex children default to min-width: auto → they won’t shrink. The label container needs min-width: 0 so text can properly fit/measure.
+
+Absolute positioning not using left/right insets:
+
+If the plate is position: absolute but sized by width alone, small calculation errors or transforms can keep it narrow. Prefer left/right insets within a bottom “name band” wrapper.
+
+Transforms or scale on the plate/parent (e.g., transform: scale() or translate) that effectively reduce available width.
+
+Tailwind/utility classes still capping width (max-w-*, w-auto, self-center, items-center) or adding unintended padding/margins.
+
+4) Required layout structure (target)
+
+Tile: position: relative.
+
+Name band wrapper: anchored to the bottom, spans full tile width (inside tile padding), defines the band height (≈ 24–30% of tile height, clamped).
+
+Plate: inside the band, block-level (not inline), centered, width ≈ 94% of the band’s inner width (after band padding), small bottom margin (≈ 3–4% of tile width).
+
+Text container: fills plate 100% width, min-width: 0, with small responsive inner padding (≈ 1.5–2.5% per side).
+
+Key point: The plate width must be determined by horizontal insets (left/right) or an explicit percentage in a container that itself fills the tile. It must not be sized by its own content.
+
+5) Dynamic font auto-fit (integration)
+
+Reuse our existing auto-fit logic, but re-measure against the plate’s inner width (after padding).
+
+Start from a higher max font now that the plate is wider.
+
+Keep the dynamic name order:
+
+one-line full
+
+two-line full
+
+one-line truncated
+
+two-line truncated
+
+No hyphenation; truncate only end of last name.
+
+Ensure the name band height limits are respected so we never collide with the avatar or badge.
+
+6) Measurement ordering (prevents stale/incorrect sizes)
+
+After layout changes, measure with requestAnimationFrame (or LayoutEffect equivalent) so CSS is applied first.
+
+On iOS Safari, use getBoundingClientRect() for accurate fractional pixels.
+
+Re-fit when:
+
+tile/name band resizes (ResizeObserver),
+
+avatar image loads,
+
+window resize/orientation change,
+
+grid regenerates.
+
+Debounce ~50ms to avoid jitter.
+
+7) iOS-specific polish
+
+Ensure -webkit-text-size-adjust: 100% is set globally so Safari doesn’t auto-bump text.
+
+Avoid overflow: hidden on ancestors that could clip the plate’s glow/shadow (if any).
+
+Verify no Safari transform side-effects on measuring elements.
+
+8) Quick self-test checklist (use the A. Davis tile)
+
+Tile plate width visually ≈ 94% of tile width (narrow left/right margins).
+
+“A. Davis” appears larger and uses nearly full width; on small tiles it picks the right mode from the dynamic order.
+
+Plate remains in the bottom band, not floating upward.
+
+No overlap with avatar or top-right rarity badge.
+
+Rotating iPhone 16 and resizing desktop reflows perfectly.
+
+9) If still narrow after changes
+
+Temporarily add a debug outline to the name band and the plate so you can see actual widths on device. If the band is full width but the plate isn’t, a lingering max-width/w-auto/inline-flex is still active—remove it.
+
+If the band itself isn’t full width, check the tile’s inner container for padding/constraints and fix that first.
+
+End result: The name plate truly spans almost the full tile width on iPhone 16 (and everywhere), the text auto-fits to that wider space, and everything continues to respect our safe-zones and dynamic name rules.
