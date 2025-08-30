@@ -1,0 +1,135 @@
+BUGFIX: Vercel “Unexpected token ‘T’” on JSON Upload
+
+Problem
+On Vercel, selecting a local .json file still triggers a fetch to an API route (or tries to parse a non-JSON response), so the UI attempts res.json() on Vercel’s HTML error page → “Unexpected token ‘T’”.
+
+Goal
+For local .json uploads: do everything in the browser only (read → JSON.parse → transform → render). No network requests at all. URL/gzip paths can remain as they are, but the JSON path must never hit /api/*.
+
+1) Enforce a zero-network JSON path
+
+A. Guard the component state so JSON is the default and fully isolated
+
+Edit client/src/components/file-upload.tsx:
+
+Add an explicit upload mode and default it to JSON client:
+
+type UploadMode = "json-client" | "json-gzip" | "url";
+
+const [mode, setMode] = useState<UploadMode>("json-client"); // default: JSON client
+
+
+Ensure the drop zone and file picker both route to the same handler that does no fetch when mode === "json-client".
+
+Replace your local file handler with this (or equivalent):
+
+async function handleLocalFile(file: File) {
+  try {
+    if (mode !== "json-client") return; // other modes handled elsewhere
+
+    if (!file.name.toLowerCase().endsWith(".json")) {
+      toast.error("This uploader only accepts plain .json files.");
+      return;
+    }
+
+    // Hard guard: block accidental network calls in this path
+    const originalFetch = globalThis.fetch;
+    (globalThis as any).fetch = (...args: any[]) => {
+      console.error("Network call attempted during json-client upload:", args[0]);
+      throw new Error("No network allowed in json-client upload path.");
+    };
+
+    const text = await file.text();        // browser only
+    const raw = JSON.parse(text);          // easy way
+
+    // Transform to FileUploadData using the client processor you added
+    const processed = await processLeagueClient(raw); // from client/src/lib/clientLeagueProcessor
+
+    // Restore fetch guard
+    (globalThis as any).fetch = originalFetch;
+
+    // Continue existing flow (render grid, update state, etc.)
+    onUploadComplete(processed);
+    toast.success("League loaded!");
+  } catch (err: any) {
+    toast.error(err?.message ?? "Failed to read or parse JSON.");
+  }
+}
+
+
+Wire both the <input type="file"> and the drop zone to call handleLocalFile when mode === "json-client".
+
+B. Remove any fallback that posts local files to the server
+
+Search and remove/guard any code that submits local files to an API:
+
+Run these searches and fix all hits in file-upload.tsx and related components:
+
+rg -n "fetch\\(.*/api" client/src
+rg -n "await\\s+res\\.json\\(\\)" client/src
+rg -n "upload.*api" client/src
+
+
+For every match inside the local file path, delete it or wrap it so it only executes for "json-gzip" or "url" modes—not for "json-client".
+
+2) Make error handling impossible to misinterpret
+
+Add a safe JSON helper used only by server/URL flows (never by the JSON client path):
+
+async function safeFetchJson(input: RequestInfo, init?: RequestInit) {
+  const res = await fetch(input, init);
+  const ctype = res.headers.get("content-type") || "";
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0,150)}` : ""}`);
+  }
+  if (!ctype.includes("application/json")) {
+    throw new Error(`Expected JSON but got "${ctype}". First chars: ${text.slice(0,60)}`);
+  }
+  return JSON.parse(text);
+}
+
+
+Replace any await res.json() in URL/gzip code with await safeFetchJson(...).
+Do not use this helper in the "json-client" path.
+
+3) Confirm at runtime that JSON path never touches the network
+
+Keep the temporary fetch guard above in the json-client path for now. If something tries to call fetch, it will throw immediately with a clear message in the console and the toast—this is how we’ll catch any straggler calls that only show up in production builds on Vercel.
+
+4) Integration points
+
+Ensure client/src/lib/clientLeagueProcessor.ts exports:
+
+export async function processLeagueClient(raw: any): Promise<FileUploadData> {
+  // mirror server transformation already implemented
+}
+
+
+In client/src/components/file-upload.tsx, after processing, call the same callback/state update we use after a successful server response:
+
+onUploadComplete(processed); // whatever the existing success hook is
+
+5) Manual test checklist (must pass on Vercel)
+
+Local .json (valid):
+
+Grid renders.
+
+Network tab shows 0 requests triggered by the upload action.
+
+No “Unexpected token ‘T’” (there’s nothing to parse from server).
+
+Local non-JSON: shows “This uploader only accepts plain .json files.”
+
+Corrupt JSON: shows JSON parse error.
+
+URL upload (if you test it):
+
+If it fails, error toast shows HTTP status and first chars of server text, not a JSON parse error.
+
+Likely cause you’ll find and remove
+
+In production, the local file path still falls through to a legacy code path that does fetch('/api/...') and res.json() (works in Replit’s dev server, 404/500 HTML on Vercel). The guards and search-and-destroy above make that impossible.
+
+Deliverable: After these changes, a local .json upload produces no network requests and works the same on Replit and Vercel. The “Unexpected token ‘T’” error disappears.

@@ -9,7 +9,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
-import UploadLeague from "@/components/UploadLeague";
+import { processLeagueDataClientSide, type BBGMLeagueData } from "@/lib/clientLeagueProcessor";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -23,35 +23,38 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
   const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
 
+  // Safe fetch helper for URL/server paths only (never used by JSON client path)
+  const safeFetchJson = async (input: RequestInfo, init?: RequestInit) => {
+    const res = await fetch(input, init);
+    const ctype = res.headers.get("content-type") || "";
+    const text = await res.text().catch(() => "");
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0,150)}` : ""}`);
+    }
+    if (!ctype.includes("application/json")) {
+      throw new Error(`Expected JSON but got "${ctype}". First chars: ${text.slice(0,60)}`);
+    }
+    return JSON.parse(text);
+  };
 
 
   const uploadMutation = useMutation({
     mutationFn: async (fileOrUrl: File | string) => {
       if (typeof fileOrUrl === 'string') {
         // URL upload
-        const response = await fetch("/api/upload-url", {
+        return await safeFetchJson("/api/upload-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: fileOrUrl }),
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "URL upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+        }) as FileUploadData;
       } else {
-        // File upload
+        // File upload (only for non-JSON files, JSON files are handled client-side)
         const formData = new FormData();
         formData.append("file", fileOrUrl);
-        const response = await fetch("/api/upload", {
+        return await safeFetchJson("/api/upload", {
           method: "POST",
           body: formData,
-        });
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Upload failed");
-        }
-        return response.json() as Promise<FileUploadData>;
+        }) as FileUploadData;
       }
     },
     onSuccess: (data) => {
@@ -96,13 +99,62 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
   });
 
+  // Client-side JSON processing handler
+  const handleClientSideFile = useCallback(async (file: File) => {
+    try {
+      if (!file.name.toLowerCase().endsWith(".json")) {
+        // For non-JSON files, use the server upload
+        setUploadedFile(file);
+        uploadMutation.mutate(file);
+        return;
+      }
+
+      // Hard guard: block accidental network calls for JSON files
+      const originalFetch = globalThis.fetch;
+      (globalThis as any).fetch = (...args: any[]) => {
+        console.error("Network call attempted during json-client upload:", args[0]);
+        throw new Error("No network allowed in json-client upload path.");
+      };
+
+      setUploadedFile(file);
+      const text = await file.text();        // browser only
+      const raw = JSON.parse(text) as BBGMLeagueData;          // easy way
+
+      // Transform to FileUploadData using the client processor
+      const processed = await processLeagueDataClientSide(raw);
+
+      // Restore fetch guard
+      (globalThis as any).fetch = originalFetch;
+
+      // Continue existing flow
+      setUploadData(processed);
+      onTeamDataUpdate?.(processed.teams);
+      toast({
+        title: "JSON file loaded successfully",
+        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
+      });
+      // Automatically generate a new grid after successful client-side processing
+      generateGameMutation.mutate();
+    } catch (err: any) {
+      // Restore fetch guard in case of error
+      if ((globalThis as any).fetch !== fetch) {
+        (globalThis as any).fetch = fetch;
+      }
+      toast({
+        title: "JSON loading failed",
+        description: err?.message || "Failed to read or parse JSON.",
+        variant: "destructive",
+      });
+      setUploadedFile(null);
+    }
+  }, [uploadMutation, onTeamDataUpdate, toast, generateGameMutation]);
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      setUploadedFile(file);
-      uploadMutation.mutate(file);
+      handleClientSideFile(file);
     }
-  }, [uploadMutation]);
+  }, [handleClientSideFile]);
 
   const handleUrlUpload = () => {
     if (!urlInput.trim()) {
@@ -157,8 +209,6 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
             <TabsTrigger value="url">URL Upload</TabsTrigger>
           </TabsList>
           
-          
-          
           <TabsContent value="file" className="space-y-4">
             <div
               {...getRootProps()}
@@ -174,7 +224,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <p className="text-gray-600 dark:text-gray-300 mb-2">
                 {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Supports JSON and gzipped league files</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">JSON files processed locally in browser, gzipped files uploaded to server</p>
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
