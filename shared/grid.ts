@@ -31,6 +31,20 @@ function eligibleForCell(p: any, row: any, col: any): boolean {
   const teamPass = didPlayForTeam(p, teamCriteria.value);
   const critPass = p.achievements.includes(achievementCriteria.value);
   
+  // Debug first few checks
+  if (Math.random() < 0.001) {
+    console.log("🔍 eligibleForCell debug:", {
+      playerName: p.name,
+      playerTeams: p.teams?.slice(0, 3),
+      playerAchievements: p.achievements?.slice(0, 3),
+      teamCriteria: teamCriteria.value,
+      achievementCriteria: achievementCriteria.value,
+      teamPass,
+      critPass,
+      eligible: teamPass && critPass
+    });
+  }
+  
   return teamPass && critPass;
 }
 
@@ -63,6 +77,13 @@ function gridIsValid(correctAnswers: Record<string, string[]>): boolean {
 }
 
 export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
+  console.log("🔍 Grid generation debug: Starting with data:", {
+    playersCount: data.players?.length,
+    teamsCount: data.teams?.length,
+    achievementsCount: data.achievements?.length,
+    samplePlayerAchievements: data.players?.[0]?.achievements?.slice(0, 5)
+  });
+  
   const { players } = data;
   
   if (!players || players.length === 0) {
@@ -71,28 +92,38 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
 
   // Get unique teams from player data
   const allTeams = Array.from(new Set(players.flatMap(p => p.teams)));
+  console.log("🔍 All teams found:", allTeams.slice(0, 10), `(${allTeams.length} total)`);
   
   // Use all teams that have sufficient players (supports custom leagues)
   const teams = allTeams.filter(team => {
     const teamPlayerCount = players.filter(p => p.teams.includes(team)).length;
     return teamPlayerCount >= 10; // Minimum players for a team to appear in grids
   });
+  console.log("🔍 Valid teams (>=10 players):", teams.length, teams.slice(0, 5));
   
   // Use the available achievements from the processed data instead of hardcoded list
   const allAchievements = data.achievements || Array.from(new Set(players.flatMap(p => p.achievements)));
+  console.log("🔍 All achievements:", allAchievements.length, allAchievements.slice(0, 10));
 
   // Filter achievements that have at least 2 players (for valid intersections)
   const availableAchievements = allAchievements.filter(ach => {
     const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
     return playersWithAchievement >= 2;
   });
+  console.log("🔍 Available achievements (>=2 players):", availableAchievements.length, availableAchievements.slice(0, 10));
   
   // Uniform sampling - shuffle array
   const achievements = [...availableAchievements].sort(() => Math.random() - 0.5);
 
   if (teams.length < 3) {
-    throw new Error("Not enough data to generate a grid. Need at least 3 teams.");
+    console.log("❌ Not enough teams:", teams.length);
+    throw new Error(`Not enough data to generate a grid. Need at least 3 teams, found ${teams.length}.`);
   }
+
+  console.log("🔍 Starting grid generation attempts with:", {
+    teamsCount: teams.length,
+    achievementsCount: achievements.length
+  });
 
   // Loop up to 200 attempts to find a valid grid
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -101,6 +132,8 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
     
     // Heavily favor stat-based grids over team-only grids
     const gridType = Math.random();
+    
+    console.log(`🔍 Attempt ${attempt + 1}: gridType=${gridType.toFixed(3)}, teams=${teams.length}, achievements=${achievements.length}`);
     
     if (gridType < 0.02 && teams.length >= 6) {
       // 2% chance: 3 teams x 3 teams grid
@@ -268,6 +301,12 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
 
     const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
     
+    console.log(`🔍 Attempt ${attempt + 1}: Generated correctAnswers:`, {
+      cellCount: Object.keys(correctAnswers).length,
+      sampleCell: correctAnswers['0_0']?.length || 0,
+      allCellsValid: gridIsValid(correctAnswers)
+    });
+    
     if (gridIsValid(correctAnswers)) {
       // Generate a random ID for the game
       const id = Math.random().toString(36).substring(2, 15);
@@ -298,6 +337,12 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
     
     const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
     
+    console.log("🔍 Fallback team-only grid correctAnswers:", {
+      cellCount: Object.keys(correctAnswers).length,
+      validCells: Object.values(correctAnswers).filter(list => list && list.length > 0).length,
+      isValid: Object.values(correctAnswers).every(list => list && list.length > 0)
+    });
+    
     if (Object.values(correctAnswers).every(list => list && list.length > 0)) {
       const id = Math.random().toString(36).substring(2, 15);
       
@@ -310,6 +355,14 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
       };
     }
   }
+  
+  console.log("❌ Failed to generate any valid grid after 200 attempts");
+  console.log("📊 Final state:", {
+    availableTeams: teams.length,
+    availableAchievements: achievements.length,
+    sampleTeams: teams.slice(0, 5),
+    sampleAchievements: achievements.slice(0, 5)
+  });
   
   throw new Error(
     `Couldn't generate a valid grid. Available teams: ${teams.length}, available achievements: ${achievements.length}. Dataset may need more variety.`
