@@ -16,79 +16,12 @@ interface FileUploadProps {
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
 }
 
-type UploadMode = "json-client" | "json-gzip" | "url";
-
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
-  const [mode, setMode] = useState<UploadMode>("json-client");
+  const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
   const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
-
-  // Force JSON client mode to avoid SSR/hydration mismatches
-  useEffect(() => { 
-    setMode("json-client"); 
-  }, []);
-
-  // Flag to enable only JSON client mode for now
-  const JSON_ONLY = true;
-
-  // Hard no-network guard for JSON client processing
-  const installNoNetworkGuard = () => {
-    const origFetch = globalThis.fetch;
-    const origOpen = XMLHttpRequest.prototype.open;
-    (globalThis as any).fetch = (...args: any[]) => {
-      console.error("Blocked network call during json-client upload:", args[0]);
-      throw new Error("No network allowed in json-client upload path.");
-    };
-    XMLHttpRequest.prototype.open = function () {
-      throw new Error("No XHR allowed in json-client upload path.");
-    };
-    return () => {
-      (globalThis as any).fetch = origFetch;
-      XMLHttpRequest.prototype.open = origOpen;
-    };
-  };
-
-  // JSON client file handler - zero network calls
-  const handleJsonClientFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".json")) {
-      toast({
-        title: "Invalid file type",
-        description: "This uploader only accepts plain .json files.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const restore = installNoNetworkGuard();
-    try {
-      setUploadedFile(file);
-      const text = await file.text();      // browser only
-      const raw = JSON.parse(text) as BBGMLeagueData;        // easy way
-      const processed = await processLeagueDataClientSide(raw); // client processor
-      
-      // Continue existing success path
-      setUploadData(processed);
-      onTeamDataUpdate?.(processed.teams);
-      toast({
-        title: "League loaded successfully",
-        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
-      });
-      
-      // Automatically generate a new grid after successful client-side processing
-      generateGameMutation.mutate();
-    } catch (err: any) {
-      toast({
-        title: "JSON loading failed",
-        description: err?.message ?? "Failed to read or parse JSON.",
-        variant: "destructive",
-      });
-      setUploadedFile(null);
-    } finally {
-      restore();
-    }
-  };
 
   // Safe fetch helper for URL/server paths only (never used by JSON client path)
   const safeFetchJson = async (input: RequestInfo, init?: RequestInit) => {
@@ -128,7 +61,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       setUploadData(data);
       onTeamDataUpdate?.(data.teams);
       toast({
-        title: mode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
+        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
       // Automatically generate a new grid after successful upload
@@ -136,7 +69,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
     onError: (error) => {
       toast({
-        title: mode === 'url' ? "URL loading failed" : "Upload failed",
+        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
         description: error.message,
         variant: "destructive",
       });
@@ -166,18 +99,62 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
   });
 
+  // Client-side JSON processing handler
+  const handleClientSideFile = useCallback(async (file: File) => {
+    try {
+      if (!file.name.toLowerCase().endsWith(".json")) {
+        // For non-JSON files, use the server upload
+        setUploadedFile(file);
+        uploadMutation.mutate(file);
+        return;
+      }
+
+      // Hard guard: block accidental network calls for JSON files
+      const originalFetch = globalThis.fetch;
+      (globalThis as any).fetch = (...args: any[]) => {
+        console.error("Network call attempted during json-client upload:", args[0]);
+        throw new Error("No network allowed in json-client upload path.");
+      };
+
+      setUploadedFile(file);
+      const text = await file.text();        // browser only
+      const raw = JSON.parse(text) as BBGMLeagueData;          // easy way
+
+      // Transform to FileUploadData using the client processor
+      const processed = await processLeagueDataClientSide(raw);
+
+      // Restore fetch guard
+      (globalThis as any).fetch = originalFetch;
+
+      // Continue existing flow
+      setUploadData(processed);
+      onTeamDataUpdate?.(processed.teams);
+      toast({
+        title: "JSON file loaded successfully",
+        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
+      });
+      // Automatically generate a new grid after successful client-side processing
+      generateGameMutation.mutate();
+    } catch (err: any) {
+      // Restore fetch guard in case of error
+      if ((globalThis as any).fetch !== fetch) {
+        (globalThis as any).fetch = fetch;
+      }
+      toast({
+        title: "JSON loading failed",
+        description: err?.message || "Failed to read or parse JSON.",
+        variant: "destructive",
+      });
+      setUploadedFile(null);
+    }
+  }, [uploadMutation, onTeamDataUpdate, toast, generateGameMutation]);
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      if (mode === "json-client") {
-        handleJsonClientFile(file);
-      } else {
-        // For other modes, use server upload
-        setUploadedFile(file);
-        uploadMutation.mutate(file);
-      }
+      handleClientSideFile(file);
     }
-  }, [mode, handleJsonClientFile, uploadMutation]);
+  }, [handleClientSideFile]);
 
   const handleUrlUpload = () => {
     if (!urlInput.trim()) {
@@ -226,8 +203,13 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         <CardTitle>Upload League Data</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {JSON_ONLY ? (
-          <div className="space-y-4">
+        <Tabs value={uploadMode} onValueChange={(value) => setUploadMode(value as 'file' | 'url')} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="file">File Upload</TabsTrigger>
+            <TabsTrigger value="url">URL Upload</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="file" className="space-y-4">
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
@@ -240,9 +222,9 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <input {...getInputProps()} data-testid="input-file" />
               <CloudUpload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-600 dark:text-gray-300 mb-2">
-                {isDragActive ? "Drop the JSON file here" : "Drag & drop your JSON league file here"}
+                {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">JSON files processed locally in browser - zero network calls</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">JSON files processed locally in browser, gzipped files uploaded to server</p>
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
@@ -252,103 +234,62 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                 {uploadMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    Uploading...
                   </>
                 ) : (
-                  "Browse JSON Files"
+                  "Browse Files"
                 )}
               </Button>
             </div>
-          </div>
-        ) : (
-          <Tabs value={mode} onValueChange={(value) => setMode(value as UploadMode)} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="json-gzip">File Upload</TabsTrigger>
-              <TabsTrigger value="url">URL Upload</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="json-gzip" className="space-y-4">
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-                  isDragActive
-                    ? "border-basketball bg-orange-50 dark:bg-orange-900/20"
-                    : "border-gray-300 dark:border-gray-600 hover:border-basketball hover:bg-gray-50 dark:hover:bg-gray-800"
-                }`}
-                data-testid="upload-dropzone"
-              >
-                <input {...getInputProps()} data-testid="input-file" />
-                <CloudUpload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600 dark:text-gray-300 mb-2">
-                  {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
+          </TabsContent>
+          
+          <TabsContent value="url" className="space-y-4">
+            <div className="space-y-4">
+              <div className="text-center">
+                <Link className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Enter League File URL
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Supports gzipped league files</p>
-                <Button
-                  type="button"
-                  className="bg-basketball text-white hover:bg-orange-600 border-basketball"
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Paste a direct link to a JSON or gzipped league file
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  type="url"
+                  placeholder="Paste league file URL"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
+                      handleUrlUpload();
+                    }
+                  }}
+                  className="flex-1 url-upload-input"
                   disabled={uploadMutation.isPending}
-                  data-testid="button-browse-files"
+                />
+                <Button
+                  onClick={handleUrlUpload}
+                  className="bg-basketball text-white hover:bg-orange-600"
+                  disabled={uploadMutation.isPending || !urlInput.trim()}
+                  data-testid="button-upload-url"
                 >
                   {uploadMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
+                      Loading...
                     </>
                   ) : (
-                    "Browse Files"
+                    <>
+                      <Link className="mr-2 h-4 w-4" />
+                      Load URL
+                    </>
                   )}
                 </Button>
               </div>
-            </TabsContent>
-            
-            <TabsContent value="url" className="space-y-4">
-              <div className="space-y-4">
-                <div className="text-center">
-                  <Link className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Enter League File URL
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                    Paste a direct link to a JSON or gzipped league file
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    type="url"
-                    placeholder="Paste league file URL"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
-                        handleUrlUpload();
-                      }
-                    }}
-                    className="flex-1 url-upload-input"
-                    disabled={uploadMutation.isPending}
-                  />
-                  <Button
-                    onClick={handleUrlUpload}
-                    className="bg-basketball text-white hover:bg-orange-600"
-                    disabled={uploadMutation.isPending || !urlInput.trim()}
-                    data-testid="button-upload-url"
-                  >
-                    {uploadMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Loading...
-                      </>
-                    ) : (
-                      <>
-                        <Link className="mr-2 h-4 w-4" />
-                        Load URL
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-        )}
+            </div>
+          </TabsContent>
+        </Tabs>
 
         {uploadedFile && (
           <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
