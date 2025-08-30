@@ -10,9 +10,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const u = new URL(input);
         if (u.hostname.includes("dropbox") && !u.hostname.includes("dropboxusercontent.com")) {
+          // Handle new Dropbox format: /scl/fi/... and old format: /s/...
+          if (u.pathname.includes("/scl/fi/")) {
+            // New format: extract file ID and build direct download URL
+            const pathParts = u.pathname.split('/');
+            const fileIdIndex = pathParts.indexOf('fi') + 1;
+            if (fileIdIndex > 0 && fileIdIndex < pathParts.length) {
+              const fileId = pathParts[fileIdIndex];
+              const fileName = pathParts[pathParts.length - 1];
+              const rlkey = u.searchParams.get('rlkey');
+              if (rlkey) {
+                return `https://dl.dropboxusercontent.com/scl/fi/${fileId}/${fileName}?rlkey=${rlkey}&dl=1`;
+              }
+            }
+          }
+          // Fallback to old format handling
           u.hostname = "dl.dropboxusercontent.com";
           u.searchParams.set("dl", "1");
-          ["st", "rlkey"].forEach(q => u.searchParams.delete(q));
+          ["st"].forEach(q => u.searchParams.delete(q));
           return u.toString();
         }
         if (u.hostname === "github.com" && u.pathname.includes("/blob/")) {

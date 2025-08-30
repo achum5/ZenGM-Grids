@@ -64,9 +64,24 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate, onUploadDataUpda
     try {
       const url = new URL(u);
       if (url.hostname.includes("dropbox") && !url.hostname.includes("dropboxusercontent.com")) {
+        // Handle new Dropbox format: /scl/fi/... and old format: /s/...
+        if (url.pathname.includes("/scl/fi/")) {
+          // New format: extract file ID and build direct download URL
+          const pathParts = url.pathname.split('/');
+          const fileIdIndex = pathParts.indexOf('fi') + 1;
+          if (fileIdIndex > 0 && fileIdIndex < pathParts.length) {
+            const fileId = pathParts[fileIdIndex];
+            const fileName = pathParts[pathParts.length - 1];
+            const rlkey = url.searchParams.get('rlkey');
+            if (rlkey) {
+              return `https://dl.dropboxusercontent.com/scl/fi/${fileId}/${fileName}?rlkey=${rlkey}&dl=1`;
+            }
+          }
+        }
+        // Fallback to old format handling
         url.hostname = "dl.dropboxusercontent.com";
         url.searchParams.set("dl", "1");
-        ["st", "rlkey"].forEach(q => url.searchParams.delete(q));
+        ["st"].forEach(q => url.searchParams.delete(q));
         return url.toString();
       }
       if (url.hostname === "github.com" && url.pathname.includes("/blob/")) {
