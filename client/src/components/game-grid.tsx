@@ -61,55 +61,55 @@ export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, tea
 
   const submitAnswerMutation = useMutation({
     mutationFn: async ({ row, col, player }: { row: number; col: number; player: string }) => {
-      const response = await apiRequest("POST", `/api/sessions/${sessionId}/answer`, { row, col, player });
-      return response.json();
+      // Check if player is correct using client-side logic
+      const selectedPlayer = playerData?.find(p => p.name === player);
+      if (!selectedPlayer || !game) {
+        throw new Error('Player or game not found');
+      }
+
+      // Import and use eligibleForCell function
+      const { eligibleForCell } = await import('@shared/grid');
+      const rowCriteria = game.rowCriteria[row];
+      const colCriteria = game.columnCriteria[col];
+      
+      const isCorrect = eligibleForCell(selectedPlayer, rowCriteria, colCriteria);
+      
+      return {
+        isCorrect,
+        player,
+        row,
+        col,
+        session: session // Use existing session data
+      };
     },
     onSuccess: async (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions/stats"] });
-      onScoreUpdate(data.session.score);
-      
-      if (data.isCorrect && selectedCell && game) {
-        // Show correct answers modal for correct guesses
-        const cellCriteria = {
-          row: game.rowCriteria[selectedCell.row].label,
-          column: game.columnCriteria[selectedCell.col].label
+      // Update local session state instead of server
+      if (session) {
+        const newAnswers = {
+          ...session.answers,
+          [`${data.row}_${data.col}`]: {
+            player: data.player,
+            correct: data.isCorrect
+          }
         };
         
-        // Fetch all correct players for this cell
-        const columnType = game.columnCriteria[selectedCell.col].type;
-        const rowType = game.rowCriteria[selectedCell.row].type;
+        const newScore = Object.values(newAnswers).filter(answer => answer.correct).length;
         
-        let queryParams = "";
-        if (columnType === "team" && rowType === "team") {
-          queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&team2=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
-        } else if (columnType === "team") {
-          queryParams = `team=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}&achievement=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}`;
-        } else {
-          queryParams = `team=${encodeURIComponent(game.rowCriteria[selectedCell.row].value)}&achievement=${encodeURIComponent(game.columnCriteria[selectedCell.col].value)}`;
-        }
+        // Update session via refetch to trigger state update
+        queryClient.setQueryData(['/api/sessions', sessionId], {
+          ...session,
+          answers: newAnswers,
+          score: newScore
+        });
         
-        try {
-          const response = await apiRequest("GET", `/api/debug/matches?${queryParams}`);
-          const correctPlayersData = await response.json();
-          
-          setCorrectAnswersData({
-            players: correctPlayersData.players?.map((p: Player) => p.name) || [],
-            playerDetails: correctPlayersData.players || [],
-            cellCriteria
-          });
-          setShowCorrectAnswersModal(true);
-        } catch (error) {
-          console.error("Failed to fetch correct players:", error);
-        }
-        
+        onScoreUpdate(newScore);
+      }
+      
+      if (data.isCorrect && selectedCell && game) {
         toast({
           title: "Correct!",
           description: "Great pick!",
         });
-      } else if (data.isCorrect === false) {
-        // Incorrect answer - just render the incorrect state with no toast
-        // The modal will show "Why this was incorrect" details
       }
     },
   });
