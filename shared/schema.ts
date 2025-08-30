@@ -117,3 +117,60 @@ export interface SessionStats {
   bestScore: number;
   successRate: number;
 }
+
+// New canonical BBGM types
+export type Team = {
+  tid: number;          // BBGM team ID
+  abbrev: string;
+  name: string;         // "Region Name" concatenated
+};
+
+export type SeasonLine = {
+  season: number;
+  tid: number;          // team ID for that season (regular season only)
+  gp: number;           // games played (RS)
+  pts: number; ast: number; stl: number; blk: number; tp: number; // totals
+  fga: number; fta: number; tpa: number;                          // attempts
+  fgp?: number; ftp?: number; tpp?: number;                        // percentages if present
+  r_orb: number; r_drb: number;                                    // to derive TRB = ORB+DRB
+  mp?: number;                                                     // total minutes (if present)
+};
+
+export type Award = {
+  season: number;
+  type: string;   // long names like "Most Valuable Player", "First Team All-League", "Won Championship"
+};
+
+export type Draft = {
+  year?: number;
+  round?: number;   // 1, 2, or undefined (undrafted)
+  pick?: number;    // 1 .. N, undefined if undrafted
+};
+
+export type BBGMPlayer = {
+  pid: number;
+  name: string;
+  bornYear?: number;
+  awards: Award[];
+  seasons: SeasonLine[];         // derived from p.stats where playoffs === false
+  teamsPlayed: Set<number>;      // derived from seasons and statsTids
+  career: {                      // RS only
+    gp: number; pts: number; ast: number; stl: number; blk: number; tp: number; trb: number;
+    fga: number; fta: number; tpa: number;
+  };
+  draft: Draft;
+  hof?: boolean;
+  gameHighs?: {                  // if available from export
+    pts?: number;
+    trb?: number;
+    ast?: number;
+    tp?: number;
+  };
+};
+
+export type LeagueData = {
+  players: BBGMPlayer[];
+  teams: Team[];
+  minSeason?: number;
+  maxSeason?: number;
+};
