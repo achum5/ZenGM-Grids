@@ -10,6 +10,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { processLeagueDataClientSide, type BBGMLeagueData } from "@/lib/clientLeagueProcessor";
+import { decodeLeagueFile, decodeLeagueBytes, isGzipMagic } from "@/lib/leagueDecode";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -19,63 +20,116 @@ interface FileUploadProps {
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
-  const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
+  type UploadMode = "json-client" | "url";
+  const [mode, setMode] = useState<UploadMode>("json-client");
   const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
 
+  // Force local by default
+  useEffect(() => { setMode("json-client"); }, []);
+
+  // Network guard to prevent any network calls during local processing
+  function installNoNetworkGuard() {
+    const origFetch = globalThis.fetch;
+    const origOpen = XMLHttpRequest.prototype.open;
+    (globalThis as any).fetch = (...args: any[]) => {
+      console.error("Blocked network call during json-client upload:", args[0]);
+      throw new Error("No network allowed in json-client upload path.");
+    };
+    XMLHttpRequest.prototype.open = function () {
+      throw new Error("No XHR allowed in json-client upload path.");
+    };
+    return () => { 
+      (globalThis as any).fetch = origFetch; 
+      XMLHttpRequest.prototype.open = origOpen; 
+    };
+  }
+
   // Safe fetch helper for URL/server paths only (never used by JSON client path)
-  const safeFetchJson = async (input: RequestInfo, init?: RequestInit) => {
-    const res = await fetch(input, init);
-    const ctype = res.headers.get("content-type") || "";
-    const text = await res.text().catch(() => "");
+  async function safeFetchBytes(url: string): Promise<{u8: Uint8Array, enc: string}> {
+    const res = await fetch(url, { redirect: "follow" });
+    const ab = await res.arrayBuffer();
+    const u8 = new Uint8Array(ab);
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0,150)}` : ""}`);
+      const snippet = new TextDecoder().decode(u8).slice(0, 200);
+      throw new Error(`HTTP ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ""}`);
     }
-    if (!ctype.includes("application/json")) {
-      throw new Error(`Expected JSON but got "${ctype}". First chars: ${text.slice(0,60)}`);
-    }
-    return JSON.parse(text);
-  };
+    const enc = (res.headers.get("x-content-encoding") || "").toLowerCase();
+    return { u8, enc };
+  }
 
-
-  const uploadMutation = useMutation({
-    mutationFn: async (fileOrUrl: File | string) => {
-      if (typeof fileOrUrl === 'string') {
-        // URL upload
-        return await safeFetchJson("/api/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: fileOrUrl }),
-        }) as FileUploadData;
-      } else {
-        // File upload (only for non-JSON files, JSON files are handled client-side)
-        const formData = new FormData();
-        formData.append("file", fileOrUrl);
-        return await safeFetchJson("/api/upload", {
-          method: "POST",
-          body: formData,
-        }) as FileUploadData;
+  function normalizeLeagueUrl(u: string): string {
+    try {
+      const url = new URL(u);
+      if (url.hostname.includes("dropbox") && !url.hostname.includes("dropboxusercontent.com")) {
+        url.hostname = "dl.dropboxusercontent.com";
+        url.searchParams.set("dl", "1");
+        ["st", "rlkey"].forEach(q => url.searchParams.delete(q));
+        return url.toString();
       }
-    },
-    onSuccess: (data) => {
-      setUploadData(data);
-      onTeamDataUpdate?.(data.teams);
+      if (url.hostname === "github.com" && url.pathname.includes("/blob/")) {
+        url.hostname = "raw.githubusercontent.com";
+        url.pathname = url.pathname.replace("/blob/", "/");
+        return url.toString();
+      }
+      return u;
+    } catch { return u; }
+  }
+
+
+  // Local JSON/GZIP handler (zero network)
+  async function handleJsonClientFile(file: File) {
+    const restore = installNoNetworkGuard();
+    try {
+      setUploadedFile(file);
+      // Accept .json and .json.gz/.gz
+      const raw = await decodeLeagueFile(file);
+      const processed = await processLeagueDataClientSide(raw);
+      
+      // Continue existing flow
+      setUploadData(processed);
+      onTeamDataUpdate?.(processed.teams);
       toast({
-        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
-        description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
+        title: "League loaded successfully",
+        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
       });
-      // Automatically generate a new grid after successful upload
+      // Automatically generate a new grid after successful client-side processing
       generateGameMutation.mutate();
-    },
-    onError: (error) => {
+    } catch (err: any) {
       toast({
-        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
-        description: error.message,
+        title: "League loading failed",
+        description: err?.message ?? "Failed to read or parse league file.",
         variant: "destructive",
       });
       setUploadedFile(null);
-    },
-  });
+    } finally {
+      restore();
+    }
+  }
+
+  // URL handler (allowed to network; fetches bytes via proxy and decodes exactly like local)
+  async function handleUrlUpload(inputUrl: string) {
+    try {
+      const normalized = normalizeLeagueUrl(inputUrl.trim());
+      const { u8, enc } = await safeFetchBytes(`/api/fetch-league?url=${encodeURIComponent(normalized)}`);
+      const raw = decodeLeagueBytes(u8); // checks magic internally
+      const processed = await processLeagueDataClientSide(raw);
+      
+      setUploadData(processed);
+      onTeamDataUpdate?.(processed.teams);
+      toast({
+        title: "URL loaded successfully",
+        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
+      });
+      generateGameMutation.mutate();
+    } catch (err: any) {
+      toast({
+        title: "URL loading failed",
+        description: err?.message ?? "Failed to load or parse league file from URL.",
+        variant: "destructive",
+      });
+    }
+  }
 
   const generateGameMutation = useMutation({
     mutationFn: async () => {
@@ -99,64 +153,14 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
   });
 
-  // Client-side JSON processing handler
-  const handleClientSideFile = useCallback(async (file: File) => {
-    try {
-      if (!file.name.toLowerCase().endsWith(".json")) {
-        // For non-JSON files, use the server upload
-        setUploadedFile(file);
-        uploadMutation.mutate(file);
-        return;
-      }
-
-      // Hard guard: block accidental network calls for JSON files
-      const originalFetch = globalThis.fetch;
-      (globalThis as any).fetch = (...args: any[]) => {
-        console.error("Network call attempted during json-client upload:", args[0]);
-        throw new Error("No network allowed in json-client upload path.");
-      };
-
-      setUploadedFile(file);
-      const text = await file.text();        // browser only
-      const raw = JSON.parse(text) as BBGMLeagueData;          // easy way
-
-      // Transform to FileUploadData using the client processor
-      const processed = await processLeagueDataClientSide(raw);
-
-      // Restore fetch guard
-      (globalThis as any).fetch = originalFetch;
-
-      // Continue existing flow
-      setUploadData(processed);
-      onTeamDataUpdate?.(processed.teams);
-      toast({
-        title: "JSON file loaded successfully",
-        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
-      });
-      // Automatically generate a new grid after successful client-side processing
-      generateGameMutation.mutate();
-    } catch (err: any) {
-      // Restore fetch guard in case of error
-      if ((globalThis as any).fetch !== fetch) {
-        (globalThis as any).fetch = fetch;
-      }
-      toast({
-        title: "JSON loading failed",
-        description: err?.message || "Failed to read or parse JSON.",
-        variant: "destructive",
-      });
-      setUploadedFile(null);
-    }
-  }, [uploadMutation, onTeamDataUpdate, toast, generateGameMutation]);
-
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (file) {
-      handleClientSideFile(file);
+      handleJsonClientFile(file);
     }
-  }, [handleClientSideFile]);
+  }, []);
 
-  const handleUrlUpload = () => {
+  const handleUrlUploadClick = () => {
     if (!urlInput.trim()) {
       toast({
         title: "Invalid URL",
@@ -166,25 +170,16 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       return;
     }
     
-    // Auto-convert Dropbox www URLs to dl URLs
-    let processedUrl = urlInput.trim();
-    if (processedUrl.includes("www.dropbox.com")) {
-      processedUrl = processedUrl.replace("www.dropbox.com", "dl.dropbox.com");
-      // Also ensure the dl=0 parameter is set to dl=1 for direct download
-      if (processedUrl.includes("dl=0")) {
-        processedUrl = processedUrl.replace("dl=0", "dl=1");
-      } else if (!processedUrl.includes("dl=1")) {
-        processedUrl += processedUrl.includes("?") ? "&dl=1" : "?dl=1";
-      }
-    }
-    
-    setUploadedFile(null);
-    uploadMutation.mutate(processedUrl);
+    handleUrlUpload(urlInput);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    // Accept any file - let backend validate content
+    accept: { 
+      'application/json': ['.json'], 
+      'application/gzip': ['.gz'], 
+      'application/x-gzip': ['.json.gz'] 
+    },
     multiple: false,
   });
 
@@ -203,13 +198,13 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         <CardTitle>Upload League Data</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Tabs value={uploadMode} onValueChange={(value) => setUploadMode(value as 'file' | 'url')} className="w-full">
+        <Tabs value={mode} onValueChange={(value) => setMode(value as UploadMode)} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="file">File Upload</TabsTrigger>
+            <TabsTrigger value="json-client">File Upload</TabsTrigger>
             <TabsTrigger value="url">URL Upload</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="file" className="space-y-4">
+          <TabsContent value="json-client" className="space-y-4">
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
@@ -224,21 +219,14 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
               <p className="text-gray-600 dark:text-gray-300 mb-2">
                 {isDragActive ? "Drop the file here" : "Drag & drop your league file here"}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">JSON files processed locally in browser, gzipped files uploaded to server</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Supports .json and .json.gz/.gz files processed locally in browser</p>
               <Button
                 type="button"
                 className="bg-basketball text-white hover:bg-orange-600 border-basketball"
-                disabled={uploadMutation.isPending}
+                disabled={false}
                 data-testid="button-browse-files"
               >
-                {uploadMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  "Browse Files"
-                )}
+                "Browse Files"
               </Button>
             </div>
           </TabsContent>
@@ -261,30 +249,23 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && urlInput.trim() && !uploadMutation.isPending) {
-                      handleUrlUpload();
+                    if (e.key === 'Enter' && urlInput.trim()) {
+                      handleUrlUploadClick();
                     }
                   }}
                   className="flex-1 url-upload-input"
-                  disabled={uploadMutation.isPending}
+                  disabled={false}
                 />
                 <Button
-                  onClick={handleUrlUpload}
+                  onClick={handleUrlUploadClick}
                   className="bg-basketball text-white hover:bg-orange-600"
-                  disabled={uploadMutation.isPending || !urlInput.trim()}
+                  disabled={!urlInput.trim()}
                   data-testid="button-upload-url"
                 >
-                  {uploadMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      <Link className="mr-2 h-4 w-4" />
-                      Load URL
-                    </>
-                  )}
+                  <>
+                    <Link className="mr-2 h-4 w-4" />
+                    Load URL
+                  </>
                 </Button>
               </div>
             </div>

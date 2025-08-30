@@ -1,0 +1,239 @@
+Hotfix (no-network local uploads) + GZIP support + URL uploads
+
+Bug you’re seeing
+
+Toast: HTTP 404 — The page could not be found …
+
+That proves the local upload path is still falling through to an API fetch on Vercel. For the easy way, local uploads must never hit the network.
+
+Goals
+
+When mode === "json-client" and the user picks a local file, accept .json and .json.gz/.gz, read it entirely in the browser, (un)gzip if needed, JSON.parse, transform, render. No fetch/XHR in this path.
+
+Keep a separate URL mode that uses a tiny Vercel proxy (/api/fetch-league) that returns raw bytes; the client then does the same decode logic as local.
+
+Replace any res.json() on byte endpoints with robust byte handling + helpful errors.
+
+1) Force/guard the local JSON path (now supports GZIP too)
+
+file: client/src/components/file-upload.tsx
+
+Make the local path explicit and guarded (you can keep tabs, but local must never network):
+
+type UploadMode = "json-client" | "url";
+const [mode, setMode] = useState<UploadMode>("json-client");
+useEffect(() => { setMode("json-client"); }, []); // ensure local by default
+
+
+Add a hard no-network guard used only during local processing:
+
+function installNoNetworkGuard() {
+  const origFetch = globalThis.fetch;
+  const origOpen = XMLHttpRequest.prototype.open;
+  (globalThis as any).fetch = (...args: any[]) => {
+    console.error("Blocked network call during json-client upload:", args[0]);
+    throw new Error("No network allowed in json-client upload path.");
+  };
+  XMLHttpRequest.prototype.open = function () {
+    throw new Error("No XHR allowed in json-client upload path.");
+  };
+  return () => { (globalThis as any).fetch = origFetch; XMLHttpRequest.prototype.open = origOpen; };
+}
+
+2) Add a decode utility that handles both JSON and GZIP
+
+file: client/src/lib/leagueDecode.ts
+
+import { ungzip } from "pako";
+
+export function isGzipMagic(u8: Uint8Array) {
+  return u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b;
+}
+export function looksGzipByName(name: string) {
+  const s = name.toLowerCase();
+  return s.endsWith(".json.gz") || s.endsWith(".gz");
+}
+
+export function decodeLeagueBytes(u8: Uint8Array): any {
+  const text = isGzipMagic(u8)
+    ? new TextDecoder().decode(ungzip(u8))
+    : new TextDecoder().decode(u8);
+  return JSON.parse(text);
+}
+
+export async function decodeLeagueFile(file: File): Promise<any> {
+  const u8 = new Uint8Array(await file.arrayBuffer());
+  const needGunzip = isGzipMagic(u8) || looksGzipByName(file.name);
+  const text = needGunzip
+    ? new TextDecoder().decode(ungzip(u8))
+    : await file.text();
+  return JSON.parse(text);
+}
+
+
+Ensure pako is in package.json ("pako": "^2.1.0").
+
+3) Local handler (zero network) and URL handler
+
+file: client/src/components/file-upload.tsx (or your Upload component)
+
+import { decodeLeagueFile, decodeLeagueBytes, isGzipMagic } from "@/lib/leagueDecode";
+import { processLeagueClient } from "@/lib/clientLeagueProcessor"; // your existing transform
+
+async function handleJsonClientFile(file: File) {
+  const restore = installNoNetworkGuard();
+  try {
+    // Accept .json and .json.gz/.gz
+    const raw = await decodeLeagueFile(file);
+    const processed = await processLeagueClient(raw);
+    onUploadComplete(processed); // your existing success path
+    toast.success("League loaded!");
+  } catch (err: any) {
+    toast.error(err?.message ?? "Failed to read or parse league file.");
+  } finally {
+    restore();
+  }
+}
+
+// Wire both input and drop-zone to handleJsonClientFile when mode === "json-client"
+// <input accept=".json,.gz,application/json,application/gzip,application/x-gzip" .../>
+
+
+URL path (allowed to network; fetches bytes via proxy and decodes exactly like local):
+
+async function safeFetchBytes(url: string): Promise<{u8: Uint8Array, enc: string}> {
+  const res = await fetch(url, { redirect: "follow" });
+  const ab = await res.arrayBuffer();
+  const u8 = new Uint8Array(ab);
+  if (!res.ok) {
+    const snippet = new TextDecoder().decode(u8).slice(0, 200);
+    throw new Error(`HTTP ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ""}`);
+  }
+  const enc = (res.headers.get("x-content-encoding") || "").toLowerCase();
+  return { u8, enc };
+}
+
+function normalizeLeagueUrl(u: string): string {
+  try {
+    const url = new URL(u);
+    if (url.hostname.includes("dropbox") && !url.hostname.includes("dropboxusercontent.com")) {
+      url.hostname = "dl.dropboxusercontent.com";
+      url.searchParams.set("dl", "1");
+      ["st", "rlkey"].forEach(q => url.searchParams.delete(q));
+      return url.toString();
+    }
+    if (url.hostname === "github.com" && url.pathname.includes("/blob/")) {
+      url.hostname = "raw.githubusercontent.com";
+      url.pathname = url.pathname.replace("/blob/", "/");
+      return url.toString();
+    }
+    return u;
+  } catch { return u; }
+}
+
+async function handleUrlUpload(inputUrl: string) {
+  const normalized = normalizeLeagueUrl(inputUrl.trim());
+  const { u8, enc } = await safeFetchBytes(`/api/fetch-league?url=${encodeURIComponent(normalized)}`);
+  const gzip = enc === "gzip" || isGzipMagic(u8);
+  const raw = decodeLeagueBytes(u8); // checks magic internally
+  const processed = await processLeagueClient(raw);
+  onUploadComplete(processed);
+}
+
+
+UI notes
+
+The local tab: show “Drop / Browse .json or .json.gz” and call handleJsonClientFile.
+
+The URL tab: input + button → handleUrlUpload(url).
+
+4) Remove/guard any legacy API calls from the local path
+
+Run and fix all hits (must be no network from local handler):
+
+rg -n "fetch\\(.*/api" client/src
+rg -n "await\\s+res\\.json\\(\\)" client/src
+rg -n "FormData\\(|multipart" client/src
+rg -n "axios\\.|XMLHttpRequest" client/src
+
+
+Also ensure the local upload UI is not inside a <form action=…> (add onSubmit={e => e.preventDefault()} if needed).
+
+5) Minimal serverless proxy for URL uploads (bytes, not JSON)
+
+Option A — Vercel Functions (/api folder): api/fetch-league.ts
+
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    const rawUrl = String(req.query.url || "");
+    if (!rawUrl) return res.status(400).json({ error: "missing url param" });
+
+    const url = normalize(rawUrl);
+    const r = await fetch(url, { redirect: "follow" });
+    const buf = Buffer.from(await r.arrayBuffer());
+
+    if (!r.ok) {
+      let text = "";
+      try { text = buf.toString("utf8").slice(0, 200); } catch {}
+      return res.status(r.status).send(text || `Remote error ${r.status}`);
+    }
+
+    const u8 = new Uint8Array(buf);
+    const gzip = u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b;
+
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("X-Content-Encoding", gzip ? "gzip" : "identity");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.send(buf);
+  } catch (e: any) {
+    console.error(e);
+    return res.status(500).json({ error: e?.message ?? "internal error" });
+  }
+}
+
+function normalize(input: string) {
+  try {
+    const u = new URL(input);
+    if (u.hostname.includes("dropbox") && !u.hostname.includes("dropboxusercontent.com")) {
+      u.hostname = "dl.dropboxusercontent.com";
+      u.searchParams.set("dl", "1");
+      ["st", "rlkey"].forEach(q => u.searchParams.delete(q));
+      return u.toString();
+    }
+    if (u.hostname === "github.com" && u.pathname.includes("/blob/")) {
+      u.hostname = "raw.githubusercontent.com";
+      u.pathname = u.pathname.replace("/blob/", "/");
+      return u.toString();
+    }
+    return input;
+  } catch { return input; }
+}
+
+
+vercel.json (if needed):
+
+{ "builds": [{ "src": "api/**/*.ts", "use": "@vercel/node" }],
+  "routes": [{ "src": "/api/(.*)", "dest": "/api/$1" }] }
+
+
+Option B — Next.js App Router: app/api/fetch-league/route.ts with equivalent logic returning a Response and setting the same headers.
+
+6) Quick prod verification checklist (Vercel)
+
+Local .json → grid renders, no network requests fired by upload action.
+
+Local .json.gz / .gz → grid renders, no network requests.
+
+URL (Dropbox share or GitHub “blob” link) → one request to /api/fetch-league, response application/octet-stream with X-Content-Encoding set; grid renders.
+
+Corrupt local file → JSON parse error toast (no network).
+
+Broken URL / 403 / 404 → toast shows HTTP <code> <text> — <snippet> (no “Unexpected token T”).
+
+Why this fixes everything
+
+Local paths can’t possibly hit Vercel (we guard against it and don’t call fetch/XHR), so no 404/HTML pages, ever.
+
+URL path never calls res.json(); it treats responses as bytes, then decodes JSON/gzip on the client exactly like the local path.
