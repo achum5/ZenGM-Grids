@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
 import { processLeagueDataClientSide, type BBGMLeagueData } from "@/lib/clientLeagueProcessor";
 import { decodeLeagueFile, decodeLeagueBytes, isGzipMagic } from "@/lib/leagueDecode";
+import { buildGridFromFileUploadData } from "@shared/grid";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -89,12 +90,23 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       // Continue existing flow
       setUploadData(processed);
       onTeamDataUpdate?.(processed.teams);
-      toast({
-        title: "League loaded successfully",
-        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
-      });
-      // Automatically generate a new grid after successful client-side processing
-      generateGameMutation.mutate();
+      
+      // Generate grid immediately from the processed data
+      try {
+        const grid = buildGridFromFileUploadData(processed);
+        onGameGenerated(grid);
+        toast({
+          title: "League loaded successfully",
+          description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams. Grid generated!`,
+        });
+      } catch (gridError: any) {
+        console.error("Grid generation error:", gridError);
+        toast({
+          title: "League loaded but grid generation failed",
+          description: gridError.message || "Could not generate a valid grid from this data",
+          variant: "destructive",
+        });
+      }
     } catch (err: any) {
       toast({
         title: "League loading failed",
@@ -117,11 +129,23 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       
       setUploadData(processed);
       onTeamDataUpdate?.(processed.teams);
-      toast({
-        title: "URL loaded successfully",
-        description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams`,
-      });
-      generateGameMutation.mutate();
+      
+      // Generate grid immediately from the processed data
+      try {
+        const grid = buildGridFromFileUploadData(processed);
+        onGameGenerated(grid);
+        toast({
+          title: "URL loaded successfully",
+          description: `Loaded ${processed.players.length} players from ${processed.teams.length} teams. Grid generated!`,
+        });
+      } catch (gridError: any) {
+        console.error("Grid generation error:", gridError);
+        toast({
+          title: "URL loaded but grid generation failed",
+          description: gridError.message || "Could not generate a valid grid from this data",
+          variant: "destructive",
+        });
+      }
     } catch (err: any) {
       toast({
         title: "URL loading failed",
@@ -131,27 +155,33 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     }
   }
 
-  const generateGameMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
-    },
-    onSuccess: (game) => {
-      onGameGenerated(game);
+  // Generate grid from current data
+  const generateGrid = () => {
+    if (!uploadData) {
+      toast({
+        title: "No data available",
+        description: "Please upload a league file first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const grid = buildGridFromFileUploadData(uploadData);
+      onGameGenerated(grid);
       toast({
         title: "New grid generated",
         description: "Ready to play!",
         duration: 1000,
       });
-    },
-    onError: (error) => {
+    } catch (error: any) {
       toast({
         title: "Failed to generate grid",
-        description: error.message,
+        description: error.message || "Could not generate a valid grid from this data",
         variant: "destructive",
       });
-    },
-  });
+    }
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -188,9 +218,6 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     setUploadData(null);
   };
 
-  const generateGrid = () => {
-    generateGameMutation.mutate();
-  };
 
   return (
     <Card>
@@ -303,21 +330,12 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
             <div className="text-center">
               <Button 
                 onClick={generateGrid}
-                disabled={generateGameMutation.isPending}
+                disabled={false}
                 className="bg-basketball text-white hover:bg-orange-600 text-lg px-8 py-3 h-auto font-semibold"
                 data-testid="button-generate-grid"
               >
-                {generateGameMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-5 w-5" />
-                    Generate New Grid
-                  </>
-                )}
+                <Play className="mr-2 h-5 w-5" />
+                Generate New Grid
               </Button>
             </div>
           </div>
