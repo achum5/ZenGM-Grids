@@ -137,6 +137,7 @@ export default function Home() {
                 onSessionCreated={handleSessionCreated}
                 onScoreUpdate={handleScoreUpdate}
                 teamData={teamData || undefined}
+                playerData={uploadData?.players || []}
               />
               
               {/* Generate New Grid Button */}

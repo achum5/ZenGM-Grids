@@ -16,9 +16,10 @@ interface GameGridProps {
   onSessionCreated: (sessionId: string) => void;
   onScoreUpdate: (score: number) => void;
   teamData?: TeamInfo[];
+  playerData?: any[];
 }
 
-export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, teamData }: GameGridProps) {
+export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, teamData, playerData }: GameGridProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [showPlayerModal, setShowPlayerModal] = useState(false);
   const [showCorrectAnswersModal, setShowCorrectAnswersModal] = useState(false);
@@ -314,6 +315,7 @@ export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, tea
         onOpenChange={setShowPlayerModal}
         onSelectPlayer={handlePlayerSelect}
         usedPlayers={session ? Object.values(session.answers).map(answer => answer.player) : []}
+        playerData={playerData || []}
       />
 
       {correctAnswersData && (

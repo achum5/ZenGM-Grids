@@ -11,18 +11,22 @@ interface PlayerSearchModalProps {
   onOpenChange: (open: boolean) => void;
   onSelectPlayer: (playerName: string) => void;
   usedPlayers?: string[];
+  playerData?: any[];
 }
 
-export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer, usedPlayers = [] }: PlayerSearchModalProps) {
+export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer, usedPlayers = [], playerData = [] }: PlayerSearchModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const { data: players = [], isLoading } = useQuery<Player[]>({
-    queryKey: [`/api/players/search?q=${encodeURIComponent(searchQuery)}`],
-    enabled: open && searchQuery.length > 0,
-  });
+  // Use local search instead of server API
+  const players = searchQuery.length > 0 
+    ? playerData.filter(player => 
+        player.name && player.name.toLowerCase().includes(searchQuery.toLowerCase())
+      ).slice(0, 20) // Limit to 20 results
+    : [];
+  const isLoading = false; // No loading state needed for local search
 
   const handlePlayerSelect = (playerName: string) => {
     // Prevent selecting already used players
