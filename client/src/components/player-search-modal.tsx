@@ -29,10 +29,15 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer, usedPlay
   const isLoading = false; // No loading state needed for local search
 
   const handlePlayerSelect = (playerName: string) => {
+    console.log('📝 PlayerSearchModal handlePlayerSelect called:', { playerName, usedPlayers });
+    
     // Prevent selecting already used players
     if (usedPlayers.includes(playerName)) {
+      console.log('❌ Player already used:', playerName);
       return;
     }
+    
+    console.log('✅ Calling onSelectPlayer with:', playerName);
     onSelectPlayer(playerName);
     setSearchQuery("");
     setSelectedIndex(0);

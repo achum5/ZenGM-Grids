@@ -161,8 +161,14 @@ export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, tea
   };
 
   const handlePlayerSelect = (playerName: string) => {
-    if (!selectedCell || !sessionId) return;
+    console.log('🚀 handlePlayerSelect called with:', { playerName, selectedCell, sessionId, hasGame: !!game });
     
+    if (!selectedCell || !sessionId) {
+      console.log('❌ Missing requirements:', { selectedCell, sessionId });
+      return;
+    }
+    
+    console.log('✅ Submitting answer...');
     submitAnswerMutation.mutate({
       row: selectedCell.row,
       col: selectedCell.col,
