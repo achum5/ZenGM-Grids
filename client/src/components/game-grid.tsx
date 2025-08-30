@@ -68,11 +68,21 @@ export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, tea
       }
 
       // Import and use eligibleForCell function
-      const { eligibleForCell } = await import('@shared/grid');
+      const gridModule = await import('@shared/grid');
+      const eligibleForCell = (gridModule as any).eligibleForCell;
       const rowCriteria = game.rowCriteria[row];
       const colCriteria = game.columnCriteria[col];
       
       const isCorrect = eligibleForCell(selectedPlayer, rowCriteria, colCriteria);
+      
+      console.log('🎯 Player selection debug:', {
+        playerName: player,
+        selectedPlayer: selectedPlayer.name,
+        row, col,
+        rowCriteria: rowCriteria.label,
+        colCriteria: colCriteria.label,
+        isCorrect
+      });
       
       return {
         isCorrect,

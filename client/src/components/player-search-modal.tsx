@@ -140,9 +140,10 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer, usedPlay
 
             {players.map((player, index) => {
               const isUsed = usedPlayers.includes(player.name);
+              const playerId = player.id || `player-${index}`; // Handle missing id
               return (
                 <Button
-                  key={player.id}
+                  key={playerId}
                   variant="ghost"
                   disabled={isUsed}
                   className={`w-full text-left p-3 h-auto justify-start transition-all duration-200 rounded-lg border ${
@@ -153,7 +154,7 @@ export function PlayerSearchModal({ open, onOpenChange, onSelectPlayer, usedPlay
                         : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
                   }`}
                   onClick={() => !isUsed && handlePlayerSelect(player.name)}
-                  data-testid={`button-select-player-${player.id}`}
+                  data-testid={`button-select-player-${playerId}`}
                 >
                   <div className="flex items-center space-x-3 w-full">
                     <div className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
