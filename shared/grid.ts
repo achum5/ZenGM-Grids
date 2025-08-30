@@ -25,27 +25,50 @@ function didPlayForTeam(player: any, teamName: string): boolean {
 }
 
 function eligibleForCell(p: any, row: any, col: any): boolean {
-  const teamCriteria = row.type === "team" ? row : col;
-  const achievementCriteria = row.type === "achievement" ? row : col;
-  
-  const teamPass = didPlayForTeam(p, teamCriteria.value);
-  const critPass = p.achievements.includes(achievementCriteria.value);
-  
-  // Debug first few checks
-  if (Math.random() < 0.001) {
-    console.log("🔍 eligibleForCell debug:", {
-      playerName: p.name,
-      playerTeams: p.teams?.slice(0, 3),
-      playerAchievements: p.achievements?.slice(0, 3),
-      teamCriteria: teamCriteria.value,
-      achievementCriteria: achievementCriteria.value,
-      teamPass,
-      critPass,
-      eligible: teamPass && critPass
-    });
+  // Handle different grid types correctly
+  if (row.type === "team" && col.type === "team") {
+    // Team × Team grid: player must have played for BOTH teams
+    const rowTeamPass = didPlayForTeam(p, row.value);
+    const colTeamPass = didPlayForTeam(p, col.value);
+    
+    // Debug first few checks
+    if (Math.random() < 0.01) {
+      console.log("🔍 eligibleForCell debug (team×team):", {
+        playerName: p.name,
+        playerTeams: p.teams?.slice(0, 3),
+        rowTeam: row.value,
+        colTeam: col.value,
+        rowTeamPass,
+        colTeamPass,
+        eligible: rowTeamPass && colTeamPass
+      });
+    }
+    
+    return rowTeamPass && colTeamPass;
+  } else {
+    // Team × Achievement grid: player must have played for team AND have achievement
+    const teamCriteria = row.type === "team" ? row : col;
+    const achievementCriteria = row.type === "achievement" ? row : col;
+    
+    const teamPass = didPlayForTeam(p, teamCriteria.value);
+    const critPass = p.achievements.includes(achievementCriteria.value);
+    
+    // Debug first few checks
+    if (Math.random() < 0.01) {
+      console.log("🔍 eligibleForCell debug (team×achievement):", {
+        playerName: p.name,
+        playerTeams: p.teams?.slice(0, 3),
+        playerAchievements: p.achievements?.slice(0, 3),
+        teamCriteria: teamCriteria.value,
+        achievementCriteria: achievementCriteria.value,
+        teamPass,
+        critPass,
+        eligible: teamPass && critPass
+      });
+    }
+    
+    return teamPass && critPass;
   }
-  
-  return teamPass && critPass;
 }
 
 function buildCorrectAnswers(
