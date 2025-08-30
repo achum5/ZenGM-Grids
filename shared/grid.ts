@@ -344,23 +344,87 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
     }
   }
 
-  // Fallback: Simple team-only grid if we have enough teams
-  if (teams.length >= 6) {
-    const selectedTeams = sampleUniform(teams, 6);
-    const columnCriteria = selectedTeams.slice(0, 3).map(team => ({
-      label: team,
-      type: "team" as const,
-      value: team,
-    }));
-    const rowCriteria = selectedTeams.slice(3, 6).map(team => ({
-      label: team,
-      type: "team" as const,
-      value: team,
+  // Fallback: Achievement-heavy grid (much more likely to succeed than team×team)
+  if (achievements.length >= 5 && teams.length >= 2) {
+    console.log("🔄 Attempting achievement-heavy fallback...");
+    const selectedTeams = sampleUniform(teams, 2);
+    const selectedAchievements = sampleUniform(achievements, 5);
+    
+    const columnCriteria = [
+      {
+        label: selectedTeams[0],
+        type: "team" as const,
+        value: selectedTeams[0],
+      },
+      ...selectedAchievements.slice(0, 2).map(achievement => ({
+        label: achievement,
+        type: "achievement" as const,
+        value: achievement,
+      }))
+    ];
+    
+    const rowCriteria = [
+      {
+        label: selectedTeams[1], 
+        type: "team" as const,
+        value: selectedTeams[1],
+      },
+      ...selectedAchievements.slice(2, 4).map(achievement => ({
+        label: achievement,
+        type: "achievement" as const,
+        value: achievement,
+      }))
+    ];
+    
+    const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
+    
+    console.log("🔍 Fallback achievement-heavy grid correctAnswers:", {
+      cellCount: Object.keys(correctAnswers).length,
+      validCells: Object.values(correctAnswers).filter(list => list && list.length > 0).length,
+      isValid: Object.values(correctAnswers).every(list => list && list.length > 0)
+    });
+    
+    if (Object.values(correctAnswers).every(list => list && list.length > 0)) {
+      const id = Math.random().toString(36).substring(2, 15);
+      
+      return {
+        id,
+        columnCriteria,
+        rowCriteria,
+        correctAnswers,
+        createdAt: new Date().toISOString()
+      };
+    }
+  }
+  
+  // Last resort: Pure achievement grid if we have many achievements
+  if (achievements.length >= 6) {
+    console.log("🔄 Attempting pure achievement grid...");
+    const selectedTeams = sampleUniform(teams, 1);
+    const selectedAchievements = sampleUniform(achievements, 6);
+    
+    const columnCriteria = [
+      {
+        label: selectedTeams[0],
+        type: "team" as const,
+        value: selectedTeams[0],
+      },
+      ...selectedAchievements.slice(0, 2).map(achievement => ({
+        label: achievement,
+        type: "achievement" as const,
+        value: achievement,
+      }))
+    ];
+    
+    const rowCriteria = selectedAchievements.slice(2, 5).map(achievement => ({
+      label: achievement,
+      type: "achievement" as const,
+      value: achievement,
     }));
     
     const correctAnswers = buildCorrectAnswers(players, columnCriteria, rowCriteria);
     
-    console.log("🔍 Fallback team-only grid correctAnswers:", {
+    console.log("🔍 Pure achievement grid correctAnswers:", {
       cellCount: Object.keys(correctAnswers).length,
       validCells: Object.values(correctAnswers).filter(list => list && list.length > 0).length,
       isValid: Object.values(correctAnswers).every(list => list && list.length > 0)
