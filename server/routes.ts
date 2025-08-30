@@ -1312,7 +1312,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Generate a new game grid
+  // DEPRECATED: Grid generation moved to client-side for Vercel compatibility
+  /*
   app.post("/api/games/generate", async (req, res) => {
     console.log("🚨 GRID GENERATION STARTED - This should always appear");
     try {
@@ -1741,6 +1742,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  */
 
   // Get a specific game by ID
   app.get("/api/games/:id", async (req, res) => {

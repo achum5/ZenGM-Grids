@@ -8,7 +8,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { Game, SessionStats, TeamInfo, GameSession } from "@shared/schema";
+import { buildGridFromFileUploadData } from "@shared/grid";
+import type { Game, SessionStats, TeamInfo, GameSession, FileUploadData } from "@shared/schema";
 
 export default function Home() {
   const [currentGameId, setCurrentGameId] = useState<string | null>(null);
@@ -16,14 +17,31 @@ export default function Home() {
   const [currentScore, setCurrentScore] = useState(0);
   const [showRules, setShowRules] = useState(false);
   const [teamData, setTeamData] = useState<TeamInfo[] | null>(null);
+  const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   const { toast } = useToast();
 
 
-  // Generate new grid mutation
+  // Generate new grid using client-side data
   const generateGameMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/games/generate");
-      return response.json() as Promise<Game>;
+    mutationFn: async (): Promise<Game> => {
+      if (!uploadData) {
+        throw new Error("No league data available. Please upload a league file first.");
+      }
+      
+      console.log("🎯 Starting client-side grid generation...");
+      const game = buildGridFromFileUploadData(uploadData);
+      
+      if (!game) {
+        throw new Error("Failed to generate a valid grid. Please try again.");
+      }
+      
+      console.log("✅ Client-side grid generated successfully!", {
+        gameId: game.id,
+        columnCount: game.columnCriteria.length,
+        rowCount: game.rowCriteria.length
+      });
+      
+      return game;
     },
     onSuccess: (game) => {
       handleGameGenerated(game);
@@ -71,7 +89,11 @@ export default function Home() {
     enabled: !!currentSessionId,
   });
 
-  const hasLeague = Boolean(teamData);
+  const hasLeague = Boolean(uploadData);
+
+  const handleUploadDataUpdate = (data: FileUploadData | null) => {
+    setUploadData(data);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans">
@@ -98,7 +120,11 @@ export default function Home() {
         <div className="space-y-8">
           {!hasLeague && (
             <div className="bg-white dark:bg-slate-800 rounded-lg">
-              <FileUpload onGameGenerated={handleGameGenerated} onTeamDataUpdate={setTeamData} />
+              <FileUpload 
+                onGameGenerated={handleGameGenerated} 
+                onTeamDataUpdate={setTeamData}
+                onUploadDataUpdate={handleUploadDataUpdate}
+              />
             </div>
           )}
           

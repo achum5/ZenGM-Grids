@@ -16,9 +16,10 @@ import { buildGridFromFileUploadData } from "@shared/grid";
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
   onTeamDataUpdate?: (teamData: TeamInfo[]) => void;
+  onUploadDataUpdate?: (data: FileUploadData | null) => void;
 }
 
-export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
+export function FileUpload({ onGameGenerated, onTeamDataUpdate, onUploadDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
   type UploadMode = "json-client" | "url";
@@ -89,6 +90,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       
       // Continue existing flow
       setUploadData(processed);
+      onUploadDataUpdate?.(processed);
       onTeamDataUpdate?.(processed.teams);
       
       // Generate grid immediately from the processed data
@@ -128,6 +130,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       const processed = await processLeagueDataClientSide(raw);
       
       setUploadData(processed);
+      onUploadDataUpdate?.(processed);
       onTeamDataUpdate?.(processed.teams);
       
       // Generate grid immediately from the processed data
