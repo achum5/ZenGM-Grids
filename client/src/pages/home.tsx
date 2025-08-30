@@ -12,7 +12,7 @@ import { buildGridFromFileUploadData } from "@shared/grid";
 import type { Game, SessionStats, TeamInfo, GameSession, FileUploadData } from "@shared/schema";
 
 export default function Home() {
-  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
+  const [currentGame, setCurrentGame] = useState<Game | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentScore, setCurrentScore] = useState(0);
   const [showRules, setShowRules] = useState(false);
@@ -63,7 +63,7 @@ export default function Home() {
   const handleGameGenerated = (game?: Game) => {
     if (game) {
       // Always reset state for new grid without page reload
-      setCurrentGameId(game.id);
+      setCurrentGame(game);
       setCurrentSessionId(null);
       setCurrentScore(0); // Reset score display
     }
@@ -78,7 +78,7 @@ export default function Home() {
   };
 
   const handleRestart = () => {
-    setCurrentGameId(null);
+    setCurrentGame(null);
     setCurrentSessionId(null);
     setCurrentScore(0);
   };
@@ -132,7 +132,7 @@ export default function Home() {
             <>
               
               <GameGrid 
-                gameId={currentGameId}
+                game={currentGame}
                 sessionId={currentSessionId}
                 onSessionCreated={handleSessionCreated}
                 onScoreUpdate={handleScoreUpdate}

@@ -11,14 +11,14 @@ import { useToast } from "@/hooks/use-toast";
 import type { Game, GameSession, GridCell, Player, TeamInfo } from "@shared/schema";
 
 interface GameGridProps {
-  gameId: string | null;
+  game: Game | null;
   sessionId: string | null;
   onSessionCreated: (sessionId: string) => void;
   onScoreUpdate: (score: number) => void;
   teamData?: TeamInfo[];
 }
 
-export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, teamData }: GameGridProps) {
+export function GameGrid({ game, sessionId, onSessionCreated, onScoreUpdate, teamData }: GameGridProps) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [showPlayerModal, setShowPlayerModal] = useState(false);
   const [showCorrectAnswersModal, setShowCorrectAnswersModal] = useState(false);
@@ -40,10 +40,7 @@ export function GameGrid({ gameId, sessionId, onSessionCreated, onScoreUpdate, t
     return correctAnswers.reduce((total, answer) => total + (answer.rarity || 0), 0);
   };
 
-  const { data: game } = useQuery<Game>({
-    queryKey: ["/api/games", gameId],
-    enabled: !!gameId,
-  });
+  // Game data is now passed directly as a prop, no need to fetch from server
 
   const { data: session } = useQuery<GameSession>({
     queryKey: ["/api/sessions", sessionId],
