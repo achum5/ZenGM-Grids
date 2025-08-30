@@ -9,6 +9,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { FileUploadData, Game, TeamInfo } from "@shared/schema";
+import UploadLeague from "@/components/UploadLeague";
 
 interface FileUploadProps {
   onGameGenerated: (game: Game) => void;
@@ -18,7 +19,7 @@ interface FileUploadProps {
 export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadData, setUploadData] = useState<FileUploadData | null>(null);
-  const [uploadMode, setUploadMode] = useState<'file' | 'url'>('file');
+  const [uploadMode, setUploadMode] = useState<'file' | 'url' | 'json'>('json');
   const [urlInput, setUrlInput] = useState('');
   const { toast } = useToast();
 
@@ -57,7 +58,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       setUploadData(data);
       onTeamDataUpdate?.(data.teams);
       toast({
-        title: uploadMode === 'url' ? "URL loaded successfully" : "File uploaded successfully",
+        title: uploadMode === 'url' ? "URL loaded successfully" : uploadMode === 'json' ? "JSON file loaded successfully" : "File uploaded successfully",
         description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
       });
       // Automatically generate a new grid after successful upload
@@ -65,7 +66,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
     },
     onError: (error) => {
       toast({
-        title: uploadMode === 'url' ? "URL loading failed" : "Upload failed",
+        title: uploadMode === 'url' ? "URL loading failed" : uploadMode === 'json' ? "JSON loading failed" : "Upload failed",
         description: error.message,
         variant: "destructive",
       });
@@ -150,11 +151,28 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         <CardTitle>Upload League Data</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Tabs value={uploadMode} onValueChange={(value) => setUploadMode(value as 'file' | 'url')} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={uploadMode} onValueChange={(value) => setUploadMode(value as 'file' | 'url' | 'json')} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="json">JSON Upload</TabsTrigger>
             <TabsTrigger value="file">File Upload</TabsTrigger>
             <TabsTrigger value="url">URL Upload</TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="json" className="space-y-4">
+            <UploadLeague 
+              onLoaded={(data, file) => {
+                setUploadedFile(file);
+                setUploadData(data);
+                onTeamDataUpdate?.(data.teams);
+                toast({
+                  title: "JSON file loaded successfully",
+                  description: `Loaded ${data.players.length} players from ${data.teams.length} teams`,
+                });
+                // Automatically generate a new grid after successful client-side processing
+                generateGameMutation.mutate();
+              }}
+            />
+          </TabsContent>
           
           <TabsContent value="file" className="space-y-4">
             <div
