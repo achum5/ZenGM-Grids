@@ -93,6 +93,13 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
       
       // Generate grid immediately from the processed data
       try {
+        console.log("About to generate grid with data:", {
+          playersCount: processed.players.length,
+          teamsCount: processed.teams.length,
+          achievementsCount: processed.achievements.length,
+          samplePlayer: processed.players[0],
+          teams: processed.teams.slice(0, 5)
+        });
         const grid = buildGridFromFileUploadData(processed);
         onGameGenerated(grid);
         toast({
@@ -101,6 +108,7 @@ export function FileUpload({ onGameGenerated, onTeamDataUpdate }: FileUploadProp
         });
       } catch (gridError: any) {
         console.error("Grid generation error:", gridError);
+        console.error("Error details:", gridError.message, gridError.stack);
         toast({
           title: "League loaded but grid generation failed",
           description: gridError.message || "Could not generate a valid grid from this data",
