@@ -1,0 +1,388 @@
+Normalizes any BBGM export (plain JSON or .json.gz) into a single, rich, client-side structure.
+
+Implements every achievement you listed with robust, BBGM-accurate logic (handling long award names, team detection from stats/statsTids, career totals via orb+drb, per-season rates, age math, draft info, etc.).
+
+Keeps local uploads (JSON + GZIP) client-only and URL uploads via a tiny byte proxy.
+
+Builds the grid on the client from the normalized data; no server “stateful” dependency.
+
+Adds diagnostics so we can verify counts for each achievement in your test league.
+
+IMPORTANT: Logic/data only. Never change anything about the UI.
+
+COPY/PASTE FOR REPLIT AI — BBGM Parsing + Full Achievement Support
+High-level goals
+
+Normalize BBGM data (any export) to a canonical LeagueData client structure:
+
+Accurate team membership (from stats and statsTids, regular season only).
+
+Career totals (trb = orb + drb) and per-season rates.
+
+Awards matched by long names (e.g., “Most Valuable Player”, “First Team All-League”).
+
+Age by season (for All-Star at 35+).
+
+Draft info (round/pick/undrafted/#1 pick).
+
+Implement every achievement in the list below as predicates over that structure.
+
+Grid generation runs on the client using those predicates (the server is not expected to “remember” the league).
+
+Local uploads: zero network; URL uploads: /api/fetch-league returns bytes; decoding happens on client.
+
+0) Keep the current uploader behavior (recap)
+
+Local .json and .json.gz/.gz → decode on client with pako → JSON.parse → normalize → build grid.
+
+URL upload → GET /api/fetch-league?url=… (returns application/octet-stream + X-Content-Encoding) → decode on client → normalize → build grid.
+
+Do not regress this; just plug in the improved normalization + achievements below.
+
+1) Canonical client types
+
+file: shared/schema.ts (or shared/types.ts)
+
+export type Team = {
+  tid: number;          // BBGM team ID
+  abbrev: string;
+  name: string;         // "Region Name" concatenated
+};
+
+export type SeasonLine = {
+  season: number;
+  tid: number;          // team ID for that season (regular season only)
+  gp: number;           // games played (RS)
+  pts: number; ast: number; stl: number; blk: number; tp: number; // totals
+  fga: number; fta: number; tpa: number;                          // attempts
+  fgp?: number; ftp?: number; tpp?: number;                        // percentages if present
+  r_orb: number; r_drb: number;                                    // to derive TRB = ORB+DRB
+  mp?: number;                                                     // total minutes (if present)
+};
+
+export type Award = {
+  season: number;
+  type: string;   // long names like "Most Valuable Player", "First Team All-League", "Won Championship"
+};
+
+export type Draft = {
+  year?: number;
+  round?: number;   // 1, 2, or undefined (undrafted)
+  pick?: number;    // 1 .. N, undefined if undrafted
+};
+
+export type Player = {
+  pid: number;
+  name: string;
+  bornYear?: number;
+  awards: Award[];
+  seasons: SeasonLine[];         // derived from p.stats where playoffs === false
+  teamsPlayed: Set<number>;      // derived from seasons and statsTids
+  career: {                      // RS only
+    gp: number; pts: number; ast: number; stl: number; blk: number; tp: number; trb: number;
+    fga: number; fta: number; tpa: number;
+  };
+  draft: Draft;
+  hof?: boolean;
+};
+
+export type LeagueData = {
+  players: Player[];
+  teams: Team[];
+  minSeason?: number;
+  maxSeason?: number;
+};
+
+2) Decode (JSON/GZIP) — already done, keep as is
+
+file: client/src/lib/leagueDecode.ts
+(Use the existing version you added with pako and gzip magic-byte detection.)
+
+3) Normalize BBGM to LeagueData
+
+file: client/src/lib/normalizeBBGM.ts
+
+import type { LeagueData, Player, Team, SeasonLine, Award } from "@/shared/schema";
+
+const toName = (p: any) =>
+  [p.firstName, p.lastName].filter(Boolean).join(" ") || p.name || `Player ${p.pid}`;
+
+const notPlayoffs = (s: any) => !s?.playoffs; // BBGM marks playoffs boolean per stats row
+
+export function normalizeBBGM(rawIn: any): LeagueData {
+  const raw = rawIn?.players ? rawIn : (rawIn?.league ?? rawIn);
+
+  // Teams
+  const teams: Team[] = (raw.teams ?? []).map((t: any) => ({
+    tid: t.tid,
+    abbrev: t.abbrev,
+    name: `${t.region ?? t.name ?? ""} ${t.name ?? ""}`.trim(),
+  }));
+
+  // Seasons range
+  const seasonsAll = new Set<number>();
+  const players: Player[] = (raw.players ?? []).map((p: any) => {
+    const seasons: SeasonLine[] = [];
+    let gp=0, pts=0, ast=0, stl=0, blk=0, tp=0, trb=0, fga=0, fta=0, tpa=0;
+
+    for (const s of (p.stats ?? [])) {
+      if (!notPlayoffs(s)) continue;
+      const line: SeasonLine = {
+        season: s.season,
+        tid: s.tid,
+        gp: s.gp ?? 0,
+        pts: s.pts ?? 0,
+        ast: s.ast ?? 0,
+        stl: s.stl ?? 0,
+        blk: s.blk ?? 0,
+        tp:  s.tp  ?? 0,
+        fga: s.fga ?? 0,
+        fta: s.fta ?? 0,
+        tpa: s.tpa ?? 0,
+        fgp: s.fgp ?? (s.fga ? (s.fg ?? 0) / s.fga : undefined),
+        ftp: s.ftp ?? (s.fta ? (s.ft ?? 0) / s.fta : undefined),
+        tpp: s.tpp ?? (s.tpa ? (s.tp ?? 0) / s.tpa : undefined),
+        r_orb: s.orb ?? 0,
+        r_drb: s.drb ?? 0,
+        mp: s.min ?? s.mp ?? undefined,
+      };
+      seasons.push(line);
+      seasonsAll.add(line.season);
+
+      gp += line.gp;
+      pts += line.pts; ast += line.ast; stl += line.stl; blk += line.blk; tp += line.tp;
+      trb += line.r_orb + line.r_drb;
+      fga += line.fga; fta += line.fta; tpa += line.tpa;
+    }
+
+    const teamsPlayed = new Set<number>();
+    for (const sl of seasons) teamsPlayed.add(sl.tid);
+    for (const tid of (p.statsTids ?? [])) teamsPlayed.add(tid);
+
+    const awards: Award[] = (p.awards ?? []).map((a: any) => ({
+      season: a.season, type: String(a.type ?? ""),
+    }));
+
+    const player: Player = {
+      pid: p.pid,
+      name: toName(p),
+      bornYear: p.born?.year ?? p.bornYear,
+      awards,
+      seasons,
+      teamsPlayed,
+      career: { gp, pts, ast, stl, blk, tp, trb, fga, fta, tpa },
+      draft: {
+        year: p.draft?.year,
+        round: p.draft?.roundNumber ?? p.draft?.round,
+        pick: p.draft?.pick,
+      },
+      hof: p.hof ?? p.retiredHallOfFame ?? false,
+    };
+
+    return player;
+  });
+
+  const allSeasons = Array.from(seasonsAll.values());
+  const minSeason = allSeasons.length ? Math.min(...allSeasons) : undefined;
+  const maxSeason = allSeasons.length ? Math.max(...allSeasons) : undefined;
+
+  return { players, teams, minSeason, maxSeason };
+}
+
+
+Notes
+
+Uses RS only (!playoffs).
+
+TRB = ORB + DRB.
+
+Supports both draft.roundNumber and draft.round.
+
+Fallbacks for name and percentages.
+
+4) Achievement predicates (ALL categories)
+
+file: shared/achievements.ts
+
+import type { LeagueData, Player } from "./schema";
+
+// ---------- helpers ----------
+const hasAward = (p: Player, substr: string) =>
+  (p.awards ?? []).some(a => a.type.toLowerCase().includes(substr.toLowerCase()));
+
+const careerRate = (num: number, den: number) => (den > 0 ? num / den : 0);
+
+const seasonPPG = (s: Player["seasons"][number]) => careerRate(s.pts, s.gp);
+const seasonAPG = (s: Player["seasons"][number]) => careerRate(s.ast, s.gp);
+const seasonRPG = (s: Player["seasons"][number]) => careerRate(s.r_orb + s.r_drb, s.gp);
+const seasonBPG = (s: Player["seasons"][number]) => careerRate(s.blk, s.gp);
+const seasonSPG = (s: Player["seasons"][number]) => careerRate(s.stl, s.gp);
+const pct = (made: number, att: number) => (att > 0 ? made / att : 0);
+
+// Sample-size thresholds to avoid 3-game outliers
+const MIN_SEASON_GP = 40;         // qualify season-based feats
+const MIN_FGA = 300, MIN_3PA = 150, MIN_FTA = 125; // for 50/40/90
+
+// Age by season: season is NBA year end; approximate age = season - bornYear
+const ageInSeason = (p: Player, season: number) =>
+  p.bornYear ? season - p.bornYear : undefined;
+
+// ---------- category tests ----------
+export const Achievements = {
+  // Career Milestones
+  "20kPts":     (p: Player) => p.career.pts >= 20000,
+  "10kReb":     (p: Player) => p.career.trb >= 10000,
+  "5kAst":      (p: Player) => p.career.ast >= 5000,
+  "2kStl":      (p: Player) => p.career.stl >= 2000,
+  "1_5kBlk":    (p: Player) => p.career.blk >= 1500,
+  "2k3P":       (p: Player) => p.career.tp  >= 2000,
+
+  // Single-season statistical achievements (qualified seasons only)
+  "30PPG":      (p: Player) => p.seasons.some(s => s.gp >= MIN_SEASON_GP && seasonPPG(s) >= 30),
+  "10APG":      (p: Player) => p.seasons.some(s => s.gp >= MIN_SEASON_GP && seasonAPG(s) >= 10),
+  "15RPG":      (p: Player) => p.seasons.some(s => s.gp >= MIN_SEASON_GP && seasonRPG(s) >= 15),
+  "3BPG":       (p: Player) => p.seasons.some(s => s.gp >= MIN_SEASON_GP && seasonBPG(s) >= 3),
+  "2_5SPG":     (p: Player) => p.seasons.some(s => s.gp >= MIN_SEASON_GP && seasonSPG(s) >= 2.5),
+  "504090":     (p: Player) => p.seasons.some(s => {
+                    const FG = s.fga >= MIN_FGA ? (s.fgp ?? (s.fga ? undefined : undefined)) : undefined;
+                    const TP = s.tpa >= MIN_3PA ? (s.tpp ?? (s.tpa ? undefined : undefined)) : undefined;
+                    const FT = s.fta >= MIN_FTA ? (s.ftp ?? (s.fta ? undefined : undefined)) : undefined;
+                    return FG !== undefined && TP !== undefined && FT !== undefined
+                        && FG >= 0.50 && TP >= 0.40 && FT >= 0.90;
+                 }),
+
+  // League Leadership (prefer awards, fall back to computed leader if needed)
+  "LedPts":     (p: Player, _L?: LeagueData) =>
+                  hasAward(p, "Scoring Leader") || hasAward(p, "League Scoring Leader"),
+  "LedReb":     (p: Player, _L?: LeagueData) =>
+                  hasAward(p, "Rebounding Leader") || hasAward(p, "League Rebounding Leader"),
+  "LedAst":     (p: Player, _L?: LeagueData) =>
+                  hasAward(p, "Assists Leader") || hasAward(p, "League Assists Leader"),
+  "LedStl":     (p: Player, _L?: LeagueData) =>
+                  hasAward(p, "Steals Leader") || hasAward(p, "League Steals Leader"),
+  "LedBlk":     (p: Player, _L?: LeagueData) =>
+                  hasAward(p, "Blocks Leader") || hasAward(p, "League Blocks Leader"),
+
+  // Game Performance Feats (supported only if export includes per-game logs or highs)
+  // If your export lacks logs, disable these by returning false unless p.gameHighs exists.
+  "50PtsGame":  (p: any) => !!p.gameHighs?.pts && p.gameHighs.pts >= 50,
+  "TripleDouble":(p: any)=> !!p.gameHighs?.trb && !!p.gameHighs?.ast && !!p.gameHighs?.pts
+                             && p.gameHighs.trb >= 10 && p.gameHighs.ast >= 10 && p.gameHighs.pts >= 10,
+  "20RebGame":  (p: any) => !!p.gameHighs?.trb && p.gameHighs.trb >= 20,
+  "20AstGame":  (p: any) => !!p.gameHighs?.ast && p.gameHighs.ast >= 20,
+  "10ThreesGame":(p: any)=> !!p.gameHighs?.tp && p.gameHighs.tp >= 10,
+
+  // Major Awards (long strings)
+  "MVP":        (p: Player) => hasAward(p, "Most Valuable Player"),
+  "DPOY":       (p: Player) => hasAward(p, "Defensive Player of the Year"),
+  "ROY":        (p: Player) => hasAward(p, "Rookie of the Year"),
+  "SMOY":       (p: Player) => hasAward(p, "Sixth Man of the Year"),
+  "MIP":        (p: Player) => hasAward(p, "Most Improved Player"),
+  "FMVP":       (p: Player) => hasAward(p, "Finals MVP"),
+
+  // Team Honors (awards cover these)
+  "AllLeague":  (p: Player) => hasAward(p, "All-League"),        // matches First/Second/Third Team All-League
+  "AllDefense": (p: Player) => hasAward(p, "All-Defensive"),
+  "AllStar":    (p: Player) => hasAward(p, "All-Star"),
+  "Champion":   (p: Player) => hasAward(p, "Won Championship"),
+
+  // Career Length & Draft
+  "15Seasons":  (p: Player) => p.seasons.filter(s => s.gp > 0).length >= 15,
+  "Pick1":      (p: Player) => (p.draft.round === 1 && p.draft.pick === 1),
+  "Undrafted":  (p: Player) => !p.draft.round || p.draft.round <= 0 || !p.draft.pick,
+  "FirstRound": (p: Player) => p.draft.round === 1 && !!p.draft.pick,
+  "SecondRound":(p: Player) => p.draft.round === 2 && !!p.draft.pick,
+
+  // Special Categories
+  "AllStar35+": (p: Player) =>
+      (p.awards ?? []).some(a => a.type.includes("All-Star") && (() => {
+         const age = ageInSeason(p, a.season);
+         return age !== undefined && age >= 35;
+      })()),
+  "OnlyOneTeam":(p: Player) => p.teamsPlayed.size === 1,
+  "HallOfFame": (p: Player) => !!p.hof || hasAward(p, "Hall of Fame"),
+};
+
+// For diagnostics in dev console
+export function achievementCounts(L: LeagueData) {
+  const entries = Object.entries(Achievements).map(([id, fn]) => {
+    let n = 0;
+    for (const p of L.players) try { if (fn(p, L)) n++; } catch {}
+    return [id, n] as const;
+  });
+  return Object.fromEntries(entries);
+}
+
+
+Notes
+
+Game feats (50+, triple-double, etc.) are supported only if the export has player.gameHighs or a similar field. If not present, the predicates will be false; that’s intentional to avoid false positives. If your larger export includes per-game logs in another shape, add a shim to compute those highs.
+
+All award checks use long names and includes() to match First/Second/Third team variants.
+
+5) Team categories (rows/cols) must use derived membership
+
+Where you construct team categories for the grid:
+
+const teamCat = (t: Team) => ({
+  kind: "team" as const,
+  id: t.tid,
+  label: t.name,
+  test: (p: Player) => p.teamsPlayed.has(t.tid),
+});
+
+
+Do not test p.seasons from the raw export. Use teamsPlayed derived in normalization.
+
+6) Grid generation (client) — keep existing, but now backed by full achievements
+
+Keep your existing multi-strategy generator (team × team, team × achievement, etc.).
+
+When building the achievement pool, use Achievements above and filter by support:
+
+Compute counts: hits = players.filter(fn).length.
+
+Keep only achievements with hits >= 2 (tunable) so intersections aren’t empty.
+
+Add temporary console diagnostics:
+
+import { achievementCounts } from "@/shared/achievements";
+console.debug("Achievement counts:", achievementCounts(leagueData));
+
+7) Wire-up flow
+
+Upload (local or URL) → decode → normalizeBBGM → LeagueData.
+
+Convert LeagueData to your existing FileUploadData (or just use LeagueData directly).
+
+Generate Grid on the client using team categories + achievements above.
+
+If you still expose a server generate route, do not rely on server memory; POST the normalized data in the body (optional; client generation is preferred).
+
+8) Edge cases handled
+
+Team renames/relocations: we key on tid, not name, so it’s stable.
+
+Missing trb: we compute orb + drb.
+
+Playoffs: excluded from career/season milestones and rates (regular season only), matching typical grid logic. If you want to include playoffs, expose a flag and sum both.
+
+50/40/90: requires minimum attempts (FGA≥300, 3PA≥150, FTA≥125). Tweak in one place.
+
+All-Star at 35+: uses season - bornYear. If bornYear is absent, we treat it as unknown → false (safer).
+
+Undrafted: draft.round empty or ≤0 or pick falsy counts as undrafted.
+
+Game feats: only true if highs/logs exist. If the large export has a different field, map it here.
+
+9) Sanity checklist (use your bigger-history file)
+
+After load, in DevTools console.debug prints non-zero counts for: MVP, FMVP, DPOY, ROY, SMOY, MIP, All-League, All-Defensive, All-Star, Champion, and several milestones/leaders.
+
+Try generating a few times—team×team works; team×achievement works; achievement×team works.
+
+No “available achievements: 7” anymore; you should see a couple dozen supported achievements on a deep file.
+
+10) Absolutely do not touch the UI
+
+All changes are in parsing and logic only. Never change anything about the UI.

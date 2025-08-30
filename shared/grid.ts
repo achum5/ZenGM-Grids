@@ -78,107 +78,13 @@ export function buildGridFromFileUploadData(data: FileUploadData): BuiltGrid {
     return teamPlayerCount >= 10; // Minimum players for a team to appear in grids
   });
   
-  const allAchievements = Array.from(new Set(players.flatMap(p => p.achievements)));
-  
-  // Complete list of achievements for uniform sampling
-  const ACHIEVEMENTS: readonly string[] = [
-    // Career Milestones
-    "20,000+ Career Points",
-    "10,000+ Career Rebounds", 
-    "5,000+ Career Assists",
-    "2,000+ Career Steals",
-    "1,500+ Career Blocks",
-    "2,000+ Made Threes",
-    
-    // Single-Season Statistical Achievements
-    "Averaged 30+ PPG in a Season",
-    "Averaged 10+ APG in a Season",
-    "Averaged 15+ RPG in a Season", 
-    "Averaged 3+ BPG in a Season",
-    "Averaged 2.5+ SPG in a Season",
-    "Shot 50/40/90 in a Season",
-    
-    // League Leadership
-    "Led League in Scoring",
-    "Led League in Rebounds",
-    "Led League in Assists",
-    "Led League in Steals", 
-    "Led League in Blocks",
-    
-    // Game Performance Feats
-    "Scored 50+ in a Game",
-    "Triple-Double in a Game",
-    "20+ Rebounds in a Game",
-    "20+ Assists in a Game",
-    "10+ Threes in a Game",
-    
-    // Major Awards
-    "MVP Winner",
-    "Defensive Player of the Year", 
-    "Rookie of the Year",
-    "Sixth Man of the Year",
-    "Most Improved Player",
-    "Finals MVP",
-    
-    // Team Honors
-    "All-League Team",
-    "All-Defensive Team", 
-    "All-Star Selection",
-    "NBA Champion",
-    
-    // Career Length & Draft
-    "Played 15+ Seasons",
-    "#1 Overall Draft Pick",
-    "Undrafted Player",
-    "First Round Pick",
-    "2nd Round Pick",
-    
-    // Special Categories
-    "Made All-Star Team at Age 35+",
-    "Only One Team",
-    "Champion",
-    "Hall of Fame",
-    "Teammate of All-Time Greats"
-  ];
+  // Use the available achievements from the processed data instead of hardcoded list
+  const allAchievements = data.achievements || Array.from(new Set(players.flatMap(p => p.achievements)));
 
-  // Add dynamic "Teammate of All-Time Greats" criteria
-  const allTimeGreats = players
-    .filter(p => p.careerWinShares && p.careerWinShares >= 150)
-    .sort((a, b) => (b.careerWinShares || 0) - (a.careerWinShares || 0))
-    .slice(0, 20);
-  
-  // For each player, check if they were teammates with any all-time greats
-  players.forEach(player => {
-    for (const great of allTimeGreats) {
-      if (player.name !== great.name) {
-        const sharedTeams = player.teams.filter(team => great.teams.includes(team));
-        if (sharedTeams.length > 0) {
-          const playerYears = player.years || [];
-          const greatYears = great.years || [];
-          
-          for (const team of sharedTeams) {
-            const playerTeamYears = playerYears.find(y => y.team === team);
-            const greatTeamYears = greatYears.find(y => y.team === team);
-            
-            if (playerTeamYears && greatTeamYears) {
-              if (playerTeamYears.start <= greatTeamYears.end && 
-                  playerTeamYears.end >= greatTeamYears.start) {
-                if (!player.achievements.includes("Teammate of All-Time Greats")) {
-                  player.achievements.push("Teammate of All-Time Greats");
-                }
-                break;
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-  
-  // Filter available achievements
-  const availableAchievements = ACHIEVEMENTS.filter(ach => {
+  // Filter achievements that have at least 2 players (for valid intersections)
+  const availableAchievements = allAchievements.filter(ach => {
     const playersWithAchievement = players.filter(p => p.achievements.includes(ach)).length;
-    return allAchievements.includes(ach) && playersWithAchievement >= 2;
+    return playersWithAchievement >= 2;
   });
   
   // Uniform sampling - shuffle array
