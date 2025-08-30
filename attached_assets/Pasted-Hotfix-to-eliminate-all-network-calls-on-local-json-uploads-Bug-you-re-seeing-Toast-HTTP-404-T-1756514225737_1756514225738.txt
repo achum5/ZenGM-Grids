@@ -1,0 +1,101 @@
+Hotfix to eliminate all network calls on local .json uploads
+
+Bug you’re seeing
+
+Toast: HTTP 404 — The page could not be found …
+
+That proves the local JSON path is falling through to a fetch (legacy /api/* handler) on Vercel.
+
+Goal
+
+When mode === "json-client" and the user picks a .json file, read it in the browser and JSON.parse it. Never call fetch or XHR in that path. Render the grid.
+
+1) Force JSON client mode and isolate the code path
+
+file: client/src/components/file-upload.tsx
+
+Make JSON client the only active mode for now (we can re-enable others later):
+
+type UploadMode = "json-client" | "json-gzip" | "url";
+const [mode, setMode] = useState<UploadMode>("json-client");
+
+// On mount, force it again to avoid any SSR/hydration mismatches:
+useEffect(() => { setMode("json-client"); }, []);
+
+
+If there’s a tab UI, hide/disable the other tabs behind a flag:
+
+const JSON_ONLY = true;
+
+
+Use JSON_ONLY ? <UploadLeague onLoaded={...} /> : <Tabs .../>
+
+(or disable the tab buttons when JSON_ONLY is true).
+
+Ensure the drop zone/file input used for local picks only calls the JSON client handler when mode === "json-client".
+
+2) Add a hard “no network” guard during JSON client processing
+
+file: client/src/components/file-upload.tsx (or wherever the local handler lives)
+
+function installNoNetworkGuard() {
+  const origFetch = globalThis.fetch;
+  const origOpen = XMLHttpRequest.prototype.open;
+  (globalThis as any).fetch = (...args: any[]) => {
+    console.error("Blocked network call during json-client upload:", args[0]);
+    throw new Error("No network allowed in json-client upload path.");
+  };
+  XMLHttpRequest.prototype.open = function () {
+    throw new Error("No XHR allowed in json-client upload path.");
+  };
+  return () => {
+    (globalThis as any).fetch = origFetch;
+    XMLHttpRequest.prototype.open = origOpen;
+  };
+}
+
+async function handleJsonClientFile(file: File) {
+  if (!file.name.toLowerCase().endsWith(".json")) {
+    toast.error("This uploader only accepts plain .json files.");
+    return;
+  }
+  const restore = installNoNetworkGuard();
+  try {
+    const text = await file.text();      // browser only
+    const raw = JSON.parse(text);        // easy way
+    const processed = await processLeagueClient(raw); // client/src/lib/clientLeagueProcessor
+    onUploadComplete(processed);         // existing success path
+    toast.success("League loaded!");
+  } catch (err: any) {
+    toast.error(err?.message ?? "Failed to read or parse JSON.");
+  } finally {
+    restore();
+  }
+}
+
+
+Wire both the <input type="file"> onChange and the drop handler to handleJsonClientFile.
+
+3) Remove/guard every API call from the local file path
+
+Run and fix every match:
+
+rg -n "fetch\\(.*/api" client/src
+rg -n "await\\s+res\\.json\\(\\)" client/src
+rg -n "multipart" client/src
+rg -n "FormData\\(" client/src
+rg -n "axios\\.|XMLHttpRequest" client/src
+
+
+For any hit inside handlers that run for local file uploads, either delete it or wrap it so it only runs for "json-gzip" or "url" modes—never for "json-client".
+
+Also check that the upload UI is not inside a <form action=...>. If it is, remove action/method and add onSubmit={e => e.preventDefault()}.
+
+4) Keep the safe JSON helper only for URL/gzip paths
+
+If you added this earlier:
+
+async function safeFetchJson(input: RequestInfo, init?: RequestInit) { ... }
+
+
+Ensure it is never called from the JSON client path. The 404 toast you now see is originating from this helper in a wrong code path.
